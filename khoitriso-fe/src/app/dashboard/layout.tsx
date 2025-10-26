@@ -1,6 +1,5 @@
 import { Metadata } from 'next';
 import DashboardSidebar from '@/components/dashboard/DashboardSidebar';
-import DashboardHeader from '@/components/dashboard/DashboardHeader';
 import { SidebarProvider } from '@/contexts/SidebarContext';
 
 export const metadata: Metadata = {
@@ -22,9 +21,8 @@ export default function DashboardLayout({
             <DashboardSidebar />
           </div>
           
-          {/* Main content */}
+          {/* Main content (no header for admin) */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            <DashboardHeader />
             <main className="flex-1 overflow-y-auto p-4">
               {children}
             </main>

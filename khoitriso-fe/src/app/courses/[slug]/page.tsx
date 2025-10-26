@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getCourse } from '@/services/courses';
 import {
     ClockIcon,
     UserGroupIcon,
@@ -13,165 +14,18 @@ import {
     ShareIcon,
 } from "@heroicons/react/24/outline";
 import { StarIcon as StarIconSolid } from "@heroicons/react/24/solid";
+import AddToCartButton from './AddToCartButton';
 
-// Mock data - In real app, this would come from API
-const coursesData = {
-    "toan-lop-12-free": {
-        id: "toan-lop-12-free",
-        title: "Toán lớp 12 miễn phí",
-        description:
-            "Khóa học Toán lớp 12 miễn phí được thiết kế đặc biệt cho học sinh chuẩn bị thi THPT Quốc gia. Với nội dung được biên soạn bởi đội ngũ giảng viên giàu kinh nghiệm, khóa học cung cấp kiến thức toàn diện về các chương trình Toán lớp 12.",
-        instructor: {
-            name: "Thầy Nguyễn Văn A",
-            id: "nguyen-van-a",
-            avatar: "/images/team/1.jpg",
-            title: "Thạc sĩ Toán học",
-            experience: "15 năm kinh nghiệm",
-        },
-        thumbnail: "/images/courses/math-12-free.jpg",
-        price: 0,
-        originalPrice: null,
-        isFree: true,
-        level: "Lớp 12",
-        duration: "12 giờ",
-        lessons: 40,
-        students: 1234,
-        rating: 4.9,
-        reviewsCount: 456,
-        category: "Toán học",
-        language: "Tiếng Việt",
-        certificate: true,
-        lastUpdated: "2024-01-15",
-        outcomes: [
-            "Nắm vững kiến thức Đại số và Giải tích lớp 12",
-            "Thành thạo các phương pháp giải bài tập Hình học không gian",
-            "Kỹ năng giải quyết các dạng bài thi THPT Quốc gia",
-            "Phương pháp học tập hiệu quả và quản lý thời gian",
-        ],
-        requirements: [
-            "Kiến thức Toán lớp 11 cơ bản",
-            "Máy tính có kết nối internet",
-            "Tinh thần học tập nghiêm túc",
-        ],
-        curriculum: [
-            {
-                title: "Chương 1: Ứng dụng đạo hàm để khảo sát và vẽ đồ thị hàm số",
-                lessons: [
-                    {
-                        title: "Bài 1: Sự biến thiên của hàm số",
-                        duration: "15 phút",
-                        type: "Video",
-                        isFree: true,
-                    },
-                    {
-                        title: "Bài 2: Cực trị của hàm số",
-                        duration: "20 phút",
-                        type: "Video",
-                        isFree: true,
-                    },
-                    {
-                        title: "Bài 3: Giá trị lớn nhất và nhỏ nhất",
-                        duration: "18 phút",
-                        type: "Video",
-                        isFree: false,
-                    },
-                    {
-                        title: "Bài tập thực hành chương 1",
-                        duration: "30 phút",
-                        type: "Assignment",
-                        isFree: false,
-                    },
-                ],
-            },
-            {
-                title: "Chương 2: Hàm số mũ và hàm số logarit",
-                lessons: [
-                    {
-                        title: "Bài 4: Lũy thừa với số mũ thực",
-                        duration: "22 phút",
-                        type: "Video",
-                        isFree: false,
-                    },
-                    {
-                        title: "Bài 5: Hàm số mũ và đồ thị",
-                        duration: "25 phút",
-                        type: "Video",
-                        isFree: false,
-                    },
-                    {
-                        title: "Bài 6: Hàm số logarit",
-                        duration: "20 phút",
-                        type: "Video",
-                        isFree: false,
-                    },
-                    {
-                        title: "Bài tập thực hành chương 2",
-                        duration: "35 phút",
-                        type: "Assignment",
-                        isFree: false,
-                    },
-                ],
-            },
-            {
-                title: "Chương 3: Nguyên hàm, tích phân và ứng dụng",
-                lessons: [
-                    {
-                        title: "Bài 7: Nguyên hàm",
-                        duration: "25 phút",
-                        type: "Video",
-                        isFree: false,
-                    },
-                    {
-                        title: "Bài 8: Tích phân",
-                        duration: "30 phút",
-                        type: "Video",
-                        isFree: false,
-                    },
-                    {
-                        title: "Bài 9: Ứng dụng tích phân",
-                        duration: "28 phút",
-                        type: "Video",
-                        isFree: false,
-                    },
-                    {
-                        title: "Bài tập tổng hợp",
-                        duration: "45 phút",
-                        type: "Assignment",
-                        isFree: false,
-                    },
-                ],
-            },
-        ],
-        reviews: [
-            {
-                id: 1,
-                user: "Nguyễn Thị D",
-                avatar: "/images/avatars/avatar-1.jpg",
-                rating: 5,
-                comment:
-                    "Thầy dạy rất dễ hiểu, tôi đã từ ghét Toán thành yêu thích môn này!",
-                date: "2024-01-10",
-            },
-            {
-                id: 2,
-                user: "Trần Văn E",
-                avatar: "/images/avatars/avatar-2.jpg",
-                rating: 5,
-                comment:
-                    "Phương pháp giảng dạy của thầy rất hay, giúp tôi đạt 9.5 điểm Toán trong kỳ thi THPT.",
-                date: "2024-01-08",
-            },
-            {
-                id: 3,
-                user: "Lê Thị F",
-                avatar: "/images/avatars/avatar-3.jpg",
-                rating: 4,
-                comment:
-                    "Khóa học tốt, nội dung phong phú. Chỉ mong có thêm nhiều bài tập thực hành.",
-                date: "2024-01-05",
-            },
-        ],
-    },
+// Fallback data in case API lacks certain fields
+const fallback = {
+  outcomes: [
+    "Nắm vững kiến thức trọng tâm",
+    "Làm chủ phương pháp giải nhanh",
+    "Ôn tập hiệu quả trước kỳ thi",
+  ],
+  requirements: ["Máy tính kết nối internet"],
+  curriculum: [] as Array<{ title: string; lessons: Array<{ title: string; duration: string; type: string; isFree: boolean }>; }>,
+  reviews: [] as Array<{ id: number; user: string; avatar?: string; rating: number; comment: string; date: string }>,
 };
 
 function formatPrice(price: number) {
@@ -213,34 +67,58 @@ interface PageProps {
     };
 }
 
-export async function generateMetadata({
-    params,
-}: PageProps): Promise<Metadata> {
-    const course = coursesData[params.slug as keyof typeof coursesData];
-
-    if (!course) {
-        return {
-            title: "Khóa học không tồn tại",
-        };
-    }
-
-    return {
-        title: `${course.title} - Khởi Trí Số`,
-        description: course.description,
-        openGraph: {
-            title: course.title,
-            description: course.description,
-            type: "website",
-        },
-    };
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const id = params.slug;
+  const res = await getCourse(Number(id));
+  if (!res.ok || !res.data) {
+    return { title: 'Khóa học không tồn tại' };
+  }
+  const course: any = res.data;
+  return {
+    title: `${course.title ?? 'Khóa học'} - Khởi Trí Số`,
+    description: course.description ?? '',
+    openGraph: {
+      title: course.title ?? 'Khóa học',
+      description: course.description ?? '',
+      type: 'website',
+    },
+  };
 }
 
-export default function CourseDetailPage({ params }: PageProps) {
-    const course = coursesData[params.slug as keyof typeof coursesData];
-
-    if (!course) {
-        notFound();
-    }
+export default async function CourseDetailPage({ params }: PageProps) {
+    const res = await getCourse(Number(params.slug));
+    if (!res.ok || !res.data) return notFound();
+    const raw: any = res.data;
+    const course = {
+        id: String(raw.id ?? params.slug),
+        title: raw.title ?? 'Khóa học',
+        description: raw.description ?? '',
+        instructor: {
+            name: raw.instructor?.name ?? 'Giảng viên',
+            id: String(raw.instructor?.id ?? 'teacher'),
+            avatar: '/images/team/1.jpg',
+            title: raw.instructor?.title ?? '',
+            experience: raw.instructor?.experience ?? '',
+        },
+        thumbnail: raw.thumbnail ?? '/images/courses/math-12-free.jpg',
+        price: Number(raw.price ?? 0),
+        originalPrice: null,
+        isFree: Number(raw.price ?? 0) === 0,
+        level: raw.level ?? 'Tất cả',
+        duration: raw.duration ?? '—',
+        lessons: raw.lessonsCount ?? 0,
+        students: raw.studentsCount ?? 0,
+        rating: Number(raw.rating ?? 5),
+        reviewsCount: raw.reviewsCount ?? 0,
+        category: raw.category?.name ?? 'Khóa học',
+        language: 'Tiếng Việt',
+        certificate: true,
+        lastUpdated: raw.updatedAt ?? '',
+        outcomes: fallback.outcomes,
+        requirements: fallback.requirements,
+        curriculum: fallback.curriculum,
+        reviews: fallback.reviews,
+    } as const;
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -608,11 +486,7 @@ export default function CourseDetailPage({ params }: PageProps) {
                                 </div>
 
                                 <div className="space-y-3">
-                                    <button className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 transition-colors">
-                                        {course.isFree
-                                            ? "Đăng ký học miễn phí"
-                                            : "Thêm vào giỏ hàng"}
-                                    </button>
+                                    <AddToCartButton courseId={Number(course.id) || 0} isFree={course.isFree} />
                                     <button className="w-full border border-gray-300 text-gray-700 py-3 px-4 rounded-lg font-semibold hover:bg-gray-50 transition-colors">
                                         Thêm vào yêu thích
                                     </button>

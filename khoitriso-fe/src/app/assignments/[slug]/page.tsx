@@ -15,6 +15,8 @@ import {
   BookmarkIcon,
   ExclamationCircleIcon
 } from '@heroicons/react/24/outline';
+import { getAssignment, startAssignment, submitAssignment } from '@/services/assignments';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 
 interface AssignmentQuestion {
   id: number;
@@ -116,15 +118,57 @@ const mockAssignment: Assignment = {
   ]
 };
 
-export default function AssignmentPage({ params: _params }: { params: { slug: string } }) {
+export default function AssignmentPage({ params }: { params: { slug: string } }) {
+  useAuthGuard();
   const isClient = useClientOnly();
-  const [assignment] = useState<Assignment>(mockAssignment);
+  const [assignment, setAssignment] = useState<Assignment>(mockAssignment);
   const [timeLeft, setTimeLeft] = useState(assignment.timeLimit * 60); // Convert to seconds
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [currentQuestion] = useState(1);
   const [showWarning, setShowWarning] = useState(false);
+
+  // Load assignment from API
+  useEffect(() => {
+    (async () => {
+      const idNum = Number(params.slug);
+      if (!Number.isFinite(idNum)) return;
+      // start attempt
+      await startAssignment(idNum);
+      const res = await getAssignment(idNum);
+      if (res.ok && res.data) {
+        const raw: any = res.data;
+        const mapped: Assignment = {
+          id: String(raw.id ?? params.slug),
+          title: raw.title ?? mockAssignment.title,
+          description: raw.description ?? mockAssignment.description,
+          timeLimit: Number(raw.timeLimit ?? mockAssignment.timeLimit),
+          totalQuestions: raw.totalQuestions ?? (raw.questions?.length ?? mockAssignment.totalQuestions),
+          maxScore: raw.maxScore ?? mockAssignment.maxScore,
+          maxAttempts: raw.maxAttempts ?? mockAssignment.maxAttempts,
+          course: {
+            title: raw.course?.title ?? mockAssignment.course.title,
+            slug: raw.course?.slug ?? mockAssignment.course.slug,
+          },
+          questions: (raw.questions ?? mockAssignment.questions).map((q: any, idx: number) => ({
+            id: Number(q.id ?? idx + 1),
+            content: q.content ?? q.title ?? '',
+            options: (q.options ?? []).map((op: any, oi: number) => ({
+              id: String(op.id ?? String.fromCharCode(65 + oi)),
+              text: String(op.text ?? op.content ?? ''),
+              isCorrect: Boolean(op.isCorrect ?? false),
+            })),
+            points: Number(q.points ?? 1),
+            image: q.image ?? undefined,
+          })),
+        };
+        setAssignment(mapped);
+        setTimeLeft(mapped.timeLimit * 60);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.slug]);
 
   // Timer effect
   useEffect(() => {
@@ -159,11 +203,20 @@ export default function AssignmentPage({ params: _params }: { params: { slug: st
     }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     // Only use confirm on client-side to avoid hydration issues
     if (isClient && !confirm('Bạn có chắc chắn muốn nộp bài? Bạn sẽ không thể chỉnh sửa sau khi nộp.')) {
       return;
     }
+    const idNum = Number(assignment.id);
+    try {
+      // Convert answers object to array format expected by API
+      const answersArray = Object.entries(answers).map(([questionId, answerId]) => ({
+        questionId: Number(questionId),
+        answerId: String(answerId)
+      }));
+      await submitAssignment(Number.isFinite(idNum) ? idNum : Number(params.slug), { attemptId: 1, answers: answersArray });
+    } catch {}
     setIsSubmitted(true);
     setShowResult(true);
   };
@@ -345,7 +398,7 @@ export default function AssignmentPage({ params: _params }: { params: { slug: st
             {/* Questions */}
             <div className="space-y-6">
               {assignment.questions.map((question, index) => (
-                <div key={question.id} className="bg-white rounded-2xl shadow-sm p-6">
+                <div key={question.id} data-question={question.id} className="bg-white rounded-2xl shadow-sm p-6">
                   <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-200">
                     <span className="bg-blue-600 text-white px-4 py-2 rounded-full font-semibold">
                       Câu {question.id}

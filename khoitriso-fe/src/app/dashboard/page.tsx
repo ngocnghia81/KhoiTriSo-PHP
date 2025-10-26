@@ -1,4 +1,4 @@
-import { Metadata } from 'next';
+"use client"
 import {
   UserGroupIcon,
   AcademicCapIcon,
@@ -16,97 +16,54 @@ import StatsCard from '@/components/dashboard/StatsCard';
 import Chart from '@/components/dashboard/Chart';
 import RecentActivity from '@/components/dashboard/RecentActivity';
 import TopPerformers from '@/components/dashboard/TopPerformers';
+import { useEffect, useState } from 'react';
+import { getDashboard } from '@/services/analytics';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 
-export const metadata: Metadata = {
-  title: 'Dashboard - Khởi Trí Số',
-  description: 'Tổng quan hệ thống giáo dục Khởi Trí Số',
-};
+// Note: client components cannot export metadata
 
-// Mock data - sẽ được thay thế bằng API calls
-const stats = [
-  {
-    name: 'Tổng người dùng',
-    value: '12,345',
-    change: '+12%',
-    changeType: 'increase' as const,
-    icon: UserGroupIcon,
-    color: 'blue' as const,
-    description: 'So với tháng trước'
-  },
-  {
-    name: 'Khóa học hoạt động',
-    value: '156',
-    change: '+8%',
-    changeType: 'increase' as const,
-    icon: AcademicCapIcon,
-    color: 'green' as const,
-    description: 'Khóa học đang hoạt động'
-  },
-  {
-    name: 'Sách điện tử',
-    value: '89',
-    change: '+3%',
-    changeType: 'increase' as const,
-    icon: BookOpenIcon,
-    color: 'purple' as const,
-    description: 'Sách đang bán'
-  },
-  {
-    name: 'Doanh thu tháng',
-    value: '₫245M',
-    change: '+18%',
-    changeType: 'increase' as const,
-    icon: CurrencyDollarIcon,
-    color: 'yellow' as const,
-    description: 'Doanh thu tháng này'
-  },
-  {
-    name: 'Học sinh hoạt động',
-    value: '8,567',
-    change: '+15%',
-    changeType: 'increase' as const,
-    icon: ChartBarIcon,
-    color: 'indigo' as const,
-    description: 'Học sinh đang học'
-  },
-  {
-    name: 'Tỷ lệ hoàn thành',
-    value: '78%',
-    change: '-2%',
-    changeType: 'decrease' as const,
-    icon: CheckCircleIcon,
-    color: 'red' as const,
-    description: 'Tỷ lệ hoàn thành khóa học'
-  }
-];
-
-const revenueData = [
-  { month: 'T1', revenue: 180 },
-  { month: 'T2', revenue: 200 },
-  { month: 'T3', revenue: 170 },
-  { month: 'T4', revenue: 220 },
-  { month: 'T5', revenue: 250 },
-  { month: 'T6', revenue: 245 },
-];
-
-const userGrowthData = [
-  { month: 'T1', users: 8500 },
-  { month: 'T2', users: 9200 },
-  { month: 'T3', users: 9800 },
-  { month: 'T4', users: 10500 },
-  { month: 'T5', users: 11200 },
-  { month: 'T6', users: 12345 },
-];
-
-const courseCompletionData = [
-  { course: 'Toán 12', completion: 85 },
-  { course: 'Vật lý 11', completion: 78 },
-  { course: 'Hóa học 10', completion: 82 },
-  { course: 'Sinh học 12', completion: 75 },
-  { course: 'Văn 11', completion: 88 },
-];
+type StatCard = { name: string; value: string | number; change?: string; changeType?: 'increase' | 'decrease'; icon?: any; color?: string; description?: string };
+type RevenuePoint = { month: string; revenue: number };
+type UserGrowthPoint = { month: string; users: number };
+type CompletionPoint = { course: string; completion: number };
 
 export default function DashboardPage() {
+  // client-side guard
+  // @ts-ignore
+  useAuthGuard('admin');
+  const [stats, setStats] = useState<StatCard[]>([]);
+  const [revenueData, setRevenueData] = useState<RevenuePoint[]>([]);
+  const [userGrowthData, setUserGrowthData] = useState<UserGrowthPoint[]>([]);
+  const [courseCompletionData, setCourseCompletionData] = useState<CompletionPoint[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const res = await getDashboard();
+      if (res.ok) {
+        const api = (res.data as any) || {};
+        // Build stats cards from known keys with safe fallbacks
+        const builtStats: StatCard[] = (api.stats as StatCard[]) || [
+          api.totalRevenue !== undefined ? { name: 'Tổng doanh thu', value: api.totalRevenue, change: api.revenueChange, changeType: (api.revenueChange ?? 0) >= 0 ? 'increase' : 'decrease', icon: ArrowTrendingUpIcon, color: 'green' } : undefined,
+          api.totalUsers !== undefined ? { name: 'Tổng người dùng', value: api.totalUsers, change: api.usersChange, changeType: (api.usersChange ?? 0) >= 0 ? 'increase' : 'decrease', icon: UserGroupIcon, color: 'blue' } : undefined,
+          api.totalCourses !== undefined ? { name: 'Tổng khóa học', value: api.totalCourses, change: api.coursesChange, changeType: (api.coursesChange ?? 0) >= 0 ? 'increase' : 'decrease', icon: AcademicCapIcon, color: 'indigo' } : undefined,
+          api.totalBooks !== undefined ? { name: 'Tổng sách', value: api.totalBooks, change: api.booksChange, changeType: (api.booksChange ?? 0) >= 0 ? 'increase' : 'decrease', icon: BookOpenIcon, color: 'purple' } : undefined,
+        ].filter(Boolean) as StatCard[];
+        setStats(builtStats);
+
+        // Monthly revenue
+        const monthlyRevenue = (api.revenueMonthly as any[])?.map((m: any) => ({ month: m.month ?? m.label ?? '', revenue: Number(m.revenue ?? m.value ?? 0) })) || (api.revenueData as RevenuePoint[]) || [];
+        setRevenueData(monthlyRevenue);
+
+        // Monthly user growth
+        const monthlyUsers = (api.usersMonthly as any[])?.map((m: any) => ({ month: m.month ?? m.label ?? '', users: Number(m.users ?? m.value ?? 0) })) || (api.userGrowthData as UserGrowthPoint[]) || [];
+        setUserGrowthData(monthlyUsers);
+
+        // Course completion
+        const completion = (api.courseCompletion as any[])?.map((c: any) => ({ course: c.course ?? c.name ?? '', completion: Number(c.completion ?? c.value ?? 0) })) || (api.courseCompletionData as CompletionPoint[]) || [];
+        setCourseCompletionData(completion);
+      }
+    })();
+  }, []);
   return (
     <div className="space-y-4">
       {/* Page header */}
@@ -135,9 +92,22 @@ export default function DashboardPage() {
 
       {/* Stats grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {stats.map((stat) => (
-          <StatsCard key={stat.name} {...stat} />
-        ))}
+        {stats.length === 0 ? (
+          <div className="col-span-1 sm:col-span-2 lg:col-span-3 text-sm text-gray-500">Không có dữ liệu thống kê</div>
+        ) : (
+          stats.map((stat) => (
+            <StatsCard
+              key={stat.name}
+              name={stat.name}
+              value={String(stat.value ?? '')}
+              change={String(stat.change ?? '')}
+              changeType={(stat.changeType as any) ?? 'increase'}
+              icon={stat.icon ?? UserGroupIcon}
+              color={(stat.color as any) ?? ('blue' as any)}
+              description={stat.description ?? ''}
+            />
+          ))
+        )}
       </div>
 
       {/* Charts section */}
@@ -147,10 +117,6 @@ export default function DashboardPage() {
           <div className="p-6">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-medium text-gray-900">Doanh thu theo tháng</h3>
-              <div className="flex items-center text-sm text-green-600">
-                <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
-                +18%
-              </div>
             </div>
             <div className="mt-6">
               <Chart 
@@ -170,10 +136,6 @@ export default function DashboardPage() {
           <div className="p-6">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-medium text-gray-900">Tăng trưởng người dùng</h3>
-              <div className="flex items-center text-sm text-blue-600">
-                <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
-                +12%
-              </div>
             </div>
             <div className="mt-6">
               <Chart 
@@ -196,7 +158,9 @@ export default function DashboardPage() {
           <div className="p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-6">Tỷ lệ hoàn thành khóa học</h3>
             <div className="space-y-4">
-              {courseCompletionData.map((course) => (
+              {courseCompletionData.length === 0 ? (
+                <div className="text-sm text-gray-500">Không có dữ liệu</div>
+              ) : courseCompletionData.map((course) => (
                 <div key={course.course} className="flex items-center justify-between">
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-1">

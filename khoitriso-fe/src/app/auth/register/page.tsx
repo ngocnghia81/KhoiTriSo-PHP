@@ -9,21 +9,21 @@ import {
   EnvelopeIcon,
   LockClosedIcon,
   UserIcon,
-  PhoneIcon,
   AcademicCapIcon,
   CheckCircleIcon
 } from '@heroicons/react/24/outline';
+import { register as apiRegister } from '@/services/auth';
 
 export default function RegisterPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
+    username: '',
     firstName: '',
     lastName: '',
     email: '',
-    phone: '',
     password: '',
     confirmPassword: '',
-    role: 'student',
+    role: 'instructor',
     agreeTerms: false,
     agreeNewsletter: false
   });
@@ -50,6 +50,12 @@ export default function RegisterPage() {
   const validateForm = () => {
     const newErrors: {[key: string]: string} = {};
 
+    if (!formData.username.trim()) {
+      newErrors.username = 'Vui lòng nhập username';
+    } else if (!/^[a-zA-Z0-9_\.\-]{3,50}$/.test(formData.username)) {
+      newErrors.username = 'Username chỉ gồm chữ/số/._-, tối thiểu 3 ký tự';
+    }
+
     if (!formData.firstName.trim()) {
       newErrors.firstName = 'Vui lòng nhập họ';
     }
@@ -62,12 +68,6 @@ export default function RegisterPage() {
       newErrors.email = 'Vui lòng nhập email';
     } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = 'Email không hợp lệ';
-    }
-
-    if (!formData.phone) {
-      newErrors.phone = 'Vui lòng nhập số điện thoại';
-    } else if (!/^[0-9]{10,11}$/.test(formData.phone.replace(/\D/g, ''))) {
-      newErrors.phone = 'Số điện thoại không hợp lệ';
     }
 
     if (!formData.password) {
@@ -102,14 +102,11 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Mock registration success
-      alert('Đăng ký thành công! Vui lòng kiểm tra email để xác thực tài khoản.');
+      const name = `${formData.firstName} ${formData.lastName}`.trim();
+      await apiRegister({ username: formData.username, name, email: formData.email, password: formData.password });
       router.push('/auth/login');
     } catch (error) {
-      setErrors({ general: 'Có lỗi xảy ra. Vui lòng thử lại.' });
+      setErrors({ general: 'Đăng ký thất bại. Vui lòng thử lại.' });
     } finally {
       setIsLoading(false);
     }
@@ -164,13 +161,16 @@ export default function RegisterPage() {
               <h2 className="ml-3 text-2xl font-bold text-gray-900">Khởi Trí Số</h2>
             </div>
             <h2 className="mt-6 text-3xl font-bold tracking-tight text-gray-900">
-              Tạo tài khoản mới
+              Đăng ký giảng viên
             </h2>
             <p className="mt-2 text-sm text-gray-600">
               Đã có tài khoản?{' '}
               <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500">
                 Đăng nhập ngay
               </Link>
+            </p>
+            <p className="mt-2 text-xs text-amber-600">
+              Học viên: vui lòng đăng nhập bằng Google hoặc Facebook. Chỉ giảng viên được phép đăng ký và cần xác nhận email.
             </p>
           </div>
 
@@ -181,6 +181,30 @@ export default function RegisterPage() {
                   <div className="text-sm text-red-700">{errors.general}</div>
                 </div>
               )}
+
+              {/* Name fields */}
+              {/* Username */}
+              <div>
+                <label htmlFor="username" className="block text-sm font-medium text-gray-700">
+                  Username *
+                </label>
+                <div className="mt-1">
+                  <input
+                    id="username"
+                    name="username"
+                    type="text"
+                    value={formData.username}
+                    onChange={handleInputChange}
+                    className={`block w-full px-3 py-3 border rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                      errors.username ? 'border-red-300' : 'border-gray-300'
+                    }`}
+                    placeholder="ngocnghia"
+                  />
+                </div>
+                {errors.username && (
+                  <p className="mt-1 text-sm text-red-600">{errors.username}</p>
+                )}
+              </div>
 
               {/* Name fields */}
               <div className="grid grid-cols-2 gap-4">
@@ -258,32 +282,7 @@ export default function RegisterPage() {
                 )}
               </div>
 
-              {/* Phone */}
-              <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                  Số điện thoại *
-                </label>
-                <div className="mt-1 relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <PhoneIcon className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    autoComplete="tel"
-                    value={formData.phone}
-                    onChange={handleInputChange}
-                    className={`block w-full pl-10 pr-3 py-3 border rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.phone ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                    placeholder="0123456789"
-                  />
-                </div>
-                {errors.phone && (
-                  <p className="mt-1 text-sm text-red-600">{errors.phone}</p>
-                )}
-              </div>
+              {/* Phone removed as requested */}
 
               {/* Role */}
               <div>

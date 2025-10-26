@@ -2,6 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { getForumQuestions, voteQuestion, voteAnswer, acceptAnswer } from '@/services/forum';
 import {
   ChatBubbleLeftRightIcon,
   HandThumbUpIcon,
@@ -25,6 +26,8 @@ import {
   BookmarkIcon as BookmarkIconSolid,
   StarIcon as StarIconSolid
 } from '@heroicons/react/24/solid';
+import AnswerForm from './AnswerForm';
+import { http } from '@/lib/http';
 
 interface ForumQuestion {
   id: string;
@@ -202,52 +205,63 @@ Rất hữu ích cho các bài tập nâng cao! 💡`,
   }
 ];
 
-const relatedQuestions: RelatedQuestion[] = [
-  {
-    id: 'dao-ham-ham-hop',
-    title: 'Cách tính đạo hàm của hàm hợp',
-    votes: 23,
-    answers: 4,
-    views: 892,
-    tags: ['đạo hàm', 'hàm hợp']
-  },
-  {
-    id: 'dao-ham-bac-4',
-    title: 'Tìm đạo hàm hàm số bậc 4: y = x⁴ - 2x³ + 3x² - x + 5',
-    votes: 18,
-    answers: 3,
-    views: 654,
-    tags: ['đạo hàm', 'hàm bậc 4']
-  },
-  {
-    id: 'ung-dung-dao-ham',
-    title: 'Ứng dụng đạo hàm trong tìm cực trị',
-    votes: 31,
-    answers: 6,
-    views: 1203,
-    tags: ['đạo hàm', 'cực trị', 'ứng dụng']
-  },
-  {
-    id: 'dao-ham-luong-giac',
-    title: 'Đạo hàm các hàm số lượng giác cơ bản',
-    votes: 27,
-    answers: 5,
-    views: 987,
-    tags: ['đạo hàm', 'lượng giác']
-  }
-];
+let relatedQuestions: RelatedQuestion[] = [];
 
-// Mock function to get question data
+// Load from API with fallback to mock
 async function getQuestion(slug: string): Promise<ForumQuestion | null> {
-  // In real app, this would fetch from API
-  if (slug === 'toan-dao-ham-001') {
-    return { ...mockQuestion, answers: mockAnswers };
-  }
-  return null;
+  const id = Number(slug);
+  try {
+    const res = await getForumQuestions({ page: 1, pageSize: 100 });
+    const qdata: any[] = ((res.data as any)?.data) || (Array.isArray(res.data) ? (res.data as any[]) : []);
+    if (res.ok && Array.isArray(qdata)) {
+      const found: any = qdata.find((q: any) => String(q.id) === String(id));
+      if (found) {
+        return {
+          id: String(found.id),
+          title: found.title ?? mockQuestion.title,
+          content: found.content ?? mockQuestion.content,
+          author: {
+            name: found.author?.name ?? mockQuestion.author.name,
+            id: String(found.author?.id ?? mockQuestion.author.id),
+            avatar: '/images/avatars/student-1.png',
+            reputation: found.author?.reputation ?? mockQuestion.author.reputation,
+            badge: undefined
+          },
+          category: { name: found.category?.name ?? mockQuestion.category.name, slug: found.category?.slug ?? mockQuestion.category.slug },
+          tags: found.tags ?? mockQuestion.tags,
+          createdAt: found.createdAt ?? mockQuestion.createdAt,
+          views: found.views ?? mockQuestion.views,
+          votes: found.votes ?? mockQuestion.votes,
+          answers: [],
+          isBookmarked: false,
+          isSolved: !!found.isSolved,
+          acceptedAnswerId: undefined,
+        };
+      }
+    }
+  } catch {}
+  return { ...mockQuestion, answers: mockAnswers };
 }
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const question = await getQuestion(params.slug);
+  try {
+    const res = await getForumQuestions({ page: 1, pageSize: 6, q: question?.title?.split(' ')?.[0] || '' });
+    const qdata: any[] = ((res.data as any)?.data) || (Array.isArray(res.data) ? (res.data as any[]) : []);
+    if (res.ok && Array.isArray(qdata)) {
+      relatedQuestions = qdata
+        .filter((q: any) => String(q.id) !== String(question?.id))
+        .slice(0, 4)
+        .map((q: any) => ({
+          id: String(q.id),
+          title: q.title ?? 'Câu hỏi',
+          votes: q.votes ?? 0,
+          answers: q.answersCount ?? 0,
+          views: q.views ?? 0,
+          tags: q.tags ?? [],
+        }));
+    }
+  } catch {}
   
   if (!question) {
     return {
@@ -392,13 +406,19 @@ export default async function ForumQuestionPage({ params }: { params: { slug: st
 
                 {/* Vote Section */}
                 <div className="flex flex-col items-center space-y-2 ml-6">
-                  <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                  <button
+                    onClick={async () => { await voteQuestion(String(question.id), 'up'); window.location.reload(); }}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
                     <ArrowUpIcon className="h-6 w-6 text-gray-600" />
                   </button>
                   <span className="text-lg font-bold text-gray-900">
                     {question.votes}
                   </span>
-                  <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                  <button
+                    onClick={async () => { await voteQuestion(String(question.id), 'down'); window.location.reload(); }}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
                     <ArrowDownIcon className="h-6 w-6 text-gray-600" />
                   </button>
                 </div>
@@ -482,17 +502,31 @@ export default async function ForumQuestionPage({ params }: { params: { slug: st
                     <div className="flex space-x-4">
                       {/* Vote Section */}
                       <div className="flex flex-col items-center space-y-2">
-                        <button className="p-1 hover:bg-gray-100 rounded transition-colors">
+                        <button
+                          onClick={async () => { await voteAnswer(String(answer.id), 'up'); window.location.reload(); }}
+                          className="p-1 hover:bg-gray-100 rounded transition-colors"
+                        >
                           <ArrowUpIcon className="h-5 w-5 text-gray-600" />
                         </button>
                         <span className="text-lg font-bold text-gray-900">
                           {answer.votes}
                         </span>
-                        <button className="p-1 hover:bg-gray-100 rounded transition-colors">
+                        <button
+                          onClick={async () => { await voteAnswer(String(answer.id), 'down'); window.location.reload(); }}
+                          className="p-1 hover:bg-gray-100 rounded transition-colors"
+                        >
                           <ArrowDownIcon className="h-5 w-5 text-gray-600" />
                         </button>
                         {answer.isAccepted && (
                           <CheckCircleIcon className="h-6 w-6 text-green-600 mt-2" />
+                        )}
+                        {!answer.isAccepted && (
+                          <button
+                            onClick={async () => { await acceptAnswer(String(answer.id)); window.location.reload(); }}
+                            className="mt-2 px-2 py-1 text-xs bg-green-100 text-green-700 rounded"
+                          >
+                            Chấp nhận
+                          </button>
                         )}
                       </div>
 
@@ -572,21 +606,7 @@ export default async function ForumQuestionPage({ params }: { params: { slug: st
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">
                   Viết câu trả lời của bạn
                 </h3>
-                <div className="space-y-4">
-                  <textarea
-                    rows={6}
-                    placeholder="Nhập câu trả lời của bạn..."
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                  />
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-600">
-                      Hỗ trợ Markdown và LaTeX cho công thức toán học
-                    </div>
-                    <button className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
-                      Đăng trả lời
-                    </button>
-                  </div>
-                </div>
+                <AnswerForm questionId={Number(question.id)} />
               </div>
             </div>
           </div>
@@ -660,7 +680,7 @@ export default async function ForumQuestionPage({ params }: { params: { slug: st
                   Tags phổ biến
                 </h3>
                 <div className="flex flex-wrap gap-2">
-                  {['đạo hàm', 'tích phân', 'hàm số', 'phương trình', 'bất phương trình', 'hình học', 'lượng giác'].map((tag, index) => (
+                  {(question.tags?.length ? question.tags.slice(0,7) : ['toan']).map((tag, index) => (
                     <Link
                       key={index}
                       href={`/forum/tag/${tag}`}

@@ -14,6 +14,9 @@ import {
   PlusIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
+import { createForumQuestion, getForumQuestions } from '@/services/forum';
+import { getCategories } from '@/services/categories';
 
 interface FormData {
   title: string;
@@ -23,24 +26,10 @@ interface FormData {
   isAnonymous: boolean;
 }
 
-const categories = [
-  { value: 'math', label: 'Toán học', description: 'Đại số, Hình học, Giải tích, Xác suất thống kê' },
-  { value: 'physics', label: 'Vật lý', description: 'Cơ học, Điện học, Quang học, Vật lý hiện đại' },
-  { value: 'chemistry', label: 'Hóa học', description: 'Hóa vô cơ, Hóa hữu cơ, Hóa phân tích' },
-  { value: 'biology', label: 'Sinh học', description: 'Sinh học tế bào, Di truyền học, Sinh thái học' },
-  { value: 'literature', label: 'Văn học', description: 'Văn học Việt Nam, Văn học thế giới' },
-  { value: 'english', label: 'Tiếng Anh', description: 'Ngữ pháp, Từ vựng, Giao tiếp' },
-  { value: 'general', label: 'Tổng quát', description: 'Câu hỏi chung về học tập và phương pháp' }
-];
-
-const popularTags = [
-  'đạo hàm', 'tích phân', 'phương trình', 'bất phương trình', 'hình học',
-  'dao động', 'sóng', 'điện học', 'quang học', 'nhiệt học',
-  'phản ứng', 'cân bằng', 'dung dịch', 'hóa hữu cơ', 'kim loại',
-  'ngữ pháp', 'từ vựng', 'văn phạm', 'thi THPT', 'ôn tập'
-];
+type UiCategory = { value: string; label: string; description?: string };
 
 export default function AskQuestionPage() {
+  useAuthGuard();
   const router = useRouter();
   const [formData, setFormData] = useState<FormData>({
     title: '',
@@ -54,6 +43,28 @@ export default function AskQuestionPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [categories, setCategories] = useState<UiCategory[]>([]);
+  const [popularTags, setPopularTags] = useState<string[]>([]);
+
+  // Load categories from backend and popular tags from forum service
+  useState(() => {
+    (async () => {
+      const catRes = await getCategories();
+      if (catRes.ok) {
+        const raw = (catRes.data as any)?.categories || (catRes.data as any)?.data || [];
+        setCategories(raw.map((c: any) => ({ value: String(c.slug ?? c.id), label: c.name ?? 'Danh mục' })));
+      }
+      const qRes = await getForumQuestions({ page: 1, pageSize: 50 });
+      const qdata: any[] = ((qRes.data as any)?.data) || (Array.isArray(qRes.data) ? (qRes.data as any[]) : []);
+      if (qRes.ok && Array.isArray(qdata)) {
+        const tagCounts = new Map<string, number>();
+        for (const q of qdata) {
+          (q.tags ?? []).forEach((t: string) => tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1));
+        }
+        setPopularTags(Array.from(tagCounts.entries()).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([t])=>t));
+      }
+    })();
+  });
 
   const handleInputChange = (field: keyof FormData, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -125,14 +136,19 @@ export default function AskQuestionPage() {
     setIsSubmitting(true);
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // In real app, this would call API to create question
-      console.log('Submitting question:', formData);
-      
-      // Redirect to forum or the new question page
-      router.push('/forum');
+      const payload = {
+        title: formData.title,
+        content: formData.content,
+        tags: formData.tags,
+        category: formData.category,
+        anonymous: formData.isAnonymous,
+      };
+      const res = await createForumQuestion(payload);
+      if (res.ok) {
+        router.push('/forum');
+      } else {
+        alert('Đăng câu hỏi thất bại');
+      }
     } catch (error) {
       console.error('Error submitting question:', error);
       // Handle error

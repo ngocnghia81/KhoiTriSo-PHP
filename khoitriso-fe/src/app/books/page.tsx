@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -20,6 +20,9 @@ import {
   StarIcon as StarIconSolid,
   HeartIcon as HeartIconSolid 
 } from '@heroicons/react/24/solid';
+import { getBooks } from '@/services/books';
+import { addToCart as apiAddToCart } from '@/services/cart';
+import { getCategories } from '@/services/categories';
 
 interface Book {
   id: string;
@@ -48,14 +51,7 @@ interface Book {
   isBestseller?: boolean;
 }
 
-const categories = [
-  { id: 'all', name: 'Tất cả', count: 24 },
-  { id: 'toan-hoc', name: 'Toán học', count: 8 },
-  { id: 'vat-ly', name: 'Vật lý', count: 6 },
-  { id: 'hoa-hoc', name: 'Hóa học', count: 4 },
-  { id: 'sinh-hoc', name: 'Sinh học', count: 3 },
-  { id: 'ngu-van', name: 'Ngữ văn', count: 3 },
-];
+type UiCategory = { id: string; name: string; count?: number };
 
 const grades = ['Tất cả', 'Lớp 10', 'Lớp 11', 'Lớp 12'];
 const sortOptions = [
@@ -67,150 +63,7 @@ const sortOptions = [
   { value: 'bestseller', label: 'Bán chạy nhất' },
 ];
 
-const books: Book[] = [
-  {
-    id: '1',
-    title: 'Sách Toán học lớp 12 - Nâng cao (Kèm video giải bài tập)',
-    description: 'Sách Toán học lớp 12 nâng cao được biên soạn theo chương trình mới nhất, kèm video giải bài tập chi tiết.',
-    author: {
-      name: 'PGS. TS. Nguyễn Văn Toán',
-      id: 'nguyen-van-toan'
-    },
-    category: {
-      name: 'Toán học',
-      slug: 'toan-hoc'
-    },
-    coverImage: '/images/books/toan-12-cover.jpg',
-    price: 299000,
-    originalPrice: 399000,
-    discountPercent: 25,
-    totalQuestions: 850,
-    rating: 4.8,
-    reviewsCount: 234,
-    isActive: true,
-    publishedAt: '2024-01-01',
-    tags: ['Toán 12', 'THPT Quốc gia', 'Nâng cao'],
-    slug: 'toan-hoc-lop-12-nang-cao',
-    isBestseller: true
-  },
-  {
-    id: '2',
-    title: 'Sách Vật lý lớp 12 - Nâng cao (Có video thí nghiệm)',
-    description: 'Sách Vật lý lớp 12 với video thí nghiệm thực tế, giúp học sinh hiểu sâu các hiện tượng vật lý.',
-    author: {
-      name: 'TS. Phạm Văn Lý',
-      id: 'pham-van-ly'
-    },
-    category: {
-      name: 'Vật lý',
-      slug: 'vat-ly'
-    },
-    coverImage: '/images/books/vat-ly-12-cover.jpg',
-    price: 279000,
-    originalPrice: 349000,
-    discountPercent: 20,
-    totalQuestions: 720,
-    rating: 4.7,
-    reviewsCount: 189,
-    isActive: true,
-    publishedAt: '2024-01-15',
-    tags: ['Vật lý 12', 'Thí nghiệm', 'THPT'],
-    slug: 'vat-ly-lop-12-nang-cao',
-    isNew: true
-  },
-  {
-    id: '3',
-    title: 'Sách Hóa học lớp 12 - Cơ bản và Nâng cao',
-    description: 'Tổng hợp kiến thức Hóa học lớp 12 từ cơ bản đến nâng cao với phương pháp học hiệu quả.',
-    author: {
-      name: 'PGS. Trần Thị Hóa',
-      id: 'tran-thi-hoa'
-    },
-    category: {
-      name: 'Hóa học',
-      slug: 'hoa-hoc'
-    },
-    coverImage: '/images/books/hoa-hoc-12-cover.jpg',
-    price: 289000,
-    originalPrice: 359000,
-    discountPercent: 19,
-    totalQuestions: 680,
-    rating: 4.6,
-    reviewsCount: 156,
-    isActive: true,
-    publishedAt: '2024-02-01',
-    tags: ['Hóa học 12', 'Cơ bản', 'Nâng cao'],
-    slug: 'hoa-hoc-lop-12-co-ban-nang-cao'
-  },
-  {
-    id: '4',
-    title: 'Sách Toán học lớp 11 - Cơ bản (Video HD)',
-    description: 'Kiến thức Toán học lớp 11 cơ bản với video giảng dạy HD, phù hợp cho mọi trình độ học sinh.',
-    author: {
-      name: 'TS. Lê Văn Số',
-      id: 'le-van-so'
-    },
-    category: {
-      name: 'Toán học',
-      slug: 'toan-hoc'
-    },
-    coverImage: '/images/books/toan-11-cover.jpg',
-    price: 259000,
-    totalQuestions: 620,
-    rating: 4.5,
-    reviewsCount: 123,
-    isActive: true,
-    publishedAt: '2024-02-15',
-    tags: ['Toán 11', 'Cơ bản', 'Video HD'],
-    slug: 'toan-hoc-lop-11-co-ban'
-  },
-  {
-    id: '5',
-    title: 'Sách Sinh học lớp 12 - Tổng hợp kiến thức',
-    description: 'Tổng hợp toàn bộ kiến thức Sinh học lớp 12 với sơ đồ tư duy và bài tập thực hành.',
-    author: {
-      name: 'ThS. Nguyễn Thị Sinh',
-      id: 'nguyen-thi-sinh'
-    },
-    category: {
-      name: 'Sinh học',
-      slug: 'sinh-hoc'
-    },
-    coverImage: '/images/books/sinh-hoc-12-cover.jpg',
-    price: 269000,
-    originalPrice: 319000,
-    discountPercent: 16,
-    totalQuestions: 580,
-    rating: 4.4,
-    reviewsCount: 98,
-    isActive: true,
-    publishedAt: '2024-03-01',
-    tags: ['Sinh học 12', 'Sơ đồ tư duy', 'Thực hành'],
-    slug: 'sinh-hoc-lop-12-tong-hop'
-  },
-  {
-    id: '6',
-    title: 'Sách Ngữ văn lớp 12 - Phân tích tác phẩm',
-    description: 'Phương pháp phân tích tác phẩm văn học lớp 12 với kỹ thuật làm bài thi hiệu quả.',
-    author: {
-      name: 'TS. Phạm Văn Văn',
-      id: 'pham-van-van'
-    },
-    category: {
-      name: 'Ngữ văn',
-      slug: 'ngu-van'
-    },
-    coverImage: '/images/books/ngu-van-12-cover.jpg',
-    price: 249000,
-    totalQuestions: 450,
-    rating: 4.3,
-    reviewsCount: 87,
-    isActive: true,
-    publishedAt: '2024-03-15',
-    tags: ['Ngữ văn 12', 'Phân tích', 'Kỹ thuật'],
-    slug: 'ngu-van-lop-12-phan-tich'
-  }
-];
+// Removed hardcoded books; data is loaded from API only
 
 export default function BooksPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -220,9 +73,57 @@ export default function BooksPage() {
   const [priceRange, setPriceRange] = useState([0, 500000]);
   const [showFilters, setShowFilters] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [categories, setCategories] = useState<UiCategory[]>([{ id: 'all', name: 'Tất cả' }]);
+  const [bookList, setBookList] = useState<Book[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const res = await getBooks({ pageSize: 50 });
+      if (res.ok) {
+        const raw = (res.data as any)?.books || (res.data as any)?.data || [];
+        const mapped: Book[] = raw.map((b: any) => ({
+          id: String(b.id ?? b.slug ?? b.title ?? Math.random()),
+          title: b.title ?? b.name ?? 'Sách',
+          description: b.description ?? '',
+          author: { name: b.author?.name ?? 'Tác giả', id: String(b.author?.id ?? 'author') },
+          category: { name: b.category?.name ?? 'Danh mục', slug: b.category?.slug ?? 'all' },
+          coverImage: b.coverImage ?? '/images/product/cart-1.png',
+          price: Number(b.price ?? 0),
+          originalPrice: undefined,
+          discountPercent: undefined,
+          totalQuestions: b.totalQuestions ?? 0,
+          rating: Number(b.rating ?? 5),
+          reviewsCount: b.reviewsCount ?? 0,
+          isActive: true,
+          publishedAt: b.publishedAt ?? '2024-01-01',
+          tags: b.tags ?? [],
+          slug: b.slug ?? String(b.id ?? 'book'),
+          isNew: !!b.isNew,
+          isBestseller: !!b.isBestseller,
+        }));
+        setBookList(mapped);
+      } else {
+        setBookList([]);
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const res = await getCategories();
+      if (res.ok) {
+        const raw = (res.data as any)?.categories || (res.data as any)?.data || [];
+        const mapped: UiCategory[] = [{ id: 'all', name: 'Tất cả' }, ...raw.map((c: any) => ({ id: String(c.slug ?? c.id), name: c.name ?? 'Danh mục', count: c.bookCount }))];
+        setCategories(mapped);
+      }
+    })();
+  }, []);
 
   const filteredAndSortedBooks = useMemo(() => {
-    const filtered = books.filter(book => {
+    const filtered = bookList.filter(book => {
       // Category filter
       if (selectedCategory !== 'all' && book.category.slug !== selectedCategory) {
         return false;
@@ -270,7 +171,7 @@ export default function BooksPage() {
     });
 
     return filtered;
-  }, [selectedCategory, selectedGrade, sortBy, searchTerm, priceRange]);
+  }, [selectedCategory, selectedGrade, sortBy, searchTerm, priceRange, bookList]);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -287,8 +188,9 @@ export default function BooksPage() {
     );
   };
 
-  const addToCart = (bookId: string) => {
-    console.log('Added to cart:', bookId);
+  const addToCart = async (bookId: string) => {
+    await apiAddToCart({ itemType: 2, itemId: Number(bookId) || 0 });
+    alert('Đã thêm sách vào giỏ hàng');
   };
 
   const renderStars = (rating: number) => {
@@ -497,6 +399,9 @@ export default function BooksPage() {
 
           {/* Main Content */}
           <div className="lg:col-span-3">
+            {loading && (
+              <div className="text-center text-gray-600 py-8">Đang tải dữ liệu...</div>
+            )}
             {/* Results Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
               <div>

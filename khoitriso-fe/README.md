@@ -117,18 +117,23 @@ npm run lint
 - Keyboard navigation
 - Screen reader support
 
-## 🔗 API Integration
+## 🔗 API Integration (đã ghép)
 
-Project được thiết kế để tích hợp với backend API:
-
-```typescript
-// Example API endpoints
-/api/courses          # Danh sách khóa học
-/api/courses/:id      # Chi tiết khóa học
-/api/books/activate   # Kích hoạt sách
-/api/forum/questions  # Câu hỏi diễn đàn
-/api/assignments      # Bài tập
+- Env: tạo `.env.local`
+```bash
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api
 ```
+
+- Auth: `POST /auth/login`, `POST /auth/register`, `POST /auth/refresh` (retry 401), `POST /auth/logout`
+- Users: `GET/PUT /users/profile`, `PUT /users/change-password`, `POST /users/upload-avatar`
+- Courses: `GET /courses`, `GET /courses/{id}`
+- Lessons: `GET /courses/{courseId}/lessons`, `GET/POST /lessons/{id}/video-progress`, `POST /lessons/{id}/progress`
+- Books: `GET /books`, `GET /books/{id}`, `GET /books/{id}/chapters`, `POST /books/activate`
+- Cart: `GET /cart`, `POST /cart`, `DELETE /cart/{id}`, `DELETE /cart/clear`
+- Coupons: `POST /coupons/validate`
+- Orders: `GET /orders`, `GET /orders/{id}`, `POST /orders`, `PUT /orders/{id}/cancel`
+
+Token được lưu ở `localStorage:kts_access_token`.
 
 ## 🚀 Deployment
 

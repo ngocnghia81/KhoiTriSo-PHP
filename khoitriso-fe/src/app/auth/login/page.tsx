@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Metadata } from 'next';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -12,6 +12,8 @@ import {
   UserIcon,
   AcademicCapIcon
 } from '@heroicons/react/24/outline';
+import { login as apiLogin } from '@/services/auth';
+import { TOKEN_STORAGE_KEY } from '@/lib/config';
 
 // Note: Metadata export is commented out because this is a client component
 // export const metadata: Metadata = {
@@ -29,6 +31,16 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{[key: string]: string}>({});
+
+  // If already logged in, redirect away
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+        if (token) router.replace('/');
+      }
+    } catch {}
+  }, [router]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -74,42 +86,13 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // Mock login logic
-      const mockUsers = {
-        'admin@khoitriso.com': { role: 'admin', name: 'Admin User' },
-        'instructor@khoitriso.com': { role: 'instructor', name: 'Instructor User' },
-        'student@khoitriso.com': { role: 'student', name: 'Student User' }
-      };
-
-      const user = mockUsers[formData.email as keyof typeof mockUsers];
-
-      if (user && formData.password === '123456') {
-        // Store user info (in real app, use proper auth)
-        localStorage.setItem('user', JSON.stringify({
-          email: formData.email,
-          role: user.role,
-          name: user.name
-        }));
-
-        // Redirect based on role
-        switch (user.role) {
-          case 'admin':
-            router.push('/dashboard');
-            break;
-          case 'instructor':
-            router.push('/instructor');
-            break;
-          default:
-            router.push('/');
-        }
-      } else {
-        setErrors({ general: 'Email hoặc mật khẩu không đúng' });
-      }
+      const res: any = await apiLogin({ email: formData.email, password: formData.password });
+      const role = (res?.user?.role) || (res?.data?.user?.role) || formData.role || 'student';
+      if (role === 'admin') router.push('/dashboard');
+      else if (role === 'instructor') router.push('/instructor');
+      else router.push('/');
     } catch (error) {
-      setErrors({ general: 'Có lỗi xảy ra. Vui lòng thử lại.' });
+      setErrors({ general: 'Đăng nhập thất bại. Vui lòng kiểm tra lại.' });
     } finally {
       setIsLoading(false);
     }
@@ -144,9 +127,9 @@ export default function LoginPage() {
               Đăng nhập tài khoản
             </h2>
             <p className="mt-2 text-sm text-gray-600">
-              Chưa có tài khoản?{' '}
+              Chưa có tài khoản giảng viên?{' '}
               <Link href="/auth/register" className="font-medium text-blue-600 hover:text-blue-500">
-                Đăng ký ngay
+                Đăng ký giảng viên
               </Link>
             </p>
           </div>
@@ -315,20 +298,21 @@ export default function LoginPage() {
               </div>
             </form>
 
-            {/* Social login */}
+            {/* Social login (học viên) */}
             <div className="mt-6">
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
                   <div className="w-full border-t border-gray-300" />
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">Hoặc đăng nhập với</span>
+                  <span className="px-2 bg-white text-gray-500">Học viên đăng nhập với</span>
                 </div>
               </div>
 
               <div className="mt-6 grid grid-cols-2 gap-3">
                 <button
                   type="button"
+                  onClick={() => { window.location.href = '/api/auth/google'; }}
                   className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -342,6 +326,7 @@ export default function LoginPage() {
 
                 <button
                   type="button"
+                  onClick={() => { window.location.href = '/api/auth/facebook'; }}
                   className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
                 >
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">

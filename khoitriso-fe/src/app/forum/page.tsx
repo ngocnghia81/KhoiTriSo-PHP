@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Metadata } from 'next';
+import { getForumQuestions, getForumTags } from '@/services/forum';
+import { getCategories } from '@/services/categories';
 import {
   ChatBubbleLeftRightIcon,
   HandThumbUpIcon,
@@ -54,161 +56,61 @@ interface Category {
   color: string;
 }
 
-// Mock data
-const categories: Category[] = [
-  {
-    id: 'math',
-    name: 'Toán học',
-    slug: 'math',
-    description: 'Hỏi đáp về các bài toán từ cơ bản đến nâng cao',
-    questionCount: 1247,
-    color: 'bg-blue-500'
-  },
-  {
-    id: 'physics',
-    name: 'Vật lý',
-    slug: 'physics', 
-    description: 'Thảo luận về các hiện tượng vật lý và bài tập',
-    questionCount: 892,
-    color: 'bg-green-500'
-  },
-  {
-    id: 'chemistry',
-    name: 'Hóa học',
-    slug: 'chemistry',
-    description: 'Giải đáp thắc mắc về phản ứng hóa học và bài tập',
-    questionCount: 634,
-    color: 'bg-purple-500'
-  },
-  {
-    id: 'general',
-    name: 'Tổng quát',
-    slug: 'general',
-    description: 'Các câu hỏi chung về học tập và phương pháp',
-    questionCount: 423,
-    color: 'bg-orange-500'
-  }
-];
+// Removed hardcoded forum categories and questions; will load from APIs
 
-const mockQuestions: ForumQuestion[] = [
-  {
-    id: 'toan-dao-ham-001',
-    title: 'Tính đạo hàm của hàm số y = x³ + 2x² - 5x + 3',
-    excerpt: 'Mình đang gặp khó khăn trong việc tính đạo hàm của hàm số bậc 3. Có thể hướng dẫn chi tiết các bước không ạ?',
-    author: {
-      name: 'Nguyễn Văn A',
-      id: 'nguyen-van-a',
-      avatar: '/images/avatars/student-1.png',
-      reputation: 245,
-      badge: 'student'
-    },
-    category: {
-      name: 'Toán học',
-      slug: 'math'
-    },
-    tags: ['đạo hàm', 'hàm số', 'toán 12'],
-    createdAt: '2024-01-15T10:30:00Z',
-    views: 156,
-    votes: 12,
-    answers: 3,
-    isSolved: true,
-    lastActivity: '2024-01-15T14:22:00Z'
-  },
-  {
-    id: 'vat-ly-dao-dong-001',
-    title: 'Bài tập về dao động điều hòa - Tìm chu kỳ và tần số',
-    excerpt: 'Một vật dao động điều hòa với phương trình x = 4cos(2πt + π/3) cm. Tìm chu kỳ, tần số và biên độ dao động.',
-    author: {
-      name: 'Trần Thị B',
-      id: 'tran-thi-b',
-      avatar: '/images/avatars/student-2.png',
-      reputation: 189,
-      badge: 'student'
-    },
-    category: {
-      name: 'Vật lý',
-      slug: 'physics'
-    },
-    tags: ['dao động', 'điều hòa', 'vật lý 12'],
-    createdAt: '2024-01-15T09:15:00Z',
-    views: 203,
-    votes: 8,
-    answers: 2,
-    isSolved: false,
-    lastActivity: '2024-01-15T13:45:00Z'
-  },
-  {
-    id: 'hoa-hoc-phan-ung-001',
-    title: 'Cân bằng phương trình hóa học phức tạp',
-    excerpt: 'Làm thế nào để cân bằng phương trình: Al + HNO₃ → Al(NO₃)₃ + NO + H₂O? Mình luôn bị sai ở bước cuối.',
-    author: {
-      name: 'Lê Văn C',
-      id: 'le-van-c',
-      avatar: '/images/avatars/student-3.png',
-      reputation: 312,
-      badge: 'student'
-    },
-    category: {
-      name: 'Hóa học',
-      slug: 'chemistry'
-    },
-    tags: ['cân bằng', 'phương trình', 'hóa 11'],
-    createdAt: '2024-01-14T16:20:00Z',
-    views: 89,
-    votes: 5,
-    answers: 1,
-    isSolved: false,
-    lastActivity: '2024-01-15T08:30:00Z'
-  },
-  {
-    id: 'toan-tich-phan-001',
-    title: 'Tích phân từng phần - Bài tập nâng cao',
-    excerpt: 'Tính tích phân ∫x²·ln(x)dx. Mình đã thử phương pháp từng phần nhưng kết quả không đúng.',
-    author: {
-      name: 'Phạm Thị D',
-      id: 'pham-thi-d',
-      avatar: '/images/avatars/student-4.png',
-      reputation: 456,
-      badge: 'student'
-    },
-    category: {
-      name: 'Toán học',
-      slug: 'math'
-    },
-    tags: ['tích phân', 'từng phần', 'toán 12'],
-    createdAt: '2024-01-14T14:10:00Z',
-    views: 234,
-    votes: 15,
-    answers: 4,
-    isSolved: true,
-    lastActivity: '2024-01-15T11:15:00Z'
-  },
-  {
-    id: 'vat-ly-quang-hoc-001',
-    title: 'Bài tập về thấu kính hội tụ',
-    excerpt: 'Một thấu kính hội tụ có tiêu cự f = 20cm. Vật AB cao 2cm đặt cách thấu kính 30cm. Tìm vị trí và tính chất của ảnh.',
-    author: {
-      name: 'Hoàng Văn E',
-      id: 'hoang-van-e',
-      avatar: '/images/avatars/student-5.png',
-      reputation: 178,
-      badge: 'student'
-    },
-    category: {
-      name: 'Vật lý',
-      slug: 'physics'
-    },
-    tags: ['quang học', 'thấu kính', 'vật lý 11'],
-    createdAt: '2024-01-14T11:45:00Z',
-    views: 167,
-    votes: 7,
-    answers: 2,
-    isSolved: false,
-    lastActivity: '2024-01-14T18:20:00Z'
-  }
-];
-
-export default function ForumPage() {
+export default async function ForumPage() {
+  // Load questions from forum service and categories from BE
+  let questions: ForumQuestion[] = [];
+  let sidebarCategories: Category[] = [];
+  let popularTags: string[] = [];
+  try {
+    const res = await getForumQuestions({ page: 1, pageSize: 20 });
+    const qdata: any[] = ((res.data as any)?.data) || (Array.isArray(res.data) ? (res.data as any[]) : []);
+    if (res.ok && Array.isArray(qdata)) {
+      questions = qdata.map((q: any, idx: number) => ({
+        id: String(q.id ?? idx),
+        title: q.title ?? 'Câu hỏi',
+        excerpt: q.excerpt ?? q.content?.slice(0, 140) ?? '',
+        author: {
+          name: q.author?.name ?? 'Thành viên',
+          id: String(q.author?.id ?? 'user'),
+          avatar: '/images/avatars/student-1.png',
+          reputation: q.author?.reputation ?? 0,
+          badge: undefined as any,
+        },
+        category: { name: q.category?.name ?? 'Tổng quát', slug: q.category?.slug ?? 'general' },
+        tags: q.tags ?? [],
+        createdAt: q.createdAt ?? new Date().toISOString(),
+        views: q.views ?? 0,
+        votes: q.votes ?? 0,
+        answers: q.answersCount ?? 0,
+        isSolved: !!q.isSolved,
+        lastActivity: q.updatedAt ?? q.createdAt ?? new Date().toISOString(),
+      }));
+      const tagCounts = new Map<string, number>();
+      for (const q of qdata) {
+        (q.tags ?? []).forEach((t: string) => tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1));
+      }
+      popularTags = Array.from(tagCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 12)
+        .map(([t]) => t);
+    }
+    const catRes = await getCategories();
+    if (catRes.ok) {
+      const cats = (catRes.data as any)?.categories || (catRes.data as any)?.data || [];
+      sidebarCategories = cats.map((c: any) => ({
+        id: String(c.id ?? c.slug ?? c.name),
+        name: c.name ?? 'Danh mục',
+        slug: c.slug ?? String(c.id ?? 'cat'),
+        description: c.description ?? '',
+        questionCount: c.questionCount ?? 0,
+        color: 'bg-blue-500',
+      }));
+    }
+    const tagsRes = await getForumTags();
+    if (tagsRes.ok) popularTags = (tagsRes.data as any[]) ?? [];
+  } catch {}
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('vi-VN', {
       year: 'numeric',
@@ -282,9 +184,9 @@ export default function ForumPage() {
                 <div className="flex gap-2">
                   <select className="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                     <option>Tất cả danh mục</option>
-                    <option>Toán học</option>
-                    <option>Vật lý</option>
-                    <option>Hóa học</option>
+                    {sidebarCategories.map((c) => (
+                      <option key={c.slug} value={c.slug}>{c.name}</option>
+                    ))}
                   </select>
                   <button className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50">
                     <FunnelIcon className="w-4 h-4 mr-1" />
@@ -311,13 +213,13 @@ export default function ForumPage() {
                 </div>
               </div>
               <span className="text-sm text-gray-500">
-                {mockQuestions.length} câu hỏi
+                {questions.length} câu hỏi
               </span>
             </div>
 
             {/* Questions List */}
             <div className="space-y-4">
-              {mockQuestions.map((question) => (
+              {questions.map((question) => (
                 <div key={question.id} className="bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow">
                   <div className="p-6">
                     <div className="flex items-start justify-between">
@@ -442,7 +344,7 @@ export default function ForumPage() {
             <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Danh mục</h3>
               <div className="space-y-3">
-                {categories.map((category) => (
+                {sidebarCategories.map((category) => (
                   <Link
                     key={category.id}
                     href={`/forum/category/${category.slug}`}
@@ -467,7 +369,7 @@ export default function ForumPage() {
             <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Tags phổ biến</h3>
               <div className="flex flex-wrap gap-2">
-                {['đạo hàm', 'tích phân', 'dao động', 'quang học', 'hóa học', 'phương trình', 'hình học', 'xác suất'].map((tag) => (
+                {(popularTags.length ? popularTags : ['toan','vat-ly']).map((tag) => (
                   <Link
                     key={tag}
                     href={`/forum/tag/${tag}`}

@@ -15,6 +15,9 @@ import {
   DevicePhoneMobileIcon,
   QrCodeIcon
 } from '@heroicons/react/24/outline';
+import { createOrder } from '@/services/orders';
+import { getCart } from '@/services/cart';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 
 interface CheckoutForm {
   // Personal Info
@@ -66,25 +69,7 @@ interface OrderItem {
   image: string;
 }
 
-// Mock data - sẽ được lấy từ cart state
-const mockOrderItems: OrderItem[] = [
-  {
-    id: '1',
-    title: 'Complete React Development Course',
-    type: 'course',
-    price: 599000,
-    quantity: 1,
-    image: '/images/course/course-1/1.png'
-  },
-  {
-    id: '2',
-    title: 'Sách Toán học lớp 12 - Nâng cao',
-    type: 'book',
-    price: 299000,
-    quantity: 1,
-    image: '/images/product/cart-1.png'
-  }
-];
+// Load items from cart API instead of mock
 
 const paymentMethods = [
   {
@@ -125,6 +110,7 @@ const paymentMethods = [
 ];
 
 export default function CheckoutPage() {
+  useAuthGuard();
   const [formData, setFormData] = useState<CheckoutForm>({
     fullName: '',
     email: '',
@@ -146,7 +132,7 @@ export default function CheckoutPage() {
   const [errors, setErrors] = useState<CheckoutFormErrors>({});
   const [currentStep, setCurrentStep] = useState(1); // 1: Info, 2: Payment, 3: Review
 
-  const orderItems = mockOrderItems;
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const subtotal = orderItems.reduce((total, item) => total + (item.price * item.quantity), 0);
   const tax = subtotal * 0.1; // 10% VAT
   const total = subtotal + tax;
@@ -172,6 +158,27 @@ export default function CheckoutPage() {
       }));
     }
   };
+
+  // Load cart items on mount
+  useState(() => {
+    (async () => {
+      const res = await getCart();
+      if (res.ok) {
+        const items = (res.data as any)?.items || [];
+        const mapped: OrderItem[] = items.map((i: any) => ({
+          id: String(i.refId ?? i.id),
+          title: i.title ?? (i.type === 'course' ? 'Khoá học' : 'Sách'),
+          type: i.type,
+          price: Number(i.price ?? 0),
+          quantity: Number(i.quantity ?? 1),
+          image: i.image ?? '/images/product/cart-1.png',
+        }));
+        setOrderItems(mapped);
+      } else {
+        setOrderItems([]);
+      }
+    })();
+  });
 
   const validateStep = (step: number): boolean => {
     const newErrors: CheckoutFormErrors = {};
@@ -215,11 +222,13 @@ export default function CheckoutPage() {
     setIsProcessing(true);
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      // Redirect to success page
-      window.location.href = '/checkout/success';
+      const items = orderItems.map(i => ({ type: i.type, refId: Number(i.id) || 0, quantity: i.quantity }));
+      const res = await createOrder({ paymentMethod: 'card' });
+      if (res.ok) {
+        window.location.href = '/checkout/success';
+      } else {
+        alert('Tạo đơn hàng thất bại. Vui lòng thử lại.');
+      }
     } catch (error) {
       alert('Có lỗi xảy ra khi xử lý thanh toán. Vui lòng thử lại.');
     } finally {

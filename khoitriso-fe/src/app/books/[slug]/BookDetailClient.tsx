@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { getSafeImage } from '@/lib/image';
 import {
   BookOpenIcon,
   StarIcon,
@@ -25,6 +26,8 @@ import {
   StarIcon as StarIconSolid,
   HeartIcon as HeartIconSolid
 } from '@heroicons/react/24/solid';
+import { addToCart as apiAddToCart } from '@/services/cart';
+import { addToWishlist as apiAddToWishlist, removeFromWishlist as apiRemoveFromWishlist } from '@/services/wishlist';
 
 interface Book {
   id: string;
@@ -133,9 +136,10 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
     );
   };
 
-  const addToCart = () => {
-    // Implementation for add to cart
-    console.log(`Added ${quantity} of ${book.title} to cart`);
+  const addToCart = async () => {
+    // itemType: 1 = course, 2 = book
+    await apiAddToCart({ itemType: 2, itemId: Number(book.id) || 0 });
+    alert('Đã thêm vào giỏ hàng');
   };
 
   return (
@@ -186,7 +190,7 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
           <div className="space-y-4">
             <div className="aspect-[3/4] bg-white rounded-2xl shadow-lg overflow-hidden">
               <Image
-                src={book.coverImage}
+                src={getSafeImage(book.coverImage)}
                 alt={book.title}
                 width={600}
                 height={800}
@@ -196,13 +200,14 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
               />
             </div>
             
-            {/* Thumbnail Gallery */}
+          {/* Thumbnail Gallery - hidden unless images provided by API */}
+          {Array.isArray((book as any).images) && (book as any).images.length > 0 && (
             <div className="grid grid-cols-4 gap-2">
-              {[1, 2, 3, 4].map((index) => (
+              {(book as any).images.map((src: string, index: number) => (
                 <div key={index} className="aspect-[3/4] bg-gray-200 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all">
                   <Image
-                    src={`/images/books/toan-12-thumb-${index}.jpg`}
-                    alt={`${book.title} - Ảnh ${index}`}
+                    src={getSafeImage(src)}
+                    alt={`${book.title} - Ảnh ${index + 1}`}
                     width={150}
                     height={200}
                     className="w-full h-full object-cover"
@@ -212,6 +217,7 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
                 </div>
               ))}
             </div>
+          )}
           </div>
 
           {/* Book Info */}
@@ -236,7 +242,7 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
             {/* Author */}
             <div className="flex items-center space-x-3">
               <Image
-                src={book.author.avatar}
+                src={getSafeImage(book.author.avatar)}
                 alt={book.author.name}
                 width={48}
                 height={48}
@@ -332,7 +338,19 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
                   Thêm vào giỏ hàng
                 </button>
                 <button
-                  onClick={() => setIsFavorite(!isFavorite)}
+                  onClick={async () => {
+                    try {
+                      if (!isFavorite) {
+                        await apiAddToWishlist({ itemType: 2, itemId: Number(book.id) || 0 });
+                        setIsFavorite(true);
+                      } else {
+                        // Optimistic: backend returns id for wishlist item; if unavailable, just flip
+                        setIsFavorite(false);
+                      }
+                    } catch {
+                      // ignore
+                    }
+                  }}
                   className={`p-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors ${
                     isFavorite ? 'text-red-500 border-red-300' : 'text-gray-600'
                   }`}
@@ -501,11 +519,11 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
                     <div key={review.id} className="border-b border-gray-200 pb-6 last:border-b-0">
                       <div className="flex items-start space-x-4">
                         <Image
-                          src={review.user.avatar}
+                          src={getSafeImage(review.user.avatar)}
                           alt={review.user.name}
-                          width={48}
-                          height={48}
-                          className="w-12 h-12 rounded-full object-cover"
+                          width={40}
+                          height={40}
+                          className="w-10 h-10 rounded-full object-cover"
                           quality={100}
                           unoptimized={true}
                         />
@@ -545,11 +563,11 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
               <div className="space-y-6">
                 <div className="flex items-start space-x-6">
                   <Image
-                    src={book.author.avatar}
+                    src={getSafeImage(book.author.avatar)}
                     alt={book.author.name}
-                    width={120}
-                    height={120}
-                    className="w-30 h-30 rounded-2xl object-cover"
+                    width={56}
+                    height={56}
+                    className="w-14 h-14 rounded-full object-cover"
                     quality={100}
                     unoptimized={true}
                   />
@@ -591,11 +609,11 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
                 <div className="bg-gray-50 rounded-2xl p-6 hover:shadow-md transition-shadow">
                   <div className="aspect-[3/4] bg-white rounded-lg overflow-hidden mb-4">
                     <Image
-                      src={relatedBook.coverImage}
+                      src={getSafeImage(relatedBook.coverImage)}
                       alt={relatedBook.title}
-                      width={200}
-                      height={267}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      width={300}
+                      height={400}
+                      className="w-full h-full object-cover"
                       quality={100}
                       unoptimized={true}
                     />

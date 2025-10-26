@@ -1,4 +1,7 @@
-import { Metadata } from 'next';
+'use client';
+
+import { useEffect, useState } from 'react';
+import { getDashboard, getCourseAnalytics, getInstructorAnalytics } from '@/services/analytics';
 import {
   ChartBarIcon,
   ArrowTrendingUpIcon,
@@ -16,32 +19,14 @@ import {
   ClockIcon
 } from '@heroicons/react/24/outline';
 
-export const metadata: Metadata = {
-  title: 'Báo cáo thống kê - Admin Dashboard',
-  description: 'Xem báo cáo và phân tích dữ liệu hệ thống',
-};
+// Note: Client components cannot export metadata
 
-// Mock data
-const overviewStats = {
-  totalRevenue: 2450000000,
-  totalUsers: 15420,
-  totalCourses: 234,
-  totalBooks: 156,
-  monthlyGrowth: {
-    revenue: 12.5,
-    users: 8.3,
-    courses: 15.2,
-    books: 6.8
-  }
-};
+// Fallback empty values; will be filled by API if available
+const defaultOverview = { totalRevenue: 0, totalUsers: 0, totalCourses: 0, totalBooks: 0, monthlyGrowth: { revenue: 0, users: 0, courses: 0, books: 0 } } as const;
 
-const monthlyData = [
-  { month: 'T1/2024', revenue: 1890000000, users: 1245, courses: 12, books: 8 },
-  { month: 'T2/2024', revenue: 2180000000, users: 1456, courses: 15, books: 11 },
-  { month: 'T3/2024', revenue: 2450000000, users: 1623, courses: 18, books: 9 },
-];
+const monthlyDataDefault: Array<{ month: string; revenue: number; users: number; courses: number; books: number }> = [];
 
-const topCourses = [
+const topCoursesDefault = [
   {
     id: 1,
     title: 'Toán học nâng cao lớp 12',
@@ -71,7 +56,7 @@ const topCourses = [
   }
 ];
 
-const topInstructors = [
+const topInstructorsDefault = [
   {
     id: 1,
     name: 'GS. Nguyễn Văn A',
@@ -101,13 +86,7 @@ const topInstructors = [
   }
 ];
 
-const userActivity = [
-  { date: '2024-01-15', newUsers: 45, activeUsers: 1234, coursesCompleted: 23 },
-  { date: '2024-01-16', newUsers: 52, activeUsers: 1456, coursesCompleted: 31 },
-  { date: '2024-01-17', newUsers: 38, activeUsers: 1345, coursesCompleted: 28 },
-  { date: '2024-01-18', newUsers: 67, activeUsers: 1567, coursesCompleted: 35 },
-  { date: '2024-01-19', newUsers: 43, activeUsers: 1423, coursesCompleted: 29 }
-];
+const userActivityDefault: Array<{ date: string; newUsers: number; activeUsers: number; coursesCompleted: number }> = [];
 
 const formatCurrency = (amount: number) => {
   return `₫${(amount / 1000000).toFixed(1)}M`;
@@ -118,6 +97,31 @@ const formatNumber = (num: number) => {
 };
 
 export default function ReportsPage() {
+  const [overview, setOverview] = useState<any>(defaultOverview);
+  const [monthlyData, setMonthlyData] = useState(monthlyDataDefault);
+  const [topCourses, setTopCourses] = useState<any[]>(topCoursesDefault);
+  const [topInstructors, setTopInstructors] = useState<any[]>(topInstructorsDefault);
+  const [userActivity, setUserActivity] = useState(userActivityDefault);
+
+  useEffect(() => {
+    (async () => {
+      const res = await getDashboard();
+      if (res.ok && res.data) {
+        const d: any = res.data;
+        setOverview({
+          totalRevenue: d.totalRevenue ?? 0,
+          totalUsers: d.totalUsers ?? 0,
+          totalCourses: d.totalCourses ?? 0,
+          totalBooks: d.totalBooks ?? 0,
+          monthlyGrowth: d.monthlyGrowth ?? defaultOverview.monthlyGrowth,
+        });
+        setMonthlyData(d.monthly ?? monthlyDataDefault);
+        setTopCourses(d.topCourses ?? topCoursesDefault);
+        setTopInstructors(d.topInstructors ?? topInstructorsDefault);
+        setUserActivity(d.userActivity ?? userActivityDefault);
+      }
+    })();
+  }, []);
   return (
     <div className="space-y-4">
       {/* Page header */}
@@ -178,10 +182,10 @@ export default function ReportsPage() {
             <div className="ml-4">
               <dl>
                 <dt className="text-sm font-medium text-gray-500">Tổng doanh thu</dt>
-                <dd className="text-2xl font-bold text-gray-900">{formatCurrency(overviewStats.totalRevenue)}</dd>
+                <dd className="text-2xl font-bold text-gray-900">{formatCurrency(overview.totalRevenue)}</dd>
                 <dd className="flex items-center text-sm text-green-600">
                   <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
-                  +{overviewStats.monthlyGrowth.revenue}%
+                  +{overview.monthlyGrowth.revenue}%
                 </dd>
               </dl>
             </div>
@@ -198,10 +202,10 @@ export default function ReportsPage() {
             <div className="ml-4">
               <dl>
                 <dt className="text-sm font-medium text-gray-500">Tổng người dùng</dt>
-                <dd className="text-2xl font-bold text-gray-900">{formatNumber(overviewStats.totalUsers)}</dd>
+                <dd className="text-2xl font-bold text-gray-900">{formatNumber(overview.totalUsers)}</dd>
                 <dd className="flex items-center text-sm text-blue-600">
                   <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
-                  +{overviewStats.monthlyGrowth.users}%
+                  +{overview.monthlyGrowth.users}%
                 </dd>
               </dl>
             </div>
@@ -218,10 +222,10 @@ export default function ReportsPage() {
             <div className="ml-4">
               <dl>
                 <dt className="text-sm font-medium text-gray-500">Tổng khóa học</dt>
-                <dd className="text-2xl font-bold text-gray-900">{overviewStats.totalCourses}</dd>
+                <dd className="text-2xl font-bold text-gray-900">{overview.totalCourses}</dd>
                 <dd className="flex items-center text-sm text-purple-600">
                   <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
-                  +{overviewStats.monthlyGrowth.courses}%
+                  +{overview.monthlyGrowth.courses}%
                 </dd>
               </dl>
             </div>
@@ -238,10 +242,10 @@ export default function ReportsPage() {
             <div className="ml-4">
               <dl>
                 <dt className="text-sm font-medium text-gray-500">Tổng sách</dt>
-                <dd className="text-2xl font-bold text-gray-900">{overviewStats.totalBooks}</dd>
+                <dd className="text-2xl font-bold text-gray-900">{overview.totalBooks}</dd>
                 <dd className="flex items-center text-sm text-yellow-600">
                   <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
-                  +{overviewStats.monthlyGrowth.books}%
+                  +{overview.monthlyGrowth.books}%
                 </dd>
               </dl>
             </div>

@@ -2,50 +2,126 @@
 
 namespace App\Http\Controllers;
 
+use App\Constants\MessageCode;
 use App\Models\CartItem;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Validator;
 
-class CartController extends Controller
+/**
+ * Cart Controller
+ */
+class CartController extends BaseController
 {
-    public function index(Request $request)
+    public function index(Request $request): JsonResponse
     {
-        $items = CartItem::where('user_id', $request->user()->id)->get();
-        return response()->json(['cartItems' => $items, 'totalItems' => $items->count()]);
-    }
+        try {
+            if (!$request->user()) {
+                return $this->unauthorized();
+            }
 
-    public function store(Request $request)
-    {
-        $data = $request->validate([
-            'itemId' => ['required','integer','min:1'],
-            'itemType' => ['required','integer','in:1,2,3'],
-        ]);
-        $existing = CartItem::where('user_id', $request->user()->id)
-            ->where('item_id', $data['itemId'])
-            ->where('item_type', $data['itemType'])
-            ->first();
-        if ($existing) {
-            return response()->json(['success' => false, 'message' => 'Already in cart'], 400);
+            $items = CartItem::where('user_id', $request->user()->id)->get();
+            
+            return $this->success([
+                'cartItems' => $items,
+                'totalItems' => $items->count()
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in cart index: ' . $e->getMessage());
+            return $this->internalError();
         }
-        $item = CartItem::create([
-            'user_id' => $request->user()->id,
-            'item_id' => $data['itemId'],
-            'item_type' => $data['itemType'],
-        ]);
-        return response()->json(['success' => true, 'cartItem' => $item], 201);
     }
 
-    public function destroy(int $id, Request $request)
+    public function store(Request $request): JsonResponse
     {
-        $item = CartItem::where('user_id', $request->user()->id)->where('id', $id)->firstOrFail();
-        $item->delete();
-        return response()->json(['success' => true, 'message' => 'Item removed from cart']);
+        try {
+            if (!$request->user()) {
+                return $this->unauthorized();
+            }
+
+            $validator = Validator::make($request->all(), [
+                'itemId' => ['required','integer','min:1'],
+                'itemType' => ['required','integer','in:1,2,3'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+            
+            $existing = CartItem::where('user_id', $request->user()->id)
+                ->where('item_id', $data['itemId'])
+                ->where('item_type', $data['itemType'])
+                ->first();
+            
+            if ($existing) {
+                return $this->error(
+                    MessageCode::CART_ITEM_EXISTS,
+                    null,
+                    null,
+                    400
+                );
+            }
+            
+            $item = CartItem::create([
+                'user_id' => $request->user()->id,
+                'item_id' => $data['itemId'],
+                'item_type' => $data['itemType'],
+            ]);
+            
+            return $this->success($item);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in cart store: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function clear(Request $request)
+    public function destroy(int $id, Request $request): JsonResponse
     {
-        CartItem::where('user_id', $request->user()->id)->delete();
-        return response()->json(['success' => true, 'message' => 'Cart cleared successfully']);
+        try {
+            if (!$request->user()) {
+                return $this->unauthorized();
+            }
+
+            $item = CartItem::where('user_id', $request->user()->id)
+                ->where('id', $id)
+                ->first();
+            
+            if (!$item) {
+                return $this->notFound('CartItem');
+            }
+            
+            $item->delete();
+            
+            return $this->success(null);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in cart destroy: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    public function clear(Request $request): JsonResponse
+    {
+        try {
+            if (!$request->user()) {
+                return $this->unauthorized();
+            }
+
+            CartItem::where('user_id', $request->user()->id)->delete();
+            
+            return $this->success(null);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in cart clear: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 }
-
-

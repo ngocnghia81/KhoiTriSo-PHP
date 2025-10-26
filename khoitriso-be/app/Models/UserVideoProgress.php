@@ -20,3 +20,10 @@ class UserVideoProgress extends Model
 }
 
 
+
+
+
+
+
+
+

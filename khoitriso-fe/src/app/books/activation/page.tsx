@@ -16,6 +16,8 @@ import {
   ArrowRightIcon,
   QuestionMarkCircleIcon
 } from '@heroicons/react/24/outline';
+import { activateBook } from '@/services/books';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 
 interface ActivationForm {
   activationCode: string;
@@ -85,6 +87,7 @@ const faqData = [
 ];
 
 export default function BookActivationPage() {
+  useAuthGuard();
   const [formData, setFormData] = useState<ActivationForm>({
     activationCode: '',
     questionId: ''
@@ -114,23 +117,17 @@ export default function BookActivationPage() {
     setError(null);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Mock successful activation
-      // Create expiry date (only runs on client after user action, so no hydration issue)
+      const res = await activateBook({ code: formData.activationCode });
+      if (!res.ok) throw new Error('Activation failed');
       const expiryDate = new Date();
       expiryDate.setFullYear(expiryDate.getFullYear() + 2);
-      
-      const mockBook: ActivatedBook = {
-        title: 'Sách Toán học lớp 12 - Nâng cao',
+      setActivatedBook({
+        title: 'Đã kích hoạt sách',
         expiryDate,
-        accessUrl: formData.questionId 
+        accessUrl: formData.questionId
           ? `/books/content?code=${formData.activationCode}&question=${formData.questionId}`
-          : `/books/content?code=${formData.activationCode}`
-      };
-
-      setActivatedBook(mockBook);
+          : `/books/content?code=${formData.activationCode}`,
+      });
       setIsActivated(true);
     } catch (err) {
       setError('Có lỗi xảy ra khi kích hoạt. Vui lòng thử lại.');

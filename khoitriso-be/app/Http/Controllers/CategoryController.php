@@ -2,77 +2,161 @@
 
 namespace App\Http\Controllers;
 
+use App\Constants\MessageCode;
 use App\Models\Category;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Validator;
 
-class CategoryController extends Controller
+/**
+ * Category Controller
+ */
+class CategoryController extends BaseController
 {
-    public function index(Request $request)
+    public function index(Request $request): JsonResponse
     {
-        $query = Category::query();
-        if ($request->filled('parentId')) {
-            $query->where('parent_id', $request->integer('parentId'));
+        try {
+            $query = Category::query();
+            
+            if ($request->filled('parentId')) {
+                $query->where('parent_id', $request->integer('parentId'));
+            }
+            
+            if (!filter_var($request->query('includeInactive', 'false'), FILTER_VALIDATE_BOOLEAN)) {
+                $query->where('is_active', true);
+            }
+            
+            $categories = $query->orderBy('order_index')->with('children')->get();
+            
+            return $this->success(['categories' => $categories]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in categories index: ' . $e->getMessage());
+            return $this->internalError();
         }
-        if (! filter_var($request->query('includeInactive', 'false'), FILTER_VALIDATE_BOOLEAN)) {
-            $query->where('is_active', true);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'name' => ['required','string','max:100'],
+                'description' => ['required','string'],
+                'parentId' => ['nullable','integer','exists:categories,id'],
+                'icon' => ['required','string','max:50'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+            
+            $category = Category::create([
+                'name' => $data['name'],
+                'description' => $data['description'],
+                'parent_id' => $data['parentId'] ?? null,
+                'icon' => $data['icon'],
+                'is_active' => true,
+            ]);
+            
+            return $this->success($category);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in category store: ' . $e->getMessage());
+            return $this->internalError();
         }
-        $categories = $query->orderBy('order_index')->with('children')->get();
-        return response()->json(['categories' => $categories]);
     }
 
-    public function store(Request $request)
+    public function show(Request $request, int $id): JsonResponse
     {
-        $data = $request->validate([
-            'name' => ['required','string','max:100'],
-            'description' => ['required','string'],
-            'parentId' => ['nullable','integer','exists:categories,id'],
-            'icon' => ['required','string','max:50'],
-        ]);
-        $category = Category::create([
-            'name' => $data['name'],
-            'description' => $data['description'],
-            'parent_id' => $data['parentId'] ?? null,
-            'icon' => $data['icon'],
-            'is_active' => true,
-        ]);
-        return response()->json(['success' => true, 'category' => $category], 201);
-    }
+        try {
+            $cat = Category::with(['children','courses','books'])->find($id);
+            
+            if (!$cat) {
+                return $this->notFound('Category');
+            }
+            
+            return $this->success($cat);
 
-    public function show(int $id)
-    {
-        $cat = Category::with(['children','courses','books'])->findOrFail($id);
-        return response()->json($cat);
-    }
-
-    public function update(Request $request, int $id)
-    {
-        $cat = Category::findOrFail($id);
-        $data = $request->validate([
-            'name' => ['sometimes','string','max:100'],
-            'description' => ['sometimes','string'],
-            'parentId' => ['nullable','integer','exists:categories,id'],
-            'icon' => ['sometimes','string','max:50'],
-            'isActive' => ['sometimes','boolean'],
-        ]);
-        $cat->fill([
-            'name' => $data['name'] ?? $cat->name,
-            'description' => $data['description'] ?? $cat->description,
-            'parent_id' => array_key_exists('parentId',$data) ? $data['parentId'] : $cat->parent_id,
-            'icon' => $data['icon'] ?? $cat->icon,
-            'is_active' => array_key_exists('isActive',$data) ? (bool)$data['isActive'] : $cat->is_active,
-        ])->save();
-        return response()->json(['success' => true, 'category' => $cat]);
-    }
-
-    public function destroy(int $id)
-    {
-        $cat = Category::withCount(['children','courses','books'])->findOrFail($id);
-        if ($cat->children_count > 0 || $cat->courses_count > 0 || $cat->books_count > 0) {
-            return response()->json(['success' => false, 'message' => 'Has children/content'], 400);
+        } catch (\Exception $e) {
+            \Log::error('Error in category show: ' . $e->getMessage());
+            return $this->internalError();
         }
-        $cat->delete();
-        return response()->json(['success' => true, 'message' => 'Category deleted successfully']);
+    }
+
+    public function update(Request $request, int $id): JsonResponse
+    {
+        try {
+            $cat = Category::find($id);
+            
+            if (!$cat) {
+                return $this->notFound('Category');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'name' => ['sometimes','string','max:100'],
+                'description' => ['sometimes','string'],
+                'parentId' => ['nullable','integer','exists:categories,id'],
+                'icon' => ['sometimes','string','max:50'],
+                'isActive' => ['sometimes','boolean'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+            
+            $cat->fill([
+                'name' => $data['name'] ?? $cat->name,
+                'description' => $data['description'] ?? $cat->description,
+                'parent_id' => array_key_exists('parentId',$data) ? $data['parentId'] : $cat->parent_id,
+                'icon' => $data['icon'] ?? $cat->icon,
+                'is_active' => array_key_exists('isActive',$data) ? (bool)$data['isActive'] : $cat->is_active,
+            ])->save();
+            
+            return $this->success($cat);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in category update: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        try {
+            $cat = Category::withCount(['children','courses','books'])->find($id);
+            
+            if (!$cat) {
+                return $this->notFound('Category');
+            }
+            
+            if ($cat->children_count > 0 || $cat->courses_count > 0 || $cat->books_count > 0) {
+                return $this->error(
+                    MessageCode::CATEGORY_NOT_FOUND,
+                    'Category has children or content, cannot delete',
+                    null,
+                    400
+                );
+            }
+            
+            $cat->delete();
+            
+            return $this->success(null);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in category destroy: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 }
-
-

@@ -17,73 +17,8 @@ import {
   ShareIcon
 } from '@heroicons/react/24/outline';
 
-// Mock search results
-const mockResults = {
-  courses: [
-    {
-      id: 1,
-      type: 'course',
-      title: 'Toán học nâng cao lớp 12 - Phần Đạo hàm',
-      instructor: 'GS. Nguyễn Văn A',
-      rating: 4.8,
-      reviewCount: 156,
-      students: 1234,
-      duration: '40 giờ',
-      price: 299000,
-      originalPrice: 399000,
-      thumbnail: '/images/courses/math-advanced.jpg',
-      description: 'Khóa học chuyên sâu về đạo hàm với nhiều bài tập thực hành và ứng dụng thực tế',
-      level: 'Nâng cao',
-      category: 'Toán học'
-    },
-    {
-      id: 2,
-      type: 'course',
-      title: 'Vật lý thí nghiệm lớp 11',
-      instructor: 'TS. Trần Thị B',
-      rating: 4.6,
-      reviewCount: 89,
-      students: 567,
-      duration: '30 giờ',
-      price: 199000,
-      originalPrice: 299000,
-      thumbnail: '/images/courses/physics-lab.jpg',
-      description: 'Khóa học thí nghiệm vật lý với video thực hành chi tiết và mô phỏng 3D',
-      level: 'Trung bình',
-      category: 'Vật lý'
-    }
-  ],
-  books: [
-    {
-      id: 3,
-      type: 'book',
-      title: 'Sách bài tập Toán học lớp 12',
-      author: 'GS. Nguyễn Văn A',
-      rating: 4.7,
-      reviewCount: 234,
-      price: 150000,
-      originalPrice: 200000,
-      thumbnail: '/images/books/math-12.jpg',
-      description: 'Tuyển tập bài tập toán học lớp 12 với lời giải chi tiết và video hướng dẫn',
-      category: 'Toán học',
-      pages: 350
-    },
-    {
-      id: 4,
-      type: 'book',
-      title: 'Tuyển tập đề thi THPT Quốc gia 2024',
-      author: 'Nhóm tác giả',
-      rating: 4.5,
-      reviewCount: 178,
-      price: 120000,
-      originalPrice: 150000,
-      thumbnail: '/images/books/thpt-2024.jpg',
-      description: 'Bộ đề thi thử THPT Quốc gia 2024 với đáp án và lời giải chi tiết',
-      category: 'Tổng hợp',
-      pages: 280
-    }
-  ]
-};
+import { search } from '@/services/search';
+import { getSafeImage } from '@/lib/image';
 
 function SearchContent() {
   const searchParams = useSearchParams();
@@ -94,11 +29,43 @@ function SearchContent() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedLevel, setSelectedLevel] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [results, setResults] = useState<any[]>([]);
 
   const categories = ['all', 'Toán học', 'Vật lý', 'Hóa học', 'Sinh học', 'Ngữ văn', 'Tiếng Anh'];
   const levels = ['all', 'Cơ bản', 'Trung bình', 'Nâng cao'];
 
-  const allResults = [...mockResults.courses, ...mockResults.books];
+  useEffect(() => {
+    (async () => {
+      if (!searchQuery) { setResults([]); return; }
+      const res = await search({ q: searchQuery, pageSize: 50 });
+      if (res.ok) {
+        const arr = ((res.data as any)?.data) || (Array.isArray(res.data) ? (res.data as any[]) : []);
+        // Normalize shape
+        setResults(arr.map((item: any) => ({
+          id: String(item.id ?? item.slug ?? Math.random()),
+          type: item.type ?? (item.price !== undefined ? 'book' : 'course'),
+          title: item.title ?? item.name ?? 'Kết quả',
+          instructor: item.instructor?.name,
+          author: item.author?.name,
+          rating: Number(item.rating ?? 5),
+          reviewCount: item.reviewsCount ?? 0,
+          students: item.studentsCount ?? 0,
+          duration: item.duration ?? '',
+          price: Number(item.price ?? 0),
+          originalPrice: item.originalPrice,
+          thumbnail: getSafeImage(item.thumbnail ?? item.coverImage),
+          description: item.description ?? '',
+          level: item.level ?? '',
+          category: item.category?.name ?? '',
+          pages: item.pages,
+        })));
+      } else {
+        setResults([]);
+      }
+    })();
+  }, [searchQuery]);
+
+  const allResults = results;
   const filteredResults = allResults.filter(item => {
     if (activeTab === 'courses' && item.type !== 'course') return false;
     if (activeTab === 'books' && item.type !== 'book') return false;
@@ -293,8 +260,8 @@ function SearchContent() {
               <nav className="-mb-px flex space-x-8">
                 {[
                   { id: 'all', name: 'Tất cả', count: allResults.length },
-                  { id: 'courses', name: 'Khóa học', count: mockResults.courses.length },
-                  { id: 'books', name: 'Sách', count: mockResults.books.length }
+                  { id: 'courses', name: 'Khóa học', count: allResults.filter(i => i.type === 'course').length },
+                  { id: 'books', name: 'Sách', count: allResults.filter(i => i.type === 'book').length }
                 ].map((tab) => (
                   <button
                     key={tab.id}

@@ -16,6 +16,9 @@ import {
   CreditCardIcon,
   ShieldCheckIcon
 } from '@heroicons/react/24/outline';
+import { getCart, addToCart as apiAddToCart, removeFromCart as apiRemoveFromCart, clearCart as apiClearCart } from '@/services/cart';
+import { validateCoupon } from '@/services/coupons';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 
 interface CartItem {
   id: string;
@@ -36,78 +39,41 @@ interface PromoCode {
   type: 'percentage' | 'fixed';
 }
 
-// Mock data - sẽ được thay thế bằng state management (Redux, Zustand, etc.)
-const mockCartItems: CartItem[] = [
-  {
-    id: '1',
-    type: 'course',
-    title: 'Complete React Development Course',
-    instructor: 'Nguyễn Văn A',
-    image: '/images/course/course-1/1.png',
-    price: 599000,
-    originalPrice: 899000,
-    quantity: 1,
-    slug: 'complete-react-development'
-  },
-  {
-    id: '2',
-    type: 'book',
-    title: 'Sách Toán học lớp 12 - Nâng cao',
-    author: 'PGS. Trần Văn B',
-    image: '/images/product/cart-1.png',
-    price: 299000,
-    quantity: 1,
-    slug: 'toan-hoc-lop-12-nang-cao'
-  },
-  {
-    id: '3',
-    type: 'course',
-    title: 'Advanced JavaScript Concepts',
-    instructor: 'Lê Thị C',
-    image: '/images/course/course-1/2.png',
-    price: 799000,
-    originalPrice: 1299000,
-    quantity: 1,
-    slug: 'advanced-javascript-concepts'
-  }
-];
-
-const validPromoCodes: PromoCode[] = [
-  { code: 'WELCOME10', discount: 10, type: 'percentage' },
-  { code: 'STUDENT20', discount: 20, type: 'percentage' },
-  { code: 'SAVE50K', discount: 50000, type: 'fixed' }
-];
-
-const suggestedItems = [
-  {
-    id: '4',
-    title: 'Python for Beginners',
-    instructor: 'Phạm Văn D',
-    image: '/images/course/course-1/3.png',
-    price: 499000,
-    originalPrice: 699000,
-    rating: 4.8,
-    students: 1250,
-    type: 'course' as const
-  },
-  {
-    id: '5',
-    title: 'Sách Vật lý lớp 12',
-    author: 'TS. Nguyễn Thị E',
-    image: '/images/product/cart-2.png',
-    price: 259000,
-    rating: 4.9,
-    reviews: 89,
-    type: 'book' as const
-  }
-];
+// Removed all hardcoded promos and suggestions to avoid DB-specific assumptions
+const validPromoCodes: PromoCode[] = [];
+const suggestedItems: Array<{ id: string; title: string; price: number; type: 'course' | 'book'; thumbnail?: string; author?: string; instructor?: string; image?: string; originalPrice?: number }> = [];
 
 export default function CartPage() {
-  const [cartItems, setCartItems] = useState<CartItem[]>(mockCartItems);
+  useAuthGuard();
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [promoCode, setPromoCode] = useState('');
   const [appliedPromo, setAppliedPromo] = useState<PromoCode | null>(null);
   const [promoError, setPromoError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const res = await getCart();
+      if (res.ok) {
+        const items = (res.data as any)?.items || [];
+        const mapped: CartItem[] = items.map((i: any) => ({
+          id: String(i.id),
+          type: i.type,
+          title: i.title ?? (i.type === 'course' ? 'Khoá học' : 'Sách'),
+          instructor: i.instructor,
+          author: i.author,
+          image: i.image ?? '/images/product/cart-1.png',
+          price: Number(i.price ?? 0),
+          originalPrice: i.originalPrice,
+          quantity: Number(i.quantity ?? 1),
+          slug: i.slug ?? String(i.refId ?? i.id),
+        }));
+        setCartItems(mapped);
+      } else {
+        setCartItems([]);
+      }
+    })();
+  }, []);
 
   const updateQuantity = (id: string, newQuantity: number) => {
     if (newQuantity < 1) {
@@ -122,21 +88,24 @@ export default function CartPage() {
     );
   };
 
-  const removeItem = (id: string) => {
+  const removeItem = async (id: string) => {
+    await apiRemoveFromCart(Number(id));
     setCartItems(prev => prev.filter(item => item.id !== id));
   };
 
-  const applyPromoCode = () => {
-    const validPromo = validPromoCodes.find(
-      promo => promo.code.toLowerCase() === promoCode.toLowerCase()
-    );
-
-    if (validPromo) {
-      setAppliedPromo(validPromo);
-      setPromoError('');
+  const applyPromoCode = async () => {
+    setPromoError('');
+    if (!promoCode.trim()) {
+      setPromoError('Vui lòng nhập mã giảm giá');
+      return;
+    }
+    const res = await validateCoupon({ couponCode: promoCode.trim(), totalAmount: 0 });
+    if (res.ok && (res.data as any)?.valid) {
+      const discountValue = Number((res.data as any)?.discount ?? 0);
+      setAppliedPromo({ code: promoCode.trim(), discount: discountValue, type: 'percentage' });
     } else {
-      setPromoError('Mã giảm giá không hợp lệ');
       setAppliedPromo(null);
+      setPromoError('Mã giảm giá không hợp lệ');
     }
   };
 
@@ -348,6 +317,12 @@ export default function CartPage() {
                 <ArrowLeftIcon className="h-5 w-5 mr-2" />
                 Tiếp tục mua sắm
               </Link>
+              <button
+                onClick={async () => { await apiClearCart(); setCartItems([]); }}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Xóa giỏ hàng
+              </button>
             </div>
           </div>
 
@@ -468,7 +443,7 @@ export default function CartPage() {
               <div key={item.id} className="bg-white rounded-2xl shadow-sm p-6">
                 <div className="flex space-x-4">
                   <Image
-                    src={item.image}
+                    src={item.image || '/images/product/cart-1.png'}
                     alt={item.title}
                     width={100}
                     height={80}

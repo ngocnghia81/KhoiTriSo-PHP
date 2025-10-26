@@ -2,78 +2,213 @@
 
 namespace App\Http\Controllers;
 
+use App\Constants\MessageCode;
 use App\Models\LessonDiscussion;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Validator;
 
-class DiscussionController extends Controller
+/**
+ * Discussion Controller
+ */
+class DiscussionController extends BaseController
 {
-    public function list(int $lessonId, Request $request)
+    public function list(int $lessonId, Request $request): JsonResponse
     {
-        $q = LessonDiscussion::where('lesson_id', $lessonId)->whereNull('parent_id');
-        $sortBy = $request->query('sortBy', 'created_at');
-        $sortOrder = $request->query('sortOrder', 'desc');
-        $res = $q->orderBy($sortBy, $sortOrder)->paginate((int) $request->query('pageSize', 20));
-        return response()->json(['discussions' => $res->items(), 'total' => $res->total(), 'hasMore' => $res->hasMorePages()]);
+        try {
+            $q = LessonDiscussion::where('lesson_id', $lessonId)->whereNull('parent_id');
+            
+            $sortBy = $request->query('sortBy', 'created_at');
+            $sortOrder = $request->query('sortOrder', 'desc');
+            $page = (int) $request->query('page', 1);
+            $pageSize = (int) $request->query('pageSize', 20);
+            
+            $total = $q->count();
+            $discussions = $q->orderBy($sortBy, $sortOrder)
+                ->skip(($page - 1) * $pageSize)
+                ->take($pageSize)
+                ->get();
+            
+            return $this->paginated($discussions->toArray(), $page, $pageSize, $total);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in discussions list: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function store(int $lessonId, Request $request)
+    public function store(int $lessonId, Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'content' => ['required','string'],
-            'videoTimestamp' => ['nullable','integer','min:0'],
-            'parentId' => ['nullable','integer','min:1'],
-        ]);
-        $d = LessonDiscussion::create([
-            'lesson_id' => $lessonId,
-            'user_id' => $request->user()->id,
-            'content' => $data['content'],
-            'video_timestamp' => $data['videoTimestamp'] ?? null,
-            'parent_id' => $data['parentId'] ?? null,
-        ]);
-        return response()->json(['success' => true, 'discussion' => $d], 201);
+        try {
+            if (!$request->user()) {
+                return $this->unauthorized();
+            }
+
+            $validator = Validator::make($request->all(), [
+                'content' => ['required','string'],
+                'videoTimestamp' => ['nullable','integer','min:0'],
+                'parentId' => ['nullable','integer','min:1'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+            
+            $d = LessonDiscussion::create([
+                'lesson_id' => $lessonId,
+                'user_id' => $request->user()->id,
+                'content' => $data['content'],
+                'video_timestamp' => $data['videoTimestamp'] ?? null,
+                'parent_id' => $data['parentId'] ?? null,
+            ]);
+            
+            return $this->success($d);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in discussion store: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function update(int $id, Request $request)
+    public function update(int $id, Request $request): JsonResponse
     {
-        $data = $request->validate(['content' => ['required','string']]);
-        $d = LessonDiscussion::findOrFail($id);
-        $d->content = $data['content'];
-        $d->save();
-        return response()->json(['success' => true, 'discussion' => $d]);
+        try {
+            $validator = Validator::make($request->all(), [
+                'content' => ['required','string']
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+            
+            $d = LessonDiscussion::find($id);
+            
+            if (!$d) {
+                return $this->notFound('Discussion');
+            }
+            
+            $d->content = $data['content'];
+            $d->save();
+            
+            return $this->success($d);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in discussion update: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function destroy(int $id)
+    public function destroy(int $id, Request $request): JsonResponse
     {
-        $d = LessonDiscussion::findOrFail($id);
-        $d->delete();
-        return response()->json(['success' => true, 'message' => 'Discussion deleted successfully']);
+        try {
+            $d = LessonDiscussion::find($id);
+            
+            if (!$d) {
+                return $this->notFound('Discussion');
+            }
+            
+            $d->delete();
+            
+            return $this->success(null);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in discussion destroy: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function like(int $id)
+    public function like(int $id, Request $request): JsonResponse
     {
-        $d = LessonDiscussion::findOrFail($id);
-        $d->like_count = ($d->like_count ?? 0) + 1;
-        $d->save();
-        return response()->json(['success' => true]);
+        try {
+            $d = LessonDiscussion::find($id);
+            
+            if (!$d) {
+                return $this->notFound('Discussion');
+            }
+            
+            $d->like_count = ($d->like_count ?? 0) + 1;
+            $d->save();
+            
+            return $this->success(null);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in discussion like: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function replies(int $id, Request $request)
+    public function replies(int $id, Request $request): JsonResponse
     {
-        $res = LessonDiscussion::where('parent_id', $id)->orderBy('created_at', 'desc')->paginate((int) $request->query('pageSize', 10));
-        return response()->json(['replies' => $res->items(), 'total' => $res->total(), 'hasMore' => $res->hasMorePages()]);
+        try {
+            $page = (int) $request->query('page', 1);
+            $pageSize = (int) $request->query('pageSize', 10);
+            
+            $q = LessonDiscussion::where('parent_id', $id);
+            $total = $q->count();
+            $replies = $q->orderBy('created_at', 'desc')
+                ->skip(($page - 1) * $pageSize)
+                ->take($pageSize)
+                ->get();
+            
+            return $this->paginated($replies->toArray(), $page, $pageSize, $total);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in discussion replies: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function reply(int $id, Request $request)
+    public function reply(int $id, Request $request): JsonResponse
     {
-        $data = $request->validate(['content' => ['required','string']]);
-        $r = LessonDiscussion::create([
-            'lesson_id' => LessonDiscussion::findOrFail($id)->lesson_id,
-            'user_id' => $request->user()->id,
-            'parent_id' => $id,
-            'content' => $data['content'],
-        ]);
-        return response()->json(['success' => true, 'reply' => $r], 201);
+        try {
+            if (!$request->user()) {
+                return $this->unauthorized();
+            }
+
+            $validator = Validator::make($request->all(), [
+                'content' => ['required','string']
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+            
+            $parent = LessonDiscussion::find($id);
+            
+            if (!$parent) {
+                return $this->notFound('Discussion');
+            }
+            
+            $r = LessonDiscussion::create([
+                'lesson_id' => $parent->lesson_id,
+                'user_id' => $request->user()->id,
+                'parent_id' => $id,
+                'content' => $data['content'],
+            ]);
+            
+            return $this->success($r);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in discussion reply: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 }
-
-

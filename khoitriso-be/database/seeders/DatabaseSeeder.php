@@ -17,6 +17,8 @@ class DatabaseSeeder extends Seeder
             SystemSettingsSeeder::class,
             CategoriesSeeder::class,
             UsersAndCouponsSeeder::class,
+            SampleContentSeeder::class,
+            ForumSampleSeeder::class,
         ]);
     }
 }

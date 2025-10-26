@@ -15,3 +15,10 @@ class Wishlist extends Model
 }
 
 
+
+
+
+
+
+
+

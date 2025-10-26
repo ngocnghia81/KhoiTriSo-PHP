@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { 
@@ -19,6 +19,9 @@ import {
   ArrowRightIcon
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid, HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
+import { getCourses } from '@/services/courses';
+import { addToCart as apiAddToCart } from '@/services/cart';
+import { getCategories } from '@/services/categories';
 
 interface Course {
   id: string;
@@ -43,16 +46,7 @@ interface Course {
   discountPercent?: number;
 }
 
-const categories = [
-  { id: 'all', name: 'Tất cả', count: 24 },
-  { id: 'free', name: 'Miễn phí', count: 8 },
-  { id: 'paid', name: 'Trả phí', count: 16 },
-  { id: 'math', name: 'Toán học', count: 6 },
-  { id: 'physics', name: 'Vật lý', count: 4 },
-  { id: 'chemistry', name: 'Hóa học', count: 4 },
-  { id: 'english', name: 'Tiếng Anh', count: 3 },
-  { id: 'literature', name: 'Văn học', count: 3 },
-];
+type UiCategory = { id: string; name: string; count?: number };
 
 const levels = ['Tất cả', 'Lớp 10', 'Lớp 11', 'Lớp 12', 'Đại học'];
 const sortOptions = [
@@ -63,125 +57,7 @@ const sortOptions = [
   { value: 'rating', label: 'Đánh giá cao nhất' },
 ];
 
-const courses: Course[] = [
-  {
-    id: 'toan-lop-12-free',
-    title: 'Toán lớp 12 miễn phí - Chuẩn bị THPT Quốc gia',
-    description: 'Khóa học Toán lớp 12 miễn phí được thiết kế đặc biệt cho học sinh chuẩn bị thi THPT Quốc gia với phương pháp giảng dạy hiệu quả.',
-    instructor: 'Thầy Nguyễn Văn A',
-    instructorId: 'nguyen-van-a',
-    thumbnail: '/images/course/course-1/1.png',
-    price: 0,
-    isFree: true,
-    level: 'Lớp 12',
-    duration: '12 giờ',
-    lessons: 40,
-    students: 1234,
-    rating: 4.9,
-    reviews: 456,
-    category: 'math',
-    isPopular: true,
-    tags: ['Miễn phí', 'THPT Quốc gia', 'Đại số', 'Hình học'],
-  },
-  {
-    id: 'vat-ly-lop-12-free',
-    title: 'Vật lý lớp 12 miễn phí - Phương pháp sinh động',
-    description: 'Khóa học Vật lý lớp 12 với phương pháp giảng dạy sinh động và dễ hiểu, giúp học sinh nắm vững kiến thức cơ bản.',
-    instructor: 'Cô Trần Thị B',
-    instructorId: 'tran-thi-b',
-    thumbnail: '/images/course/course-1/2.png',
-    price: 0,
-    isFree: true,
-    level: 'Lớp 12',
-    duration: '10 giờ',
-    lessons: 35,
-    students: 987,
-    rating: 4.8,
-    reviews: 321,
-    category: 'physics',
-    tags: ['Miễn phí', 'Vật lý', 'Thí nghiệm'],
-  },
-  {
-    id: 'hoa-hoc-lop-12-premium',
-    title: 'Hóa học lớp 12 - Khóa học nâng cao Premium',
-    description: 'Khóa học Hóa học lớp 12 nâng cao với nhiều bài tập thực hành và video thí nghiệm chi tiết.',
-    instructor: 'Thầy Lê Văn C',
-    instructorId: 'le-van-c',
-    thumbnail: '/images/course/course-1/3.png',
-    price: 899000,
-    originalPrice: 1299000,
-    discountPercent: 31,
-    isFree: false,
-    level: 'Lớp 12',
-    duration: '15 giờ',
-    lessons: 50,
-    students: 567,
-    rating: 4.7,
-    reviews: 189,
-    category: 'chemistry',
-    isNew: true,
-    tags: ['Premium', 'Thí nghiệm', 'Nâng cao'],
-  },
-  {
-    id: 'tieng-anh-lop-12',
-    title: 'Tiếng Anh lớp 12 - Luyện thi THPT Quốc gia',
-    description: 'Khóa học Tiếng Anh lớp 12 tập trung vào kỹ năng làm bài thi THPT Quốc gia với nhiều đề thi thử.',
-    instructor: 'Cô Phạm Thị D',
-    instructorId: 'pham-thi-d',
-    thumbnail: '/images/course/course-1/4.png',
-    price: 699000,
-    originalPrice: 999000,
-    discountPercent: 30,
-    isFree: false,
-    level: 'Lớp 12',
-    duration: '20 giờ',
-    lessons: 60,
-    students: 789,
-    rating: 4.9,
-    reviews: 234,
-    category: 'english',
-    tags: ['THPT Quốc gia', 'Luyện thi', 'Kỹ năng'],
-  },
-  {
-    id: 'van-hoc-lop-12',
-    title: 'Văn học lớp 12 - Phân tích tác phẩm',
-    description: 'Khóa học Văn học lớp 12 với phương pháp phân tích tác phẩm hiệu quả và kỹ thuật làm bài thi.',
-    instructor: 'Cô Nguyễn Thị E',
-    instructorId: 'nguyen-thi-e',
-    thumbnail: '/images/course/course-1/5.png',
-    price: 599000,
-    isFree: false,
-    level: 'Lớp 12',
-    duration: '18 giờ',
-    lessons: 45,
-    students: 432,
-    rating: 4.6,
-    reviews: 156,
-    category: 'literature',
-    tags: ['Phân tích', 'Tác phẩm', 'Kỹ thuật'],
-  },
-  {
-    id: 'toan-lop-11-nang-cao',
-    title: 'Toán lớp 11 nâng cao - Chuẩn bị vào lớp 12',
-    description: 'Khóa học Toán lớp 11 nâng cao giúp học sinh củng cố kiến thức và chuẩn bị tốt cho lớp 12.',
-    instructor: 'Thầy Hoàng Văn F',
-    instructorId: 'hoang-van-f',
-    thumbnail: '/images/course/course-1/6.png',
-    price: 799000,
-    originalPrice: 1199000,
-    discountPercent: 33,
-    isFree: false,
-    level: 'Lớp 11',
-    duration: '14 giờ',
-    lessons: 42,
-    students: 345,
-    rating: 4.8,
-    reviews: 123,
-    category: 'math',
-    isNew: true,
-    tags: ['Nâng cao', 'Lớp 11', 'Chuẩn bị'],
-  }
-];
+// Removed hardcoded course list; data is loaded from API only
 
 export default function CoursesPage() {
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -191,9 +67,58 @@ export default function CoursesPage() {
   const [priceRange, setPriceRange] = useState([0, 2000000]);
   const [showFilters, setShowFilters] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [courseList, setCourseList] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [categories, setCategories] = useState<UiCategory[]>([{ id: 'all', name: 'Tất cả' }]);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const res = await getCourses({ pageSize: 50 });
+      if (res.ok) {
+        const raw = (res.data as any)?.courses || (res.data as any)?.data || [];
+        const mapped: Course[] = raw.map((c: any) => ({
+          id: String(c.id ?? c.slug ?? c.title ?? Math.random()),
+          title: c.title ?? c.name ?? 'Khóa học',
+          description: c.description ?? '',
+          instructor: c.instructor?.name ?? 'Giảng viên',
+          instructorId: String(c.instructor?.id ?? 'teacher'),
+          thumbnail: c.thumbnail ?? '/images/course/course-1/1.png',
+          price: Number(c.price ?? 0),
+          originalPrice: undefined,
+          isFree: Number(c.price ?? 0) === 0,
+          level: c.level ?? 'Tất cả',
+          duration: c.duration ?? '—',
+          lessons: c.lessonsCount ?? 0,
+          students: c.studentsCount ?? 0,
+          rating: Number(c.rating ?? 5),
+          reviews: c.reviewsCount ?? 0,
+          category: c.category?.slug ?? 'all',
+          isPopular: !!c.isPopular,
+          tags: c.tags ?? [],
+          discountPercent: undefined,
+        }));
+        setCourseList(mapped);
+      } else {
+        setCourseList([]);
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const res = await getCategories();
+      if (res.ok) {
+        const raw = (res.data as any)?.categories || (res.data as any)?.data || [];
+        const mapped: UiCategory[] = [{ id: 'all', name: 'Tất cả' }, ...raw.map((c: any) => ({ id: String(c.slug ?? c.id), name: c.name ?? 'Danh mục', count: c.courseCount }))];
+        setCategories(mapped);
+      }
+    })();
+  }, []);
 
   const filteredAndSortedCourses = useMemo(() => {
-    const filtered = courses.filter(course => {
+    const filtered = courseList.filter(course => {
       // Category filter
       if (selectedCategory !== 'all' && course.category !== selectedCategory) {
         return false;
@@ -237,7 +162,7 @@ export default function CoursesPage() {
     });
 
     return filtered;
-  }, [selectedCategory, selectedLevel, sortBy, searchTerm, priceRange]);
+  }, [selectedCategory, selectedLevel, sortBy, searchTerm, priceRange, courseList]);
 
   const formatPrice = (price: number) => {
     if (price === 0) return 'Miễn phí';
@@ -255,9 +180,9 @@ export default function CoursesPage() {
     );
   };
 
-  const addToCart = (courseId: string) => {
-    // Implement add to cart logic
-    console.log('Added to cart:', courseId);
+  const addToCart = async (courseId: string) => {
+    await apiAddToCart({ itemType: 1, itemId: Number(courseId) || 0 });
+    alert('Đã thêm khóa học vào giỏ hàng');
   };
 
   return (
@@ -433,6 +358,9 @@ export default function CoursesPage() {
 
           {/* Main Content */}
           <div className="lg:col-span-3">
+            {loading && (
+              <div className="text-center text-gray-600 py-8">Đang tải dữ liệu...</div>
+            )}
             {/* Results Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
               <div>

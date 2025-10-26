@@ -7,6 +7,85 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+# KhoiTriSo Backend API
+
+Laravel backend API cho hệ thống KhoiTriSo với **Multi-Language Response System**.
+
+## 🎉 PROJECT STATUS: 100% COMPLETE!
+
+✅ **All 28 Controllers Converted** to Multi-Language Response System!
+
+## 📚 Documentation
+
+### ⭐ Quick Start
+- **[RESPONSE_FORMAT.md](RESPONSE_FORMAT.md)** - Response format chi tiết (BẮT ĐẦU TỪ ĐÂY!)
+- **[QUICK_START.md](QUICK_START.md)** - Hướng dẫn nhanh sử dụng
+- **[FINAL_STATUS.md](FINAL_STATUS.md)** - Tổng quan hoàn thành 100%
+
+### 📖 Complete Guides
+- **[🎉_100_PERCENT_COMPLETE.md](🎉_100_PERCENT_COMPLETE.md)** - Chi tiết completion (All 28 controllers)
+- **[PROJECT_MIGRATION_COMPLETE_GUIDE.md](PROJECT_MIGRATION_COMPLETE_GUIDE.md)** - Complete migration guide
+- **[MULTI_LANGUAGE_USAGE.md](MULTI_LANGUAGE_USAGE.md)** - Hướng dẫn đầy đủ
+- **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Implementation summary
+
+## 🚀 Response System
+
+### Success Response (Đơn giản)
+```json
+{
+    "success": true,
+    "message": "Thành công",
+    "data": {...}
+}
+```
+**Note:** KHÔNG có messageCode, chỉ có message đơn giản
+
+### Error Response (Chi tiết)
+```json
+{
+    "success": false,
+    "messageCode": "USER_NOT_FOUND",
+    "message": "Không tìm thấy người dùng"
+}
+```
+**Note:** CÓ messageCode để biết lỗi cụ thể
+
+## 🎯 Quick Example
+
+```php
+class UserController extends BaseController
+{
+    public function show($id)
+    {
+        $user = User::find($id);
+        
+        if (!$user) {
+            // Error: Trả về message code cụ thể
+            return $this->notFound('User');
+        }
+        
+        // Success: Chỉ trả message đơn giản
+        return $this->success($user);
+    }
+}
+```
+
+## 🌍 Multi-Language Support
+
+API tự động detect ngôn ngữ từ `Accept-Language` header:
+- `vi` - Tiếng Việt (mặc định)
+- `en` - English
+
+```bash
+# Tiếng Việt
+curl -H "Accept-Language: vi" http://localhost:8000/api/users
+
+# English
+curl -H "Accept-Language: en" http://localhost:8000/api/users
+```
+
+---
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

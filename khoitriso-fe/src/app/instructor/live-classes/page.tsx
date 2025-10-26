@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
   PlusIcon,
   VideoCameraIcon,
@@ -15,6 +15,9 @@ import {
   EyeIcon
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { getLiveClasses } from '@/services/liveclasses';
+import { http } from '@/lib/http';
+import { useAuthGuard } from '@/hooks/useAuthGuard';
 
 interface LiveClass {
   id: string;
@@ -103,9 +106,35 @@ const getStatusColor = (status: LiveClass['status']) => {
 };
 
 export default function LiveClassesPage() {
+  useAuthGuard();
   const [liveClasses, setLiveClasses] = useState<LiveClass[]>(mockLiveClasses);
   const [selectedFilter, setSelectedFilter] = useState<'all' | LiveClass['status']>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const res = await getLiveClasses();
+      if (res.ok && Array.isArray(res.data)) {
+        const mapped: LiveClass[] = (res.data as any[]).map((lc: any) => ({
+          id: String(lc.id),
+          title: lc.title ?? 'Lớp học',
+          description: lc.description ?? '',
+          courseTitle: lc.course?.title ?? 'Khoá học',
+          scheduledAt: lc.scheduledAt ?? new Date().toISOString(),
+          durationMinutes: lc.durationMinutes ?? 60,
+          maxParticipants: lc.maxParticipants ?? 100,
+          currentParticipants: lc.currentParticipants ?? 0,
+          meetingUrl: lc.meetingUrl ?? '#',
+          meetingId: lc.meetingId ?? '',
+          meetingPassword: lc.meetingPassword ?? '',
+          status: lc.status ?? 'scheduled',
+          recordingUrl: lc.recordingUrl ?? undefined,
+          createdAt: lc.createdAt ?? new Date().toISOString(),
+        }));
+        setLiveClasses(mapped);
+      }
+    })();
+  }, []);
 
   const filteredClasses = liveClasses.filter(liveClass => {
     const matchesFilter = selectedFilter === 'all' || liveClass.status === selectedFilter;
@@ -115,26 +144,20 @@ export default function LiveClassesPage() {
     return matchesFilter && matchesSearch;
   });
 
-  const startClass = (id: string) => {
-    setLiveClasses(prev => prev.map(liveClass => 
-      liveClass.id === id 
-        ? { ...liveClass, status: 'live' as const }
-        : liveClass
-    ));
+  const startClass = async (id: string) => {
+    await http.post(`live-classes/${id}/join`, {});
+    setLiveClasses(prev => prev.map(liveClass => liveClass.id === id ? { ...liveClass, status: 'live' as const } : liveClass));
   };
 
-  const endClass = (id: string) => {
-    setLiveClasses(prev => prev.map(liveClass => 
-      liveClass.id === id 
-        ? { ...liveClass, status: 'ended' as const, recordingUrl: 'https://zoom.us/rec/share/recording' + id }
-        : liveClass
-    ));
+  const endClass = async (id: string) => {
+    await http.post(`live-classes/${id}/leave`, {});
+    setLiveClasses(prev => prev.map(liveClass => liveClass.id === id ? { ...liveClass, status: 'ended' as const } : liveClass));
   };
 
-  const deleteClass = (id: string) => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa lớp học này?')) {
-      setLiveClasses(prev => prev.filter(liveClass => liveClass.id !== id));
-    }
+  const deleteClass = async (id: string) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa lớp học này?')) return;
+    await http.delete(`live-classes/${id}`);
+    setLiveClasses(prev => prev.filter(liveClass => liveClass.id !== id));
   };
 
   const copyMeetingInfo = (liveClass: LiveClass) => {

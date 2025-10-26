@@ -2,75 +2,250 @@
 
 namespace App\Http\Controllers;
 
+use App\Constants\MessageCode;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
+use App\Models\User;
 
-class UserController extends Controller
+/**
+ * User Controller
+ * Sử dụng BaseController với multi-language response system
+ */
+class UserController extends BaseController
 {
-    public function profile(Request $request)
+    /**
+     * Get current user profile
+     */
+    public function profile(Request $request): JsonResponse
     {
-        $u = $request->user();
-        return response()->json([
-            'id' => $u->id,
-            'username' => $u->name,
-            'email' => $u->email,
-            'fullName' => $u->name,
-            'avatar' => null,
-            'role' => 1,
-            'isActive' => true,
-            'emailVerified' => (bool) $u->email_verified_at,
-        ]);
-    }
+        try {
+            $u = $request->user();
+            
+            if (!$u) {
+                return $this->unauthorized();
+            }
 
-    public function updateProfile(Request $request)
-    {
-        $data = $request->validate([
-            'fullName' => ['nullable', 'string', 'max:100'],
-            'phone' => ['nullable', 'string', 'max:20'],
-        ]);
-        $u = $request->user();
-        if (isset($data['fullName'])) {
-            $u->name = $data['fullName'];
+            $data = [
+                'id' => $u->id,
+                'username' => $u->name,
+                'email' => $u->email,
+                'fullName' => $u->name,
+                'avatar' => null,
+                'role' => 1,
+                'isActive' => true,
+                'emailVerified' => (bool) $u->email_verified_at,
+            ];
+
+            return $this->success($data);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error getting profile: ' . $e->getMessage());
+            return $this->internalError();
         }
-        $u->save();
-        return $this->profile($request);
     }
 
-    public function changePassword(Request $request)
+    /**
+     * Update user profile
+     */
+    public function updateProfile(Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'currentPassword' => ['required', 'string'],
-            'newPassword' => ['required', 'string', 'min:8'],
-        ]);
-        if (! password_verify($data['currentPassword'], $request->user()->password)) {
-            return response()->json(['success' => false, 'message' => 'Invalid current password'], 400);
+        try {
+            $validator = Validator::make($request->all(), [
+                'fullName' => ['nullable', 'string', 'max:100'],
+                'phone' => ['nullable', 'string', 'max:20'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = [
+                        'field' => $field,
+                        'messages' => $messages,
+                    ];
+                }
+                return $this->validationError($errors);
+            }
+
+            $u = $request->user();
+            
+            if (!$u) {
+                return $this->unauthorized();
+            }
+
+            $data = $validator->validated();
+            
+            if (isset($data['fullName'])) {
+                $u->name = $data['fullName'];
+            }
+            
+            $u->save();
+
+            $responseData = [
+                'id' => $u->id,
+                'username' => $u->name,
+                'email' => $u->email,
+                'fullName' => $u->name,
+                'avatar' => null,
+                'role' => 1,
+                'isActive' => true,
+                'emailVerified' => (bool) $u->email_verified_at,
+            ];
+
+            return $this->success($responseData);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error updating profile: ' . $e->getMessage());
+            return $this->internalError();
         }
-        $request->user()->password = bcrypt($data['newPassword']);
-        $request->user()->save();
-        return response()->json(['success' => true, 'message' => 'Password changed successfully']);
     }
 
-    public function uploadAvatar(Request $request)
+    /**
+     * Change user password
+     */
+    public function changePassword(Request $request): JsonResponse
     {
-        $file = $request->file('file');
-        if (! $file || ! $file->isValid()) return response()->json(['success' => false, 'message' => 'Invalid file'], 400);
-        $path = $file->store('avatars', 'public');
-        // Assume avatar path in a profile table; here return URL
-        return response()->json(['success' => true, 'avatarUrl' => \Illuminate\Support\Facades\Storage::disk('public')->url($path)]);
+        try {
+            $validator = Validator::make($request->all(), [
+                'currentPassword' => ['required', 'string'],
+                'newPassword' => ['required', 'string', 'min:8'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = [
+                        'field' => $field,
+                        'messages' => $messages,
+                    ];
+                }
+                return $this->validationError($errors);
+            }
+
+            $user = $request->user();
+            
+            if (!$user) {
+                return $this->unauthorized();
+            }
+
+            $data = $validator->validated();
+
+            if (!password_verify($data['currentPassword'], $user->password)) {
+                return $this->error(
+                    MessageCode::INVALID_PASSWORD,
+                    null,
+                    null,
+                    400
+                );
+            }
+
+            $user->password = bcrypt($data['newPassword']);
+            $user->save();
+
+            return $this->success(null);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error changing password: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function getById(int $id)
+    /**
+     * Upload user avatar
+     */
+    public function uploadAvatar(Request $request): JsonResponse
     {
-        $u = \App\Models\User::select('id','name as username','email')->findOrFail($id);
-        return response()->json($u);
+        try {
+            $validator = Validator::make($request->all(), [
+                'file' => ['required', 'image', 'max:2048'], // 2MB max
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = [
+                        'field' => $field,
+                        'messages' => $messages,
+                    ];
+                }
+                return $this->validationError($errors);
+            }
+
+            $file = $request->file('file');
+            
+            if (!$file || !$file->isValid()) {
+                return $this->error(
+                    MessageCode::FILE_UPLOAD_ERROR,
+                    null,
+                    null,
+                    400
+                );
+            }
+
+            $path = $file->store('avatars', 'public');
+            $avatarUrl = Storage::disk('public')->url($path);
+
+            return $this->success(['avatarUrl' => $avatarUrl]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error uploading avatar: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function search(Request $request)
+    /**
+     * Get user by ID
+     */
+    public function getById(Request $request, int $id): JsonResponse
     {
-        $q = $request->query('q', '');
-        $res = \App\Models\User::select('id','name as username','email')
-            ->where(function ($w) use ($q) { $w->where('name','like',"%$q%")->orWhere('email','like',"%$q%"); })
-            ->paginate((int) $request->query('pageSize', 20));
-        return response()->json(['users' => $res->items(), 'total' => $res->total(), 'hasMore' => $res->hasMorePages()]);
+        try {
+            $user = User::select('id', 'name as username', 'email')->find($id);
+
+            if (!$user) {
+                return $this->notFound('User');
+            }
+
+            return $this->success($user);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error getting user by ID: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Search users
+     */
+    public function search(Request $request): JsonResponse
+    {
+        try {
+            $q = $request->query('q', '');
+            $page = (int) $request->query('page', 1);
+            $pageSize = (int) $request->query('pageSize', 20);
+
+            $query = User::select('id', 'name as username', 'email')
+                ->where(function ($w) use ($q) {
+                    $w->where('name', 'like', "%$q%")
+                      ->orWhere('email', 'like', "%$q%");
+                });
+
+            $total = $query->count();
+            $users = $query->skip(($page - 1) * $pageSize)
+                          ->take($pageSize)
+                          ->get();
+
+            return $this->paginated(
+                $users->toArray(),
+                $page,
+                $pageSize,
+                $total
+            );
+            
+        } catch (\Exception $e) {
+            \Log::error('Error searching users: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 }
 

@@ -1,0 +1,2 @@
+declare const process: any;
+

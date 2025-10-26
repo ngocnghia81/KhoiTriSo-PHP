@@ -1,4 +1,4 @@
-import { Metadata } from 'next';
+'use client'
 import {
   UserGroupIcon,
   PlusIcon,
@@ -11,67 +11,38 @@ import {
   CheckCircleIcon,
   XCircleIcon
 } from '@heroicons/react/24/outline';
+import { useEffect, useMemo, useState } from 'react';
+import { getUsers, updateUser, createInstructor, AdminUser } from '@/services/admin';
+import { useToast } from '@/components/ToastProvider';
 
-export const metadata: Metadata = {
-  title: 'Quản lý người dùng - Dashboard',
-  description: 'Quản lý người dùng hệ thống Khởi Trí Số',
-};
+// client component cannot export metadata
 
-// Mock data
-const users = [
-  {
-    id: 1,
-    username: 'nguyenvana',
-    email: 'nguyenvana@email.com',
-    fullName: 'Nguyễn Văn A',
-    role: 'Student',
-    isActive: true,
-    emailVerified: true,
-    createdAt: '2024-01-15',
-    lastLogin: '2024-01-20 10:30',
-    totalCourses: 5,
-    totalOrders: 12
-  },
-  {
-    id: 2,
-    username: 'tranthib',
-    email: 'tranthib@email.com',
-    fullName: 'Trần Thị B',
-    role: 'Instructor',
-    isActive: true,
-    emailVerified: true,
-    createdAt: '2024-01-10',
-    lastLogin: '2024-01-20 14:15',
-    totalCourses: 3,
-    totalOrders: 0
-  },
-  {
-    id: 3,
-    username: 'levanc',
-    email: 'levanc@email.com',
-    fullName: 'Lê Văn C',
-    role: 'Student',
-    isActive: false,
-    emailVerified: false,
-    createdAt: '2024-01-05',
-    lastLogin: '2024-01-18 09:45',
-    totalCourses: 2,
-    totalOrders: 3
-  },
-  {
-    id: 4,
-    username: 'admin',
-    email: 'admin@khoitriso.com',
-    fullName: 'Admin User',
-    role: 'Admin',
-    isActive: true,
-    emailVerified: true,
-    createdAt: '2024-01-01',
-    lastLogin: '2024-01-20 16:20',
-    totalCourses: 0,
-    totalOrders: 0
-  }
-];
+function useUsersData() {
+  const { notify } = useToast();
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [q, setQ] = useState('');
+  const [role, setRole] = useState('');
+  const [status, setStatus] = useState('');
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    const res = await getUsers({ page, search: q || undefined, role: Number(role) || undefined });
+    if (res.ok) {
+      const data = (res.data as any)?.users || (res.data as any)?.data || [];
+      setUsers(data as AdminUser[]);
+    } else {
+      notify('Lỗi tải danh sách người dùng', 'error');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchUsers(); }, [page, pageSize, q, role, status]);
+
+  return { users, loading, page, setPage, q, setQ, role, setRole, status, setStatus, fetchUsers };
+}
 
 const getRoleBadge = (role: string) => {
   const baseClasses = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium";
@@ -89,6 +60,11 @@ const getRoleBadge = (role: string) => {
 };
 
 export default function UsersPage() {
+  const { users, loading, page, setPage, q, setQ, role, setRole, status, setStatus, fetchUsers } = useUsersData();
+  const totalUsers = users.length;
+  const activeUsers = users.filter(u => (u as any).isActive).length;
+  const inactiveUsers = totalUsers - activeUsers;
+  const onlineUsers = users.filter(u => (u as any).isOnline).length;
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -102,6 +78,7 @@ export default function UsersPage() {
         <div className="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
           <button
             type="button"
+            onClick={() => { window.location.href = '/dashboard/users/create'; }}
             className="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
             <PlusIcon className="-ml-0.5 mr-1.5 h-5 w-5" />
@@ -121,7 +98,7 @@ export default function UsersPage() {
               <div className="ml-5 w-0 flex-1">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">Tổng người dùng</dt>
-                  <dd className="text-lg font-medium text-gray-900">12,345</dd>
+                  <dd className="text-lg font-medium text-gray-900">{totalUsers}</dd>
                 </dl>
               </div>
             </div>
@@ -137,7 +114,7 @@ export default function UsersPage() {
               <div className="ml-5 w-0 flex-1">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">Đã kích hoạt</dt>
-                  <dd className="text-lg font-medium text-gray-900">11,234</dd>
+                  <dd className="text-lg font-medium text-gray-900">{activeUsers}</dd>
                 </dl>
               </div>
             </div>
@@ -153,7 +130,7 @@ export default function UsersPage() {
               <div className="ml-5 w-0 flex-1">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">Chưa kích hoạt</dt>
-                  <dd className="text-lg font-medium text-gray-900">1,111</dd>
+                  <dd className="text-lg font-medium text-gray-900">{inactiveUsers}</dd>
                 </dl>
               </div>
             </div>
@@ -169,7 +146,7 @@ export default function UsersPage() {
               <div className="ml-5 w-0 flex-1">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">Online</dt>
-                  <dd className="text-lg font-medium text-gray-900">1,456</dd>
+                  <dd className="text-lg font-medium text-gray-900">{onlineUsers}</dd>
                 </dl>
               </div>
             </div>
@@ -191,28 +168,32 @@ export default function UsersPage() {
                   type="text"
                   className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Tìm kiếm người dùng..."
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') fetchUsers(); }}
                 />
               </div>
 
               {/* Role filter */}
-              <select className="mt-2 sm:mt-0 block w-full sm:w-auto pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md">
-                <option>Tất cả vai trò</option>
-                <option>Admin</option>
-                <option>Instructor</option>
-                <option>Student</option>
+              <select className="mt-2 sm:mt-0 block w-full sm:w-auto pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md" value={role} onChange={(e) => setRole(e.target.value)}>
+                <option value="">Tất cả vai trò</option>
+                <option value="Admin">Admin</option>
+                <option value="Instructor">Instructor</option>
+                <option value="Student">Student</option>
               </select>
 
               {/* Status filter */}
-              <select className="mt-2 sm:mt-0 block w-full sm:w-auto pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md">
-                <option>Tất cả trạng thái</option>
-                <option>Đã kích hoạt</option>
-                <option>Chưa kích hoạt</option>
+              <select className="mt-2 sm:mt-0 block w-full sm:w-auto pl-3 pr-10 py-2 text-base border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 rounded-md" value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="">Tất cả trạng thái</option>
+                <option value="active">Đã kích hoạt</option>
+                <option value="inactive">Chưa kích hoạt</option>
               </select>
             </div>
 
             <div className="mt-4 sm:mt-0">
               <button
                 type="button"
+                onClick={() => fetchUsers()}
                 className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 <FunnelIcon className="-ml-1 mr-2 h-5 w-5 text-gray-500" />
@@ -261,13 +242,13 @@ export default function UsersPage() {
                         <div className="flex-shrink-0 h-10 w-10">
                           <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center">
                             <span className="text-sm font-medium text-white">
-                              {user.fullName.charAt(0)}
+                              {(user.email || user.username || 'U').charAt(0)}
                             </span>
                           </div>
                         </div>
                         <div className="ml-4">
                           <div className="text-sm font-medium text-gray-900">
-                            {user.fullName}
+                            {user.email || user.username}
                           </div>
                           <div className="text-sm text-gray-500">
                             {user.email}
@@ -279,8 +260,8 @@ export default function UsersPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={getRoleBadge(user.role)}>
-                        {user.role}
+                      <span className={getRoleBadge(user?.role?.toString() || '')}>
+                        {user.role || '—'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -302,13 +283,13 @@ export default function UsersPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {user.lastLogin}
+                      {user.emailVerified || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {user.totalCourses}
+                      {user.emailVerified ?? 0}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {user.totalOrders}
+                      {user.emailVerified ?? 0}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex items-center space-x-2">
@@ -344,17 +325,11 @@ export default function UsersPage() {
             </div>
             <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm text-gray-700">
-                  Hiển thị <span className="font-medium">1</span> đến{' '}
-                  <span className="font-medium">4</span> trong{' '}
-                  <span className="font-medium">12,345</span> kết quả
-                </p>
+                <p className="text-sm text-gray-700">Trang {page}</p>
               </div>
               <div>
                 <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
-                  <button className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                    Trước
-                  </button>
+                  <button className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50" onClick={() => setPage(Math.max(1, page - 1))}>Trước</button>
                   <button className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">
                     1
                   </button>
@@ -364,9 +339,7 @@ export default function UsersPage() {
                   <button className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">
                     3
                   </button>
-                  <button className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                    Sau
-                  </button>
+                  <button className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50" onClick={() => setPage(page + 1)}>Sau</button>
                 </nav>
               </div>
             </div>

@@ -113,6 +113,20 @@ return [
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
+        'mongodb' => [
+            'driver' => 'mongodb',
+            'dsn' => env('MONGODB_DSN', ''),
+            'host' => env('MONGODB_HOST', '127.0.0.1'),
+            'port' => env('MONGODB_PORT', 27017),
+            'database' => env('MONGODB_DATABASE', 'kts_forum'),
+            'username' => env('MONGODB_USERNAME', null),
+            'password' => env('MONGODB_PASSWORD', null),
+            'options' => [
+                'database' => env('MONGODB_AUTH_DB', 'admin'),
+                'replicaSet' => env('MONGODB_REPLICA_SET', null),
+            ],
+        ],
+
     ],
 
     /*

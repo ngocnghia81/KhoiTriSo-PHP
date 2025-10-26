@@ -202,6 +202,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('admin/users/{id}', [\App\Http\Controllers\AdminController::class, 'updateUser']);
     Route::post('admin/create-instructor', [\App\Http\Controllers\AdminController::class, 'createInstructor']);
     Route::post('admin/reset-instructor-password', [\App\Http\Controllers\AdminController::class, 'resetInstructorPassword']);
+
+    // Forum (MongoDB-backed)
+    Route::prefix('forum-api')->group(function () {
+        Route::get('questions', [\App\Http\Controllers\ForumController::class, 'list']);
+        Route::get('questions/{id}', [\App\Http\Controllers\ForumController::class, 'get']);
+        Route::post('questions', [\App\Http\Controllers\ForumController::class, 'create']);
+        Route::put('questions/{id}', [\App\Http\Controllers\ForumController::class, 'update']);
+        Route::delete('questions/{id}', [\App\Http\Controllers\ForumController::class, 'delete']);
+        Route::post('questions/{id}/vote', [\App\Http\Controllers\ForumController::class, 'vote']);
+
+        Route::get('questions/{id}/answers', [\App\Http\Controllers\ForumController::class, 'listAnswers']);
+        Route::post('questions/{id}/answers', [\App\Http\Controllers\ForumController::class, 'addAnswer']);
+        Route::put('questions/{id}/answers/{answerId}', [\App\Http\Controllers\ForumController::class, 'updateAnswer']);
+        Route::delete('questions/{id}/answers/{answerId}', [\App\Http\Controllers\ForumController::class, 'deleteAnswer']);
+        Route::post('questions/{id}/answers/{answerId}/vote', [\App\Http\Controllers\ForumController::class, 'voteAnswer']);
+        Route::post('questions/{id}/answers/{answerId}/accept', [\App\Http\Controllers\ForumController::class, 'acceptAnswer']);
+
+        Route::get('tags', [\App\Http\Controllers\ForumController::class, 'tags']);
+    });
 });
-
-

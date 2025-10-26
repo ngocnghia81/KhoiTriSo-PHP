@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSidebar } from '@/contexts/SidebarContext';
 import {
   MagnifyingGlassIcon,
@@ -18,35 +18,23 @@ export default function DashboardHeader() {
   const { toggleSidebar } = useSidebar();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
 
-  const notifications = [
-    {
-      id: 1,
-      title: 'Đơn hàng mới',
-      message: 'Có 3 đơn hàng mới cần xử lý',
-      time: '5 phút trước',
-      type: 'order',
-      unread: true
-    },
-    {
-      id: 2,
-      title: 'Người dùng mới',
-      message: '15 người dùng mới đăng ký hôm nay',
-      time: '1 giờ trước',
-      type: 'user',
-      unread: true
-    },
-    {
-      id: 3,
-      title: 'Báo cáo doanh thu',
-      message: 'Báo cáo doanh thu tuần đã sẵn sàng',
-      time: '2 giờ trước',
-      type: 'report',
-      unread: false
-    }
-  ];
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await (await import('@/services/notifications')).getNotifications({ pageSize: 10 });
+        if (res.ok && mounted) {
+          const data = (res.data as any)?.notifications || (res.data as any)?.data || [];
+          setNotifications(data);
+        }
+      } catch {}
+    })();
+    return () => { mounted = false };
+  }, []);
 
-  const unreadCount = notifications.filter(n => n.unread).length;
+  const unreadCount = notifications.filter((n: any) => !n.isRead).length;
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">

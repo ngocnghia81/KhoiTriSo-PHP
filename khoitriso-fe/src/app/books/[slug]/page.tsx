@@ -1,6 +1,9 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import BookDetailClient from './BookDetailClient';
+import { getBook as apiGetBook, getBookChapters, getBooks } from '@/services/books';
+import { getSafeImage } from '@/lib/image';
+import { getReviews } from '@/services/reviews';
 
 interface Book {
   id: string;
@@ -222,13 +225,83 @@ const mockBook: Book = {
   }
 };
 
-// Mock function to get book data
+// Load from API with graceful fallback
 async function getBook(slug: string): Promise<Book | null> {
-  // In real app, this would fetch from API
-  if (slug === 'toan-hoc-lop-12-nang-cao') {
-    return mockBook;
-  }
-  return null;
+  const id = Number(slug);
+  const res = await apiGetBook(id);
+  if (!res.ok || !res.data) return null;
+  const raw: any = res.data;
+  const chaptersRes = await getBookChapters(id);
+  const chapters = chaptersRes.ok ? ((chaptersRes.data as any[]) || []).map((c: any, idx: number) => ({
+    id: String(c.id ?? idx),
+    title: c.title ?? `Chương ${idx + 1}`,
+    description: c.description ?? '',
+    questionCount: c.questionCount ?? 0,
+    orderIndex: c.orderIndex ?? idx + 1,
+  })) : mockBook.chapters;
+  // Load reviews for this book
+  const reviewsRes = await getReviews({ itemType: 'book', itemId: id } as any).catch(() => ({ ok: false } as any));
+  const reviews = (reviewsRes as any).ok ? ((((reviewsRes as any).data?.reviews) || ((reviewsRes as any).data?.data) || []) as any[]).map((r: any, idx: number) => ({
+    id: String(r.id ?? idx),
+    user: { name: r.user?.name ?? 'Người dùng', avatar: '/images/avatars/user-1.png' },
+    rating: Number(r.rating ?? 5),
+    comment: r.content ?? '',
+    createdAt: r.createdAt ?? r.created_at ?? new Date().toISOString(),
+    isVerified: !!r.isVerified,
+  })) : mockBook.reviews;
+  // Load related books by same category
+  let relatedBooks = mockBook.relatedBooks;
+  try {
+    const listRes = await getBooks({ pageSize: 6 });
+    if (listRes.ok) {
+      const arr = (((listRes.data as any)?.books) || ((listRes.data as any)?.data) || []) as any[];
+      const sameCat = arr.filter(b => (b.category?.slug ?? '') === (raw.category?.slug ?? ''))
+        .filter(b => String(b.id) !== String(id))
+        .slice(0, 3)
+        .map((b: any) => ({
+          id: String(b.id ?? b.slug ?? Math.random()),
+          title: b.title ?? 'Sách',
+          author: b.author?.name ?? 'Tác giả',
+          coverImage: getSafeImage(b.coverImage),
+          price: Number(b.price ?? 0),
+          originalPrice: undefined,
+          rating: Number(b.rating ?? 5),
+          slug: b.slug ?? String(b.id ?? 'book'),
+        }));
+      if (sameCat.length) relatedBooks = sameCat as any;
+    }
+  } catch {}
+  return {
+    id: String(raw.id ?? slug),
+    title: raw.title ?? 'Sách',
+    description: raw.description ?? '',
+    author: {
+      name: raw.author?.name ?? 'Tác giả',
+      id: String(raw.author?.id ?? 'author'),
+      avatar: '/images/authors/author-1.png',
+      bio: raw.author?.bio ?? ''
+    },
+    category: {
+      name: raw.category?.name ?? 'Danh mục',
+      slug: raw.category?.slug ?? 'all'
+    },
+    isbn: raw.isbn ?? '—',
+    coverImage: getSafeImage(raw.coverImage),
+    price: Number(raw.price ?? 0),
+    originalPrice: undefined,
+    discountPercent: undefined,
+    totalQuestions: raw.totalQuestions ?? 0,
+    rating: Number(raw.rating ?? 5),
+    reviewsCount: raw.reviewsCount ?? 0,
+    isActive: true,
+    publishedAt: raw.publishedAt ?? '2024-01-01',
+    features: mockBook.features,
+    chapters,
+    reviews,
+    relatedBooks,
+    tags: raw.tags ?? [],
+    activationInfo: mockBook.activationInfo,
+  };
 }
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {

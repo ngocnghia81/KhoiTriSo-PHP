@@ -2,7 +2,7 @@
 // Fixed dropdown styling
 
 import { useState, useRef, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useClientOnly } from "@/hooks/useClientOnly";
 import Link from "next/link";
 import Image from "next/image";
@@ -12,12 +12,23 @@ import {
     MagnifyingGlassIcon,
     ShoppingBagIcon,
     BookOpenIcon,
+    UserCircleIcon,
 } from "@heroicons/react/24/outline";
 import { ChevronDownIcon } from "@heroicons/react/20/solid";
 import Logo from "./Logo";
 import BackdropBlur from "./BackdropBlur";
+import { TOKEN_STORAGE_KEY } from "@/lib/config";
+import CartButton from "./CartButton";
+import { getCart, removeFromCart } from "@/services/cart";
+import { logout as apiLogout } from "@/services/auth";
+import { getCategories } from "@/services/categories";
+import { getCourses } from "@/services/courses";
+import { getBooks } from "@/services/books";
 
-const navigation = [
+type NavChild = { name: string; href: string };
+type NavItem = { name: string; href: string; children?: NavChild[] };
+
+const navigation: NavItem[] = [
     {
         name: "Trang chủ",
         href: "/",
@@ -25,42 +36,22 @@ const navigation = [
     {
         name: "Khóa học",
         href: "/courses",
-        children: [
-            { name: "Khóa học miễn phí", href: "/courses/free" },
-            { name: "Khóa học trả phí", href: "/courses/paid" },
-            { name: "Toán học", href: "/courses/math" },
-            { name: "Vật lý", href: "/courses/physics" },
-            { name: "Hóa học", href: "/courses/chemistry" },
-        ],
+        children: [],
     },
     {
         name: "Sách điện tử",
         href: "/books",
-        children: [
-            { name: "Danh sách sách", href: "/books" },
-            { name: "Kích hoạt sách", href: "/books/activation" },
-            { name: "Sách Toán", href: "/books/math" },
-            { name: "Sách Lý", href: "/books/physics" },
-            { name: "Sách Hóa", href: "/books/chemistry" },
-        ],
+        children: [],
     },
     {
         name: "Diễn đàn",
         href: "/forum",
-        children: [
-            { name: "Hỏi đáp bài tập", href: "/forum" },
-            { name: "Đặt câu hỏi", href: "/forum/ask" },
-            { name: "Thảo luận Toán", href: "/forum/math" },
-            { name: "Thảo luận Lý", href: "/forum/physics" },
-        ],
+        children: [],
     },
     {
         name: "Về chúng tôi",
         href: "/about",
-        children: [
-            { name: "Giới thiệu", href: "/about" },
-            { name: "Tầm nhìn & Sứ mệnh", href: "/about/vision" },
-        ],
+        children: [],
     },
     {
         name: "Liên hệ",
@@ -68,28 +59,28 @@ const navigation = [
     },
 ];
 
-const categories = [
-    "Tất cả danh mục",
-    "Toán học",
-    "Vật lý",
-    "Hóa học",
-    "Sinh học",
-    "Văn học",
-    "Tiếng Anh",
-    "Lịch sử",
-];
+// Categories in state to trigger re-render when loaded from API
 
 export default function Header() {
     const pathname = usePathname();
     const isClient = useClientOnly();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [cartOpen, setCartOpen] = useState(false);
+    const [cartItems, setCartItems] = useState<any[]>([]);
+    const [cartLoading, setCartLoading] = useState(false);
+    const [cartSubtotal, setCartSubtotal] = useState<number>(0);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+    const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
     const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
-    const [selectedCategory, setSelectedCategory] = useState("Tất cả danh mục");
+    const [selectedCategory, setSelectedCategory] = useState<string>("");
     const [searchQuery, setSearchQuery] = useState("");
     const categoryDropdownRef = useRef<HTMLDivElement>(null);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const userMenuRef = useRef<HTMLDivElement>(null);
+    const router = useRouter();
+    const [navDynamic, setNavDynamic] = useState<NavItem[]>(navigation);
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -97,12 +88,84 @@ export default function Header() {
             if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
                 setCategoryDropdownOpen(false);
             }
+            if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+                setUserMenuOpen(false);
+            }
         };
 
         document.addEventListener('mousedown', handleClickOutside);
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
+    }, []);
+
+    // Load cart when opened and on cart change events
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const computeSubtotal = (items: any[]) => items.reduce((t, i) => t + Number(i.price ?? 0) * Number(i.quantity ?? 1), 0);
+        const load = async () => {
+            setCartLoading(true);
+            const res = await getCart();
+            if (res.ok) {
+                const items = (res.data as any)?.items || [];
+                setCartItems(items);
+                setCartSubtotal(computeSubtotal(items));
+            }
+            setCartLoading(false);
+        };
+        if (cartOpen) load();
+        const onChanged = () => load();
+        window.addEventListener('kts-cart-changed', onChanged as any);
+        return () => window.removeEventListener('kts-cart-changed', onChanged as any);
+    }, [cartOpen]);
+
+    // Auth state (localStorage token) with fast UI reaction
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const checkToken = () => setIsAuthenticated(!!localStorage.getItem(TOKEN_STORAGE_KEY));
+        checkToken();
+        const onAuthChanged = () => checkToken();
+        window.addEventListener('storage', checkToken);
+        window.addEventListener('kts-auth-changed', onAuthChanged as any);
+        return () => {
+            window.removeEventListener('storage', checkToken);
+            window.removeEventListener('kts-auth-changed', onAuthChanged as any);
+        };
+    }, []);
+
+    // Load categories from API (unauth fallback handled by BE if needed)
+    useEffect(() => {
+        (async () => {
+            const res = await getCategories();
+            if (res.ok) {
+                const cats = (res.data as any)?.categories || (res.data as any)?.data || [];
+                const names: string[] = cats.map((c: any) => c.name).filter(Boolean);
+                setCategoryOptions(["Tất cả danh mục", ...names]);
+                if (!selectedCategory) setSelectedCategory("Tất cả danh mục");
+            }
+            // Build dynamic navigation children from APIs (shallow examples)
+            try {
+                const [courseRes, bookRes] = await Promise.all([
+                    getCourses({ pageSize: 5 }),
+                    getBooks({ pageSize: 5 })
+                ]);
+                const courseChildren: NavChild[] = courseRes.ok ? [
+                    { name: "Khóa học mới", href: "/courses?sort=new" },
+                    { name: "Khóa học phổ biến", href: "/courses?sort=popular" },
+                ] : [];
+                const bookChildren: NavChild[] = bookRes.ok ? [
+                    { name: "Sách mới", href: "/books?sort=new" },
+                    { name: "Sách bán chạy", href: "/books?sort=popular" },
+                ] : [];
+                setNavDynamic((prev: NavItem[]) => prev.map((it) => {
+                    if (it.href === '/courses') return { ...it, children: courseChildren };
+                    if (it.href === '/books') return { ...it, children: bookChildren };
+                    if (it.href === '/forum') return { ...it, children: [{ name: 'Hỏi đáp', href: '/forum' }, { name: 'Đặt câu hỏi', href: '/forum/ask' }] as NavChild[] };
+                    if (it.href === '/about') return { ...it, children: [] as NavChild[] };
+                    return it;
+                }));
+            } catch {}
+        })();
     }, []);
 
     // Function to check if a navigation item is active
@@ -173,7 +236,7 @@ export default function Header() {
                                         <div className="absolute left-0 top-full z-[100] w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl ring-1 ring-gray-900/5 animate-in fade-in-0 zoom-in-95 duration-200"
                                              style={{ minHeight: '200px' }}>
                                             <div className="py-2 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-                                                {categories.map((category, index) => (
+                                                {categoryOptions.map((category, index) => (
                                                     <button
                                                         key={category}
                                                         type="button"
@@ -185,7 +248,7 @@ export default function Header() {
                                                             selectedCategory === category 
                                                                 ? 'bg-blue-50 text-blue-600 font-semibold border-r-2 border-blue-600' 
                                                                 : 'text-gray-700 hover:font-medium'
-                                                        } ${index === 0 ? 'rounded-t-lg' : ''} ${index === categories.length - 1 ? 'rounded-b-lg' : ''}`}
+                                                        } ${index === 0 ? 'rounded-t-lg' : ''} ${index === categoryOptions.length - 1 ? 'rounded-b-lg' : ''}`}
                                                     >
                                                         <span className="flex items-center justify-between">
                                                             {category}
@@ -287,13 +350,43 @@ export default function Header() {
 
                             {/* Auth Buttons */}
                             <div className="flex items-center space-x-3">
-                    
-                                <Link
-                                    href="/auth/login"
-                                    className="px-6 py-2 bg-gray-800 text-white font-semibold rounded-full hover:bg-gray-700 transition-all duration-300 hover:shadow-lg transform hover:scale-105"
-                                >
-                                    Đăng nhập
-                                </Link>
+                                {isAuthenticated ? (
+                                    <div className="relative" ref={userMenuRef}>
+                                        <button
+                                            onClick={() => setUserMenuOpen(!userMenuOpen)}
+                                            className="p-2 rounded-full bg-white border border-gray-200 text-gray-700 hover:text-blue-600 hover:border-blue-300 transition-colors flex items-center"
+                                            aria-label="Tài khoản"
+                                        >
+                                            <UserCircleIcon className="h-6 w-6" />
+                                            <ChevronDownIcon className="h-4 w-4 ml-1 text-gray-400" />
+                                        </button>
+                                        {userMenuOpen && (
+                                            <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                                                <div className="py-1 text-sm text-gray-700">
+                                                    <Link href="/courses?owned=1" className="block px-4 py-2 hover:bg-gray-50">Khóa học đã mua</Link>
+                                                    <Link href="/profile" className="block px-4 py-2 hover:bg-gray-50">Trang cá nhân</Link>
+                                                    <button
+                                                        className="w-full text-left px-4 py-2 hover:bg-gray-50"
+                                                        onClick={async () => {
+                                                            try { await apiLogout(); } catch {}
+                                                            setUserMenuOpen(false);
+                                                            router.push("/");
+                                                        }}
+                                                    >
+                                                        Đăng xuất
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <Link
+                                        href="/auth/login"
+                                        className="px-6 py-2 bg-gray-800 text-white font-semibold rounded-full hover:bg-gray-700 transition-all duration-300 hover:shadow-lg transform hover:scale-105"
+                                    >
+                                        Đăng nhập
+                                    </Link>
+                                )}
                             </div>
 
                             {/* Mobile Menu Button */}
@@ -315,7 +408,7 @@ export default function Header() {
                     <div className="flex items-center justify-between h-16">
                         {/* Navigation Menu */}
                         <nav className="hidden lg:flex items-center space-x-8">
-                            {navigation.map((item) => (
+                            {navDynamic.map((item) => (
                                 <div
                                     key={item.name}
                                     className="relative group"
@@ -398,15 +491,7 @@ export default function Header() {
                             </div>
 
                             {/* Cart */}
-                            <button
-                                className="relative p-2 text-gray-600 hover:text-blue-600 transition-colors"
-                                onClick={() => setCartOpen(true)}
-                            >
-                                <ShoppingBagIcon className="h-6 w-6" />
-                                <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                                    3
-                                </span>
-                            </button>
+                            <CartButton onOpen={() => setCartOpen(true)} />
 
                             {/* Menu Toggle */}
                             <button
@@ -659,74 +744,39 @@ export default function Header() {
 
                     {/* Cart Body */}
                     <div className="p-6 space-y-4">
-                        {/* Single Cart Item */}
-                        <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
-                            <div className="flex items-center space-x-3">
-                                <div className="w-16 h-16 bg-blue-100 rounded-lg flex items-center justify-center">
-                                    <BookOpenIcon className="w-8 h-8 text-blue-600" />
+                        {cartLoading && (
+                            <div className="text-sm text-gray-500">Đang tải giỏ hàng...</div>
+                        )}
+                        {!cartLoading && cartItems.length === 0 && (
+                            <div className="text-sm text-gray-500">Giỏ hàng trống</div>
+                        )}
+                        {!cartLoading && cartItems.map((item: any) => (
+                            <div key={item.id ?? `${item.type}-${item.refId}`} className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
+                                <div className="flex items-center space-x-3">
+                                    <div className="w-16 h-16 bg-blue-100 rounded-lg flex items-center justify-center">
+                                        <BookOpenIcon className="w-8 h-8 text-blue-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-gray-600">
+                                            {item.quantity ?? 1} x{" "}
+                                            <strong className="text-gray-900">
+                                                ${Number(item.price ?? 0)}
+                                            </strong>
+                                        </p>
+                                        <h4 className="font-medium text-gray-900">
+                                            {item.title ?? `${item.type} #${item.refId}`}
+                                        </h4>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="text-sm text-gray-600">
-                                        1 x{" "}
-                                        <strong className="text-gray-900">
-                                            $64
-                                        </strong>
-                                    </p>
-                                    <h4 className="font-medium text-gray-900">
-                                        Digital marketing demo
-                                    </h4>
-                                </div>
+                                <button
+                                    className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-600 hover:bg-red-200 transition-colors"
+                                    onClick={async () => { await removeFromCart(item.id); }}
+                                    aria-label="Xóa khỏi giỏ"
+                                >
+                                    <XMarkIcon className="h-4 w-4" />
+                                </button>
                             </div>
-                            <button className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-600 hover:bg-red-200 transition-colors">
-                                <XMarkIcon className="h-4 w-4" />
-                            </button>
-                        </div>
-
-                        {/* Single Cart Item */}
-                        <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
-                            <div className="flex items-center space-x-3">
-                                <div className="w-16 h-16 bg-green-100 rounded-lg flex items-center justify-center">
-                                    <BookOpenIcon className="w-8 h-8 text-green-600" />
-                                </div>
-                                <div>
-                                    <p className="text-sm text-gray-600">
-                                        1 x{" "}
-                                        <strong className="text-gray-900">
-                                            $74
-                                        </strong>
-                                    </p>
-                                    <h4 className="font-medium text-gray-900">
-                                        Business solution book
-                                    </h4>
-                                </div>
-                            </div>
-                            <button className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-600 hover:bg-red-200 transition-colors">
-                                <XMarkIcon className="h-4 w-4" />
-                            </button>
-                        </div>
-
-                        {/* Single Cart Item */}
-                        <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
-                            <div className="flex items-center space-x-3">
-                                <div className="w-16 h-16 bg-purple-100 rounded-lg flex items-center justify-center">
-                                    <BookOpenIcon className="w-8 h-8 text-purple-600" />
-                                </div>
-                                <div>
-                                    <p className="text-sm text-gray-600">
-                                        1 x{" "}
-                                        <strong className="text-gray-900">
-                                            $94
-                                        </strong>
-                                    </p>
-                                    <h4 className="font-medium text-gray-900">
-                                        Business type
-                                    </h4>
-                                </div>
-                            </div>
-                            <button className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-600 hover:bg-red-200 transition-colors">
-                                <XMarkIcon className="h-4 w-4" />
-                            </button>
-                        </div>
+                        ))}
                     </div>
 
                     {/* Cart Footer */}
@@ -734,7 +784,7 @@ export default function Header() {
                         <div className="space-y-4">
                             <div className="flex items-center justify-between text-lg font-bold">
                                 <span>Subtotal:</span>
-                                <span className="text-blue-600">$232</span>
+                                <span className="text-blue-600">${cartSubtotal}</span>
                             </div>
                             <Link
                                 href="/checkout"
