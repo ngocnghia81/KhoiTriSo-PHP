@@ -585,7 +585,7 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
             {book.relatedBooks.map((relatedBook) => (
               <Link
                 key={relatedBook.id}
-                href={`/books/${relatedBook.slug}`}
+                href={`/books/${relatedBook.id}`}
                 className="group"
               >
                 <div className="bg-gray-50 rounded-2xl p-6 hover:shadow-md transition-shadow">
@@ -631,4 +631,3 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
     </div>
   );
 }
-

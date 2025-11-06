@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class UserController extends Controller
 {
@@ -55,19 +57,19 @@ class UserController extends Controller
         if (! $file || ! $file->isValid()) return response()->json(['success' => false, 'message' => 'Invalid file'], 400);
         $path = $file->store('avatars', 'public');
         // Assume avatar path in a profile table; here return URL
-        return response()->json(['success' => true, 'avatarUrl' => \Illuminate\Support\Facades\Storage::disk('public')->url($path)]);
+        return response()->json(['success' => true, 'avatarUrl' => Storage::url($path)]);
     }
 
     public function getById(int $id)
     {
-        $u = \App\Models\User::select('id','name as username','email')->findOrFail($id);
+        $u = User::select('id','name as username','email')->findOrFail($id);
         return response()->json($u);
     }
 
     public function search(Request $request)
     {
         $q = $request->query('q', '');
-        $res = \App\Models\User::select('id','name as username','email')
+        $res = User::select('id','name as username','email')
             ->where(function ($w) use ($q) { $w->where('name','like',"%$q%")->orWhere('email','like',"%$q%"); })
             ->paginate((int) $request->query('pageSize', 20));
         return response()->json(['users' => $res->items(), 'total' => $res->total(), 'hasMore' => $res->hasMorePages()]);

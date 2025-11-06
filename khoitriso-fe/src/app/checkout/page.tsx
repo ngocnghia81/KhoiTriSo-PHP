@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Metadata } from 'next';
+import { useRouter } from 'next/navigation';
+import { orderService } from '@/services/orderService';
 import {
   CreditCardIcon,
   ShieldCheckIcon,
@@ -125,6 +127,7 @@ const paymentMethods = [
 ];
 
 export default function CheckoutPage() {
+  const router = useRouter();
   const [formData, setFormData] = useState<CheckoutForm>({
     fullName: '',
     email: '',
@@ -145,6 +148,7 @@ export default function CheckoutPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [errors, setErrors] = useState<CheckoutFormErrors>({});
   const [currentStep, setCurrentStep] = useState(1); // 1: Info, 2: Payment, 3: Review
+  const [apiError, setApiError] = useState<string>('');
 
   const orderItems = mockOrderItems;
   const subtotal = orderItems.reduce((total, item) => total + (item.price * item.quantity), 0);
@@ -213,15 +217,37 @@ export default function CheckoutPage() {
     if (!validateStep(3)) return;
 
     setIsProcessing(true);
+    setApiError('');
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      // Redirect to success page
-      window.location.href = '/checkout/success';
-    } catch (error) {
-      alert('Có lỗi xảy ra khi xử lý thanh toán. Vui lòng thử lại.');
+      // Check authentication
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Vui lòng đăng nhập để thanh toán');
+      }
+
+      console.log('Creating order with token:', token?.substring(0, 20) + '...');
+
+      // Step 1: Create order from cart (cart will be cleared automatically by backend)
+      const order = await orderService.createOrder({
+        paymentMethod: formData.paymentMethod,
+      });
+
+      console.log('Order created:', order);
+
+      // Check if order was created successfully
+      if (!order || !order.id) {
+        throw new Error('Không thể tạo đơn hàng. Vui lòng thử lại.');
+      }
+
+      // Step 2: Redirect to success page with order ID
+      router.push(`/checkout/success?orderId=${order.id}`);
+    } catch (error: unknown) {
+      console.error('Checkout error:', error);
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Có lỗi xảy ra khi xử lý thanh toán. Vui lòng thử lại.';
+      setApiError(errorMessage);
     } finally {
       setIsProcessing(false);
     }
@@ -519,6 +545,17 @@ export default function CheckoutPage() {
                   <h2 className="text-xl font-bold text-gray-900 mb-6">
                     Xác nhận đơn hàng
                   </h2>
+
+                  {/* Error Message */}
+                  {apiError && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start space-x-3">
+                      <ExclamationTriangleIcon className="h-6 w-6 text-red-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <h3 className="font-semibold text-red-900">Lỗi thanh toán</h3>
+                        <p className="text-sm text-red-700 mt-1">{apiError}</p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Order Summary */}
                   <div className="bg-gray-50 rounded-lg p-6">

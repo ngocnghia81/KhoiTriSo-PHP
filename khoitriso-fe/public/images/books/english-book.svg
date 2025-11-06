@@ -1,0 +1,6 @@
+<svg width="300" height="400" xmlns="http://www.w3.org/2000/svg">
+  <rect width="300" height="400" fill="#ef4444"/>
+  <text x="150" y="180" font-family="Arial, sans-serif" font-size="60" fill="white" text-anchor="middle">📚</text>
+  <text x="150" y="240" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="white" text-anchor="middle">TIẾNG ANH</text>
+  <text x="150" y="270" font-family="Arial, sans-serif" font-size="18" fill="white" text-anchor="middle">Sách giáo khoa</text>
+</svg>

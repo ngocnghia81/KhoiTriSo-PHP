@@ -10,8 +10,17 @@ class CartItem extends Model
     use HasFactory;
 
     protected $fillable = [
-        'user_id','item_id','item_type'
+        'user_id',
+        'item_id',
+        'item_type',
+        'quantity',
     ];
+
+    // Relationships
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
 }
 
 

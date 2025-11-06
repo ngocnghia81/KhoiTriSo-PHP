@@ -134,8 +134,10 @@ const popularPosts = [
 
 const tags = ['Design', 'Creative', 'Solution', 'Laptop', 'Product'];
 
-export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  // Trong thực tế sẽ fetch data từ API
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  // Trong thực tế sẽ fetch data từ API based on slug
+  const { slug } = await params;
+  // TODO: Use slug to fetch specific blog post
   return {
     title: `${mockBlogPost.title} - Khởi Trí Số`,
     description: mockBlogPost.excerpt,
@@ -150,8 +152,9 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   };
 }
 
-export default function BlogDetailPage({ params }: { params: { slug: string } }) {
-  const post = mockBlogPost; // Trong thực tế sẽ fetch từ API based on params.slug
+export default async function BlogDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const post = mockBlogPost; // Trong thực tế sẽ fetch từ API based on slug
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('vi-VN', {

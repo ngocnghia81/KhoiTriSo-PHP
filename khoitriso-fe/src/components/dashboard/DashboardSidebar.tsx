@@ -78,16 +78,6 @@ const navigation = [
     ],
   },
   {
-    name: 'Diễn đàn',
-    icon: ChatBubbleLeftRightIcon,
-    children: [
-      { name: 'Bài viết', href: '/dashboard/forum-posts' },
-      { name: 'Câu trả lời', href: '/dashboard/forum-replies' },
-      { name: 'Moderation', href: '/dashboard/forum-moderation' },
-      { name: 'Báo cáo', href: '/dashboard/forum-reports' },
-    ],
-  },
-  {
     name: 'Đơn hàng & Thanh toán',
     icon: ShoppingCartIcon,
     children: [

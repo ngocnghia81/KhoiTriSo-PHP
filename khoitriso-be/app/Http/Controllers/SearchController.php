@@ -21,14 +21,59 @@ class SearchController extends Controller
             'instructors' => [],
         ];
         if ($type === 'all' || $type === 'courses') {
-            $results['courses'] = Course::select('id','title','thumbnail','rating')
+            $results['courses'] = Course::select(
+                'id',
+                'title',
+                'thumbnail',
+                'rating',
+                'price',
+                'description',
+                'level',
+                'total_students',
+                'estimated_duration',
+                'instructor_id'
+            )
                 ->where('title', 'like', "%$q%")
-                ->limit($pageSize)->get();
+                ->where('is_published', true)
+                ->where('is_active', true)
+                ->limit($pageSize)
+                ->get()
+                ->map(function($course) {
+                    return [
+                        'id' => $course->id,
+                        'title' => $course->title,
+                        'thumbnail' => $course->thumbnail,
+                        'rating' => $course->rating,
+                        'price' => $course->price,
+                        'description' => $course->description,
+                        'level' => $course->level,
+                        'students' => $course->total_students,
+                        'duration' => $course->estimated_duration,
+                    ];
+                });
         }
         if ($type === 'all' || $type === 'books') {
-            $results['books'] = Book::select('id','title','cover_image as coverImage','price')
+            $results['books'] = Book::select(
+                'id',
+                'title',
+                'cover_image',
+                'price',
+                'description',
+                'author_id'
+            )
                 ->where('title', 'like', "%$q%")
-                ->limit($pageSize)->get();
+                ->where('is_active', true)
+                ->limit($pageSize)
+                ->get()
+                ->map(function($book) {
+                    return [
+                        'id' => $book->id,
+                        'title' => $book->title,
+                        'cover_image' => $book->cover_image,
+                        'price' => $book->price,
+                        'description' => $book->description,
+                    ];
+                });
         }
         if ($type === 'all' || $type === 'instructors') {
             $results['instructors'] = User::select('id','name as name')

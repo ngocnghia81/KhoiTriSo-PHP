@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useSidebar } from '@/contexts/SidebarContext';
+import { authService } from '@/services/authService';
 import {
   MagnifyingGlassIcon,
   BellIcon,
@@ -18,6 +19,18 @@ export default function DashboardHeader() {
   const { toggleSidebar } = useSidebar();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+      window.location.href = "/";
+    } catch (error) {
+      console.error('Logout error:', error);
+      localStorage.removeItem("user");
+      localStorage.removeItem("token");
+      window.location.href = "/";
+    }
+  };
 
   const notifications = [
     {
@@ -195,6 +208,7 @@ export default function DashboardHeader() {
                     <div className="border-t border-gray-200">
                       <button
                         type="button"
+                        onClick={handleLogout}
                         className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                       >
                         <ArrowRightOnRectangleIcon className="mr-3 h-4 w-4 text-gray-400" />

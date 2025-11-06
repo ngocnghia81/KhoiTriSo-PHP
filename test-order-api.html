@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Order API</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .result { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+        .error { background: #ffcccc; }
+        .success { background: #ccffcc; }
+        button { padding: 10px 20px; margin: 5px; }
+        pre { background: #333; color: #0f0; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Test Order API</h1>
+    
+    <div>
+        <label>Token:</label><br>
+        <input type="text" id="token" style="width: 500px;" value="33|f4R95belge6tv6VbvwKgF2jwAJvLzcJYhr3B7UzH4bd3ce09">
+    </div>
+    
+    <div style="margin-top: 20px;">
+        <button onclick="testProfile()">1. Test Profile (Auth Check)</button>
+        <button onclick="testCart()">2. Test Get Cart</button>
+        <button onclick="testCreateOrder()">3. Test Create Order</button>
+    </div>
+    
+    <div id="results" style="margin-top: 20px;"></div>
+    
+    <script>
+        const API_URL = 'http://localhost:8000/api';
+        
+        function getToken() {
+            return document.getElementById('token').value;
+        }
+        
+        function showResult(title, data, isError = false) {
+            const div = document.createElement('div');
+            div.className = 'result ' + (isError ? 'error' : 'success');
+            div.innerHTML = `
+                <h3>${title}</h3>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+            document.getElementById('results').appendChild(div);
+        }
+        
+        async function testProfile() {
+            document.getElementById('results').innerHTML = '';
+            try {
+                const response = await fetch(`${API_URL}/users/profile`, {
+                    headers: {
+                        'Authorization': `Bearer ${getToken()}`,
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const data = await response.json();
+                showResult(`Profile API (Status: ${response.status})`, data, !response.ok);
+            } catch (error) {
+                showResult('Profile Error', { error: error.message }, true);
+            }
+        }
+        
+        async function testCart() {
+            document.getElementById('results').innerHTML = '';
+            try {
+                const response = await fetch(`${API_URL}/cart`, {
+                    headers: {
+                        'Authorization': `Bearer ${getToken()}`,
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const data = await response.json();
+                showResult(`Cart API (Status: ${response.status})`, data, !response.ok);
+            } catch (error) {
+                showResult('Cart Error', { error: error.message }, true);
+            }
+        }
+        
+        async function testCreateOrder() {
+            document.getElementById('results').innerHTML = '';
+            try {
+                const response = await fetch(`${API_URL}/orders`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${getToken()}`,
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        paymentMethod: 'cash'
+                    })
+                });
+                const data = await response.json();
+                showResult(`Create Order API (Status: ${response.status})`, data, !response.ok);
+            } catch (error) {
+                showResult('Create Order Error', { error: error.message }, true);
+            }
+        }
+    </script>
+</body>
+</html>

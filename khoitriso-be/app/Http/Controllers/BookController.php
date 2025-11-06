@@ -18,7 +18,15 @@ class BookController extends Controller
         if ($request->filled('approvalStatus')) $q->where('approval_status', $request->integer('approvalStatus'));
         $limit = (int) $request->query('pageSize', 20);
         $res = $q->paginate(max(1, min(100, $limit)));
-        return response()->json(['books' => $res->items(), 'total' => $res->total(), 'hasMore' => $res->hasMorePages()]);
+        return response()->json([
+            'data' => $res->items(), 
+            'total' => $res->total(), 
+            'current_page' => $res->currentPage(),
+            'last_page' => $res->lastPage(),
+            'per_page' => $res->perPage(),
+            'from' => $res->firstItem(),
+            'to' => $res->lastItem()
+        ]);
     }
 
     public function show(int $id)

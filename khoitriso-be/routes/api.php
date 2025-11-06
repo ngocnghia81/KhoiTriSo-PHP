@@ -5,6 +5,25 @@ use Illuminate\Support\Facades\Route;
 // Public health endpoint
 Route::get('system/health', [\App\Http\Controllers\SystemController::class, 'health']);
 
+// Language endpoints (public)
+Route::get('language', [\App\Http\Controllers\LanguageController::class, 'getCurrent']);
+Route::get('language/supported', [\App\Http\Controllers\LanguageController::class, 'getSupported']);
+Route::post('language/set', [\App\Http\Controllers\LanguageController::class, 'setLanguage']);
+Route::get('language/translations', [\App\Http\Controllers\LanguageController::class, 'getTranslations']);
+Route::get('language/translations/all', [\App\Http\Controllers\LanguageController::class, 'getAllTranslations']);
+
+// Public courses and books (no auth required)
+Route::get('courses', [\App\Http\Controllers\CourseController::class, 'index']);
+Route::get('courses/{id}', [\App\Http\Controllers\CourseController::class, 'show']);
+Route::get('books', [\App\Http\Controllers\BookController::class, 'index']);
+Route::get('books/{id}', [\App\Http\Controllers\BookController::class, 'show']);
+Route::get('categories', [\App\Http\Controllers\CategoryController::class, 'index']);
+Route::get('categories/{id}', [\App\Http\Controllers\CategoryController::class, 'show']);
+
+// Search (public)
+Route::get('search', [\App\Http\Controllers\SearchController::class, 'search']);
+Route::get('search/suggestions', [\App\Http\Controllers\SearchController::class, 'suggestions']);
+
 Route::prefix('auth')->group(function () {
     Route::post('register', [\App\Http\Controllers\AuthController::class, 'register']);
     Route::post('login', [\App\Http\Controllers\AuthController::class, 'login']);
@@ -46,15 +65,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('users/change-password', [\App\Http\Controllers\UserController::class, 'changePassword']);
 
     // Categories (admin-protected later when roles wired)
-    Route::get('categories', [\App\Http\Controllers\CategoryController::class, 'index']);
     Route::post('categories', [\App\Http\Controllers\CategoryController::class, 'store']);
-    Route::get('categories/{id}', [\App\Http\Controllers\CategoryController::class, 'show']);
     Route::put('categories/{id}', [\App\Http\Controllers\CategoryController::class, 'update']);
     Route::delete('categories/{id}', [\App\Http\Controllers\CategoryController::class, 'destroy']);
 
-    // Courses
-    Route::get('courses', [\App\Http\Controllers\CourseController::class, 'index']);
-    Route::get('courses/{id}', [\App\Http\Controllers\CourseController::class, 'show']);
+    // Courses (protected routes)
     Route::post('courses', [\App\Http\Controllers\CourseController::class, 'store']);
     Route::put('courses/{id}', [\App\Http\Controllers\CourseController::class, 'update']);
     Route::delete('courses/{id}', [\App\Http\Controllers\CourseController::class, 'destroy']);
@@ -69,9 +84,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('lessons/{id}/video-progress', [\App\Http\Controllers\ProgressController::class, 'getVideo']);
     Route::post('lessons/{id}/video-progress', [\App\Http\Controllers\ProgressController::class, 'updateVideo']);
 
-    // Books
-    Route::get('books', [\App\Http\Controllers\BookController::class, 'index']);
-    Route::get('books/{id}', [\App\Http\Controllers\BookController::class, 'show']);
+    // Books (protected routes)
     Route::post('books', [\App\Http\Controllers\BookController::class, 'store']);
     Route::put('books/{id}', [\App\Http\Controllers\BookController::class, 'update']);
     Route::delete('books/{id}', [\App\Http\Controllers\BookController::class, 'destroy']);
@@ -82,14 +95,16 @@ Route::middleware('auth:sanctum')->group(function () {
     // Cart
     Route::get('cart', [\App\Http\Controllers\CartController::class, 'index']);
     Route::post('cart', [\App\Http\Controllers\CartController::class, 'store']);
+    Route::put('cart/{id}', [\App\Http\Controllers\CartController::class, 'update']);
     Route::delete('cart/{id}', [\App\Http\Controllers\CartController::class, 'destroy']);
-    Route::delete('cart/clear', [\App\Http\Controllers\CartController::class, 'clear']);
+    Route::delete('cart', [\App\Http\Controllers\CartController::class, 'clear']);
 
     // Orders
     Route::get('orders', [\App\Http\Controllers\OrderController::class, 'index']);
     Route::get('orders/{id}', [\App\Http\Controllers\OrderController::class, 'show']);
     Route::post('orders', [\App\Http\Controllers\OrderController::class, 'store']);
-    Route::put('orders/{id}/cancel', [\App\Http\Controllers\OrderController::class, 'cancel']);
+    Route::post('orders/{id}/cancel', [\App\Http\Controllers\OrderController::class, 'cancel']);
+    Route::post('orders/{id}/pay', [\App\Http\Controllers\OrderController::class, 'pay']);
     Route::post('orders/{id}/payment-callback', [\App\Http\Controllers\OrderController::class, 'paymentCallback']);
 
     // Coupons
@@ -180,12 +195,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Uploads
     Route::post('upload/image', [\App\Http\Controllers\UploadController::class, 'image']);
     Route::post('upload/video', [\App\Http\Controllers\UploadController::class, 'video']);
-    Route::post('upload/document', [\App\Http\Controllers\UploadController::class, 'document']);
+    Route::post('upload/video', [\App\Http\Controllers\UploadController::class, 'video']);
     Route::post('upload/ebook', [\App\Http\Controllers\UploadController::class, 'ebook']);
-
-    // Search
-    Route::get('search', [\App\Http\Controllers\SearchController::class, 'search']);
-    Route::get('search/suggestions', [\App\Http\Controllers\SearchController::class, 'suggestions']);
 
     // System (health is public, below are protected)
     Route::get('system/settings', [\App\Http\Controllers\SystemController::class, 'settings']);

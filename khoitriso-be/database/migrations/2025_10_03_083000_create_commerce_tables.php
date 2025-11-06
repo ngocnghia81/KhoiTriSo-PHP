@@ -86,8 +86,8 @@ return new class extends Migration
             $table->decimal('discount_value', 10, 2);
             $table->decimal('max_discount_amount', 10, 2)->nullable();
             $table->decimal('min_order_amount', 10, 2)->default(0);
-            $table->timestamp('valid_from');
-            $table->timestamp('valid_to');
+            $table->timestamp('valid_from')->nullable();
+            $table->timestamp('valid_to')->nullable();
             $table->integer('usage_limit')->nullable();
             $table->integer('used_count')->default(0);
             $table->boolean('is_active')->default(true);

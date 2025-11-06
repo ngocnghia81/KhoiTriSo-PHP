@@ -3,18 +3,16 @@ import Logo from "./Logo";
 
 const navigation = {
     courses: [
-        { name: "Khóa học miễn phí", href: "/courses/free" },
-        { name: "Toán học", href: "/courses/math" },
-        { name: "Vật lý", href: "/courses/physics" },
-        { name: "Hóa học", href: "/courses/chemistry" },
+        { name: "Khóa học miễn phí", href: "/courses?category=free" },
+        { name: "Toán học", href: "/courses?category=math" },
+        { name: "Vật lý", href: "/courses?category=physics" },
+        { name: "Hóa học", href: "/courses?category=chemistry" },
     ],
     books: [
         { name: "Sách điện tử", href: "/books" },
         { name: "Kích hoạt sách", href: "/books/activation" },
-        { name: "Hướng dẫn sử dụng", href: "/books/guide" },
     ],
     support: [
-        { name: "Diễn đàn", href: "/forum" },
         { name: "Liên hệ", href: "/contact" },
         { name: "Câu hỏi thường gặp", href: "/faq" },
         { name: "Hỗ trợ kỹ thuật", href: "/support" },

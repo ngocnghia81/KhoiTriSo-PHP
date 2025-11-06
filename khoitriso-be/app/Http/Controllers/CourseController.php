@@ -29,9 +29,13 @@ class CourseController extends Controller
         $limit = max(1, min(100, (int) $request->query('limit', 20)));
         $courses = $query->paginate($limit);
         return response()->json([
-            'courses' => $courses->items(),
+            'data' => $courses->items(),
             'total' => $courses->total(),
-            'hasMore' => $courses->hasMorePages(),
+            'current_page' => $courses->currentPage(),
+            'last_page' => $courses->lastPage(),
+            'per_page' => $courses->perPage(),
+            'from' => $courses->firstItem(),
+            'to' => $courses->lastItem()
         ]);
     }
 

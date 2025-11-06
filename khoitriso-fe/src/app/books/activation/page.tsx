@@ -2,8 +2,6 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { Metadata } from 'next';
 import {
   BookOpenIcon,
   KeyIcon,
@@ -110,30 +108,51 @@ export default function BookActivationPage() {
       return;
     }
 
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setError('Vui lòng đăng nhập để kích hoạt sách');
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Mock successful activation
-      // Create expiry date (only runs on client after user action, so no hydration issue)
-      const expiryDate = new Date();
-      expiryDate.setFullYear(expiryDate.getFullYear() + 2);
-      
-      const mockBook: ActivatedBook = {
-        title: 'Sách Toán học lớp 12 - Nâng cao',
-        expiryDate,
-        accessUrl: formData.questionId 
-          ? `/books/content?code=${formData.activationCode}&question=${formData.questionId}`
-          : `/books/content?code=${formData.activationCode}`
-      };
+      const response = await fetch('http://localhost:8000/api/books/activate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          activationCode: formData.activationCode.trim()
+        })
+      });
 
-      setActivatedBook(mockBook);
-      setIsActivated(true);
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Extract book info from response
+        const userBook = data.userBook;
+        const expiryDate = userBook.expires_at ? new Date(userBook.expires_at) : new Date();
+        
+        const activatedBookData: ActivatedBook = {
+          title: userBook.book?.title || 'Sách điện tử',
+          expiryDate,
+          accessUrl: formData.questionId 
+            ? `/books/content?code=${formData.activationCode}&question=${formData.questionId}`
+            : `/books/content?code=${formData.activationCode}`
+        };
+
+        setActivatedBook(activatedBookData);
+        setIsActivated(true);
+      } else {
+        setError(data.message || 'Mã kích hoạt không hợp lệ hoặc đã được sử dụng');
+      }
     } catch (err) {
-      setError('Có lỗi xảy ra khi kích hoạt. Vui lòng thử lại.');
+      console.error('Activation error:', err);
+      setError('Có lỗi xảy ra khi kết nối đến máy chủ. Vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
     }

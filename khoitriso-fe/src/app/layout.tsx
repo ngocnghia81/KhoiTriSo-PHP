@@ -10,6 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'),
   title: "Khởi Trí Số - Nền tảng giáo dục trực tuyến",
   description: "Hệ thống học tập trực tuyến toàn diện với sách điện tử, video bài giảng, bài tập tương tác và cộng đồng học tập sôi động.",
   keywords: "học trực tuyến, khóa học online, sách điện tử, bài tập trực tuyến, giáo dục số",

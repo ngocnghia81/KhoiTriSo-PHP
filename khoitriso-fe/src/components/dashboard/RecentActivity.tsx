@@ -3,13 +3,12 @@ import {
   ShoppingCartIcon,
   AcademicCapIcon,
   BookOpenIcon,
-  ChatBubbleLeftRightIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 
 interface Activity {
   id: number;
-  type: 'user_register' | 'order' | 'course_complete' | 'book_activate' | 'forum_post' | 'system';
+  type: 'user_register' | 'order' | 'course_complete' | 'book_activate' | 'system';
   title: string;
   description: string;
   time: string;
@@ -55,14 +54,6 @@ const activities: Activity[] = [
     user: 'Phạm Thị D'
   },
   {
-    id: 5,
-    type: 'forum_post',
-    title: 'Bài viết mới trong diễn đàn',
-    description: 'Câu hỏi về đạo hàm hàm số',
-    time: '3 giờ trước',
-    user: 'Hoàng Văn E'
-  },
-  {
     id: 6,
     type: 'system',
     title: 'Cập nhật hệ thống',
@@ -83,8 +74,6 @@ const getActivityIcon = (type: Activity['type']) => {
       return <AcademicCapIcon className={`${iconClass} text-purple-500`} />;
     case 'book_activate':
       return <BookOpenIcon className={`${iconClass} text-yellow-500`} />;
-    case 'forum_post':
-      return <ChatBubbleLeftRightIcon className={`${iconClass} text-indigo-500`} />;
     case 'system':
       return <ExclamationTriangleIcon className={`${iconClass} text-gray-500`} />;
     default:
@@ -102,8 +91,6 @@ const getActivityColor = (type: Activity['type']) => {
       return 'bg-purple-100 border-purple-200';
     case 'book_activate':
       return 'bg-yellow-100 border-yellow-200';
-    case 'forum_post':
-      return 'bg-indigo-100 border-indigo-200';
     case 'system':
       return 'bg-gray-100 border-gray-200';
     default:

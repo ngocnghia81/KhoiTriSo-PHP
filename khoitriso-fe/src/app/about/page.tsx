@@ -6,8 +6,6 @@ import {
   HeartIcon,
   LightBulbIcon,
   ShieldCheckIcon,
-  GlobeAltIcon,
-  CheckCircleIcon
 } from '@heroicons/react/24/outline';
 
 export const metadata: Metadata = {
@@ -115,77 +113,6 @@ export default function AboutPage() {
               Chúng tôi tin rằng giáo dục chất lượng cao phải được tiếp cận bởi tất cả mọi người, 
               bất kể họ ở đâu hay hoàn cảnh ra sao.
             </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Mission & Vision */}
-      <div className="py-24 sm:py-32">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-            <div>
-              <div className="flex items-center mb-6">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                    <LightBulbIcon className="h-6 w-6 text-blue-600" />
-                  </div>
-                </div>
-                <h2 className="ml-4 text-3xl font-bold text-gray-900">Sứ mệnh</h2>
-              </div>
-              <p className="text-lg text-gray-600 leading-relaxed">
-                Khởi Trí Số được thành lập với sứ mệnh democratize education - 
-                mang giáo dục chất lượng cao đến với mọi người, mọi lúc, mọi nơi. 
-                Chúng tôi tin rằng việc học tập không nên bị giới hạn bởi địa lý, 
-                thời gian hay điều kiện kinh tế.
-              </p>
-              <div className="mt-8 space-y-4">
-                {[
-                  'Cung cấp nội dung giáo dục chất lượng cao',
-                  'Hỗ trợ học viên trong suốt hành trình học tập',
-                  'Kết nối học viên với các chuyên gia hàng đầu',
-                  'Ứng dụng công nghệ tiên tiến vào giáo dục'
-                ].map((item, index) => (
-                  <div key={index} className="flex items-start">
-                    <CheckCircleIcon className="h-6 w-6 text-green-500 mt-0.5 mr-3 flex-shrink-0" />
-                    <span className="text-gray-700">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center mb-6">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                    <GlobeAltIcon className="h-6 w-6 text-green-600" />
-                  </div>
-                </div>
-                <h2 className="ml-4 text-3xl font-bold text-gray-900">Tầm nhìn</h2>
-              </div>
-              <p className="text-lg text-gray-600 leading-relaxed">
-                Trở thành nền tảng giáo dục trực tuyến hàng đầu khu vực Đông Nam Á, 
-                góp phần nâng cao chất lượng nguồn nhân lực và thúc đẩy sự phát triển 
-                bền vững của xã hội thông qua giáo dục.
-              </p>
-              <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="bg-blue-50 rounded-lg p-6">
-                  <div className="text-2xl font-bold text-blue-600 mb-2">2025</div>
-                  <p className="text-sm text-gray-700">Mở rộng ra 5 quốc gia ASEAN</p>
-                </div>
-                <div className="bg-green-50 rounded-lg p-6">
-                  <div className="text-2xl font-bold text-green-600 mb-2">100K+</div>
-                  <p className="text-sm text-gray-700">Học viên trên toàn khu vực</p>
-                </div>
-                <div className="bg-purple-50 rounded-lg p-6">
-                  <div className="text-2xl font-bold text-purple-600 mb-2">1000+</div>
-                  <p className="text-sm text-gray-700">Khóa học đa dạng</p>
-                </div>
-                <div className="bg-yellow-50 rounded-lg p-6">
-                  <div className="text-2xl font-bold text-yellow-600 mb-2">AI-Powered</div>
-                  <p className="text-sm text-gray-700">Trải nghiệm học tập cá nhân hóa</p>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>

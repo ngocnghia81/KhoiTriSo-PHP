@@ -1,11 +1,12 @@
 "use client";
 // Fixed dropdown styling
 
-import { useState, useRef, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { useState, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useClientOnly } from "@/hooks/useClientOnly";
 import Link from "next/link";
 import Image from "next/image";
+import { authService } from "@/services/authService";
 import {
     Bars3Icon,
     XMarkIcon,
@@ -26,11 +27,11 @@ const navigation = [
         name: "Khóa học",
         href: "/courses",
         children: [
-            { name: "Khóa học miễn phí", href: "/courses/free" },
-            { name: "Khóa học trả phí", href: "/courses/paid" },
-            { name: "Toán học", href: "/courses/math" },
-            { name: "Vật lý", href: "/courses/physics" },
-            { name: "Hóa học", href: "/courses/chemistry" },
+            { name: "Khóa học miễn phí", href: "/courses?category=free" },
+            { name: "Khóa học trả phí", href: "/courses?category=paid" },
+            { name: "Toán học", href: "/courses?category=math" },
+            { name: "Vật lý", href: "/courses?category=physics" },
+            { name: "Hóa học", href: "/courses?category=chemistry" },
         ],
     },
     {
@@ -39,27 +40,17 @@ const navigation = [
         children: [
             { name: "Danh sách sách", href: "/books" },
             { name: "Kích hoạt sách", href: "/books/activation" },
-            { name: "Sách Toán", href: "/books/math" },
-            { name: "Sách Lý", href: "/books/physics" },
-            { name: "Sách Hóa", href: "/books/chemistry" },
         ],
     },
     {
-        name: "Diễn đàn",
-        href: "/forum",
-        children: [
-            { name: "Hỏi đáp bài tập", href: "/forum" },
-            { name: "Đặt câu hỏi", href: "/forum/ask" },
-            { name: "Thảo luận Toán", href: "/forum/math" },
-            { name: "Thảo luận Lý", href: "/forum/physics" },
-        ],
+        name: "Đơn hàng",
+        href: "/orders",
     },
     {
         name: "Về chúng tôi",
         href: "/about",
         children: [
             { name: "Giới thiệu", href: "/about" },
-            { name: "Tầm nhìn & Sứ mệnh", href: "/about/vision" },
         ],
     },
     {
@@ -68,42 +59,86 @@ const navigation = [
     },
 ];
 
-const categories = [
-    "Tất cả danh mục",
-    "Toán học",
-    "Vật lý",
-    "Hóa học",
-    "Sinh học",
-    "Văn học",
-    "Tiếng Anh",
-    "Lịch sử",
-];
-
 export default function Header() {
     const pathname = usePathname();
+    const router = useRouter();
     const isClient = useClientOnly();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [cartOpen, setCartOpen] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
-    const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
-    const [selectedCategory, setSelectedCategory] = useState("Tất cả danh mục");
     const [searchQuery, setSearchQuery] = useState("");
-    const categoryDropdownRef = useRef<HTMLDivElement>(null);
+    const [hasToken, setHasToken] = useState(false);
+    const [cartCount, setCartCount] = useState(0);
 
-    // Close dropdown when clicking outside
+    // Fetch cart count
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
-                setCategoryDropdownOpen(false);
+        const fetchCartCount = async () => {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                setCartCount(0);
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:8000/api/cart', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/json',
+                    },
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    setCartCount(data.totalItems || data.data?.length || 0);
+                }
+            } catch (error) {
+                console.error('Error fetching cart count:', error);
             }
         };
 
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
+        fetchCartCount();
+        
+        // Re-fetch when page becomes visible (user comes back to tab)
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                fetchCartCount();
+            }
         };
-    }, []);
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [hasToken]);
+
+    const handleLogout = async () => {
+        try {
+            await authService.logout();
+            setHasToken(false);
+            window.location.href = "/";
+        } catch (error) {
+            console.error('Logout error:', error);
+            // Force logout even if API fails
+            localStorage.removeItem("user");
+            localStorage.removeItem("token");
+            setHasToken(false);
+            window.location.href = "/";
+        }
+    };
+
+    function LoginButton() {
+
+        useEffect(() => {
+            const token = localStorage.getItem("user");
+            console.log(token);
+            if (token) {
+                setHasToken(true);
+            }
+        }, []);
+    }
+    LoginButton();
 
     // Function to check if a navigation item is active
     const isActive = (href: string, children?: Array<{ href: string }>) => {
@@ -111,17 +146,19 @@ export default function Header() {
         if (href !== "/" && pathname.startsWith(href)) return true;
         if (children) {
             return children.some(
-                (child) =>
-                    pathname === child.href || pathname.startsWith(child.href)
+                (child) => pathname === child.href || pathname.startsWith(child.href)
             );
         }
         return false;
     };
 
+
+
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
-        console.log("Search:", searchQuery, "Category:", selectedCategory);
-        // TODO: Backend sẽ xử lý search
+        if (!searchQuery.trim()) return;
+        // Use Next.js router for better UX (no page reload)
+        router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
     };
 
     return (
@@ -141,86 +178,21 @@ export default function Header() {
                                 onSubmit={handleSearch}
                                 className="flex w-full bg-white rounded-full shadow-lg border border-gray-200 relative"
                             >
-                                {/* Category Dropdown */}
-                                <div className="relative overflow-visible" ref={categoryDropdownRef}>
-                                    <button
-                                        type="button"
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            console.log('Dropdown clicked, current state:', categoryDropdownOpen);
-                                            const newState = !categoryDropdownOpen;
-                                            console.log('Setting dropdown to:', newState);
-                                            setCategoryDropdownOpen(newState);
-                                        }}
-                                        className="h-12 pl-6 pr-8 bg-white text-gray-700 border-r border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-medium min-w-[160px] cursor-pointer flex items-center justify-between transition-all duration-200 hover:bg-gray-50 overflow-visible rounded-l-full"
-                                        aria-expanded={categoryDropdownOpen}
-                                        aria-haspopup="listbox"
-                                        aria-label="Chọn danh mục"
-                                    >
-                                        <span className="truncate">
-                                            {selectedCategory}
-                                        </span>
-                                        <ChevronDownIcon 
-                                            className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
-                                                categoryDropdownOpen ? 'rotate-180' : ''
-                                            }`} 
-                                        />
-                                    </button>
-                                    
-                                    {/* Dropdown Menu */}
-                                    {categoryDropdownOpen && (
-                                        <div className="absolute left-0 top-full z-[100] w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl ring-1 ring-gray-900/5 animate-in fade-in-0 zoom-in-95 duration-200"
-                                             style={{ minHeight: '200px' }}>
-                                            <div className="py-2 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-                                                {categories.map((category, index) => (
-                                                    <button
-                                                        key={category}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setSelectedCategory(category);
-                                                            setCategoryDropdownOpen(false);
-                                                        }}
-                                                        className={`w-full text-left px-4 py-3 text-sm font-medium transition-all duration-150 hover:bg-blue-50 hover:text-blue-600 hover:pl-5 active:bg-blue-100 ${
-                                                            selectedCategory === category 
-                                                                ? 'bg-blue-50 text-blue-600 font-semibold border-r-2 border-blue-600' 
-                                                                : 'text-gray-700 hover:font-medium'
-                                                        } ${index === 0 ? 'rounded-t-lg' : ''} ${index === categories.length - 1 ? 'rounded-b-lg' : ''}`}
-                                                    >
-                                                        <span className="flex items-center justify-between">
-                                                            {category}
-                                                            {selectedCategory === category && (
-                                                                <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                                                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                                                </svg>
-                                                            )}
-                                                        </span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
                                 {/* Search Input */}
                                 <div className="flex-1 relative">
                                     <input
                                         type="search"
                                         value={searchQuery}
-                                        onChange={(e) =>
-                                            setSearchQuery(e.target.value)
-                                        }
-                                        placeholder="Search your courses..."
-                                        className="w-full h-12 px-4 pr-32 text-gray-700 bg-white focus:outline-none focus:ring-0 text-sm placeholder-gray-400 border-0 rounded-r-full"
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        placeholder="Tìm kiếm khóa học, sách..."
+                                        className="w-full h-12 px-6 pr-32 text-gray-700 bg-white focus:outline-none focus:ring-0 text-sm placeholder-gray-400 border-0 rounded-full"
                                     />
                                     <button
                                         type="submit"
                                         className="absolute right-1 top-1 h-10 px-6 text-white font-medium transition-all duration-200 flex items-center group rounded-full shadow-md hover:shadow-lg transform hover:scale-105"
                                         style={{ backgroundColor: "#8b5cf6" }}
                                     >
-                                        <span className="mr-2 text-sm">
-                                            Search
-                                        </span>
+                                        <span className="mr-2 text-sm">Tìm kiếm</span>
                                         <MagnifyingGlassIcon className="w-4 h-4" />
                                     </button>
                                 </div>
@@ -287,13 +259,29 @@ export default function Header() {
 
                             {/* Auth Buttons */}
                             <div className="flex items-center space-x-3">
-                    
-                                <Link
-                                    href="/auth/login"
-                                    className="px-6 py-2 bg-gray-800 text-white font-semibold rounded-full hover:bg-gray-700 transition-all duration-300 hover:shadow-lg transform hover:scale-105"
-                                >
-                                    Đăng nhập
-                                </Link>
+                                {hasToken ? (
+                                    <button
+                                        onClick={handleLogout}
+                                        className="px-6 py-2 font-semibold rounded-full transition-all duration-300 transform bg-red-600 text-white hover:bg-red-700 hover:shadow-lg hover:scale-105"
+                                    >
+                                        Đăng xuất
+                                    </button>
+                                ) : (
+                                    <>
+                                        <Link
+                                            href="/auth/login"
+                                            className="px-6 py-2 font-semibold rounded-full transition-all duration-300 transform bg-gray-800 text-white hover:bg-gray-700 hover:shadow-lg hover:scale-105"
+                                        >
+                                            Đăng nhập
+                                        </Link>
+                                        <Link
+                                            href="/auth/register"
+                                            className="px-6 py-2 font-semibold rounded-full transition-all duration-300 transform bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg hover:scale-105"
+                                        >
+                                            Đăng ký
+                                        </Link>
+                                    </>
+                                )}
                             </div>
 
                             {/* Mobile Menu Button */}
@@ -320,37 +308,31 @@ export default function Header() {
                                     key={item.name}
                                     className="relative group"
                                     onMouseEnter={() =>
-                                        item.children &&
-                                        setActiveDropdown(item.name)
+                                        item.children && setActiveDropdown(item.name)
                                     }
                                     onMouseLeave={() => setActiveDropdown(null)}
                                 >
                                     <Link
                                         href={item.href}
-                                        className={`flex items-center py-2 font-medium text-sm transition-colors ${
-                                            isActive(item.href, item.children)
-                                                ? "text-blue-600 border-b-2 border-blue-600"
-                                                : "text-gray-700 hover:text-blue-600"
-                                        }`}
+                                        className={`flex items-center py-2 font-medium text-sm transition-colors ${isActive(item.href, item.children)
+                                            ? "text-blue-600 border-b-2 border-blue-600"
+                                            : "text-gray-700 hover:text-blue-600"
+                                            }`}
                                     >
                                         {item.name}
                                         {item.children && (
                                             <ChevronDownIcon
-                                                className={`ml-1 h-4 w-4 transition-transform duration-200 ${
-                                                    activeDropdown === item.name
-                                                        ? "rotate-180"
-                                                        : ""
-                                                }`}
+                                                className={`ml-1 h-4 w-4 transition-transform duration-200 ${activeDropdown === item.name ? "rotate-180" : ""
+                                                    }`}
                                             />
                                         )}
                                     </Link>
                                     {item.children && (
                                         <div
-                                            className={`absolute left-0 z-10 w-64 rounded-xl bg-white p-4 shadow-xl ring-1 ring-gray-900/5 transition-all duration-200 ${
-                                                activeDropdown === item.name
-                                                    ? "opacity-100 translate-y-0 pointer-events-auto"
-                                                    : "opacity-0 translate-y-1 pointer-events-none"
-                                            }`}
+                                            className={`absolute left-0 z-10 w-64 rounded-xl bg-white p-4 shadow-xl ring-1 ring-gray-900/5 transition-all duration-200 ${activeDropdown === item.name
+                                                ? "opacity-100 translate-y-0 pointer-events-auto"
+                                                : "opacity-0 translate-y-1 pointer-events-none"
+                                                }`}
                                             style={{ top: "100%" }}
                                         >
                                             <div className="space-y-2">
@@ -358,21 +340,13 @@ export default function Header() {
                                                     <Link
                                                         key={child.name}
                                                         href={child.href}
-                                                        className={`block rounded-lg p-3 transition-colors group ${
-                                                            child.name ===
-                                                            "Home One"
-                                                                ? "bg-blue-50 text-blue-600"
-                                                                : "hover:bg-blue-50 hover:text-blue-600"
-                                                        }`}
-                                                        onClick={() =>
-                                                            setActiveDropdown(
-                                                                null
-                                                            )
-                                                        }
+                                                        className={`block rounded-lg p-3 transition-colors group ${child.name === "Home One"
+                                                            ? "bg-blue-50 text-blue-600"
+                                                            : "hover:bg-blue-50 hover:text-blue-600"
+                                                            }`}
+                                                        onClick={() => setActiveDropdown(null)}
                                                     >
-                                                        <div className="font-medium">
-                                                            {child.name}
-                                                        </div>
+                                                        <div className="font-medium">{child.name}</div>
                                                     </Link>
                                                 ))}
                                             </div>
@@ -391,22 +365,22 @@ export default function Header() {
                                 </div>
                                 <div className="flex items-center">
                                     <span>✉️</span>
-                                    <span className="ml-2">
-                                        hello@khoitriso.com
-                                    </span>
+                                    <span className="ml-2">hello@khoitriso.com</span>
                                 </div>
                             </div>
 
                             {/* Cart */}
-                            <button
+                            <Link
+                                href="/cart"
                                 className="relative p-2 text-gray-600 hover:text-blue-600 transition-colors"
-                                onClick={() => setCartOpen(true)}
                             >
                                 <ShoppingBagIcon className="h-6 w-6" />
-                                <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                                    3
-                                </span>
-                            </button>
+                                {cartCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                                        {cartCount > 99 ? '99+' : cartCount}
+                                    </span>
+                                )}
+                            </Link>
 
                             {/* Menu Toggle */}
                             <button
@@ -423,19 +397,15 @@ export default function Header() {
             {/* Sidebar Menu */}
             {mobileMenuOpen && (
                 <div className="fixed inset-0 z-50">
-                <BackdropBlur onClick={() => setMobileMenuOpen(false)} />
+                    <BackdropBlur onClick={() => setMobileMenuOpen(false)} />
                     <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white shadow-xl overflow-y-auto">
                         {/* Header */}
                         <div className="flex items-center justify-between p-6 border-b border-gray-100">
                             <div className="flex items-center space-x-3">
                                 <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
-                                    <span className="text-white font-bold text-lg">
-                                        E
-                                    </span>
+                                    <span className="text-white font-bold text-lg">E</span>
                                 </div>
-                                <span className="text-xl font-bold text-gray-900">
-                                    Eduna
-                                </span>
+                                <span className="text-xl font-bold text-gray-900">Eduna</span>
                             </div>
                             <button
                                 type="button"
@@ -636,18 +606,12 @@ export default function Header() {
             )}
 
             {/* Sidebar Cart */}
-            <div
-                className={`fixed inset-0 z-50 ${
-                    cartOpen ? "block" : "hidden"
-                }`}
-            >
+            <div className={`fixed inset-0 z-50 ${cartOpen ? "block" : "hidden"}`}>
                 <BackdropBlur onClick={() => setCartOpen(false)} />
                 <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white shadow-xl overflow-y-auto">
                     {/* Cart Header */}
                     <div className="flex items-center justify-between p-6 border-b border-gray-100">
-                        <h3 className="text-xl font-bold text-gray-900">
-                            Add to cart
-                        </h3>
+                        <h3 className="text-xl font-bold text-gray-900">Add to cart</h3>
                         <button
                             type="button"
                             className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 hover:bg-gray-200 transition-colors"
@@ -667,10 +631,7 @@ export default function Header() {
                                 </div>
                                 <div>
                                     <p className="text-sm text-gray-600">
-                                        1 x{" "}
-                                        <strong className="text-gray-900">
-                                            $64
-                                        </strong>
+                                        1 x <strong className="text-gray-900">$64</strong>
                                     </p>
                                     <h4 className="font-medium text-gray-900">
                                         Digital marketing demo
@@ -690,10 +651,7 @@ export default function Header() {
                                 </div>
                                 <div>
                                     <p className="text-sm text-gray-600">
-                                        1 x{" "}
-                                        <strong className="text-gray-900">
-                                            $74
-                                        </strong>
+                                        1 x <strong className="text-gray-900">$74</strong>
                                     </p>
                                     <h4 className="font-medium text-gray-900">
                                         Business solution book
@@ -713,14 +671,9 @@ export default function Header() {
                                 </div>
                                 <div>
                                     <p className="text-sm text-gray-600">
-                                        1 x{" "}
-                                        <strong className="text-gray-900">
-                                            $94
-                                        </strong>
+                                        1 x <strong className="text-gray-900">$94</strong>
                                     </p>
-                                    <h4 className="font-medium text-gray-900">
-                                        Business type
-                                    </h4>
+                                    <h4 className="font-medium text-gray-900">Business type</h4>
                                 </div>
                             </div>
                             <button className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center text-red-600 hover:bg-red-200 transition-colors">
@@ -749,11 +702,7 @@ export default function Header() {
             </div>
 
             {/* Information Sidebar */}
-            <div
-                className={`fixed inset-0 z-50 ${
-                    sidebarOpen ? "block" : "hidden"
-                }`}
-            >
+            <div className={`fixed inset-0 z-50 ${sidebarOpen ? "block" : "hidden"}`}>
                 <BackdropBlur onClick={() => setSidebarOpen(false)} />
                 <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white shadow-xl overflow-y-auto">
                     {/* Sidebar Header */}

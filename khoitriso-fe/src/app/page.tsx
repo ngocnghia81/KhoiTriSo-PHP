@@ -18,42 +18,49 @@ import Logo from "@/components/Logo";
 const categories = [
     {
         name: "Toán học",
+        slug: "math",
         courses: 45,
         icon: "/images/category/category-1/1.svg",
         bgColor: "bg-blue-100",
     },
     {
         name: "Vật lý",
+        slug: "physics",
         courses: 32,
         icon: "/images/category/category-1/2.svg",
         bgColor: "bg-green-100",
     },
     {
         name: "Hóa học",
+        slug: "chemistry",
         courses: 28,
         icon: "/images/category/category-1/3.svg",
         bgColor: "bg-purple-100",
     },
     {
         name: "Sinh học",
+        slug: "biology",
         courses: 21,
         icon: "/images/category/category-1/4.svg",
         bgColor: "bg-red-100",
     },
     {
         name: "Văn học",
+        slug: "literature",
         courses: 18,
         icon: "/images/category/category-1/5.svg",
         bgColor: "bg-yellow-100",
     },
     {
         name: "Tiếng Anh",
+        slug: "english",
         courses: 25,
         icon: "/images/category/category-1/6.svg",
         bgColor: "bg-indigo-100",
     },
     {
         name: "Lịch sử",
+        slug: "history",
         courses: 15,
         icon: "/images/category/category-1/7.svg",
         bgColor: "bg-pink-100",
@@ -391,7 +398,7 @@ export default function Home() {
                         {categories.map((category, index) => (
                             <Link
                                 key={category.name}
-                                href={`/courses/${category.name.toLowerCase()}`}
+                                href={`/courses?category=${category.slug}`}
                                 className="group bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-2 border border-gray-100"
                                 style={{
                                     animationDelay: `${

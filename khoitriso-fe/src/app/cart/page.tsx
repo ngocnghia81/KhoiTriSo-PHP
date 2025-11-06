@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Metadata } from 'next';
 import {
   ShoppingCartIcon,
   TrashIcon,
@@ -12,7 +11,6 @@ import {
   ArrowRightIcon,
   ArrowLeftIcon,
   TagIcon,
-  GiftIcon,
   CreditCardIcon,
   ShieldCheckIcon
 } from '@heroicons/react/24/outline';
@@ -35,42 +33,6 @@ interface PromoCode {
   discount: number; // percentage
   type: 'percentage' | 'fixed';
 }
-
-// Mock data - sẽ được thay thế bằng state management (Redux, Zustand, etc.)
-const mockCartItems: CartItem[] = [
-  {
-    id: '1',
-    type: 'course',
-    title: 'Complete React Development Course',
-    instructor: 'Nguyễn Văn A',
-    image: '/images/course/course-1/1.png',
-    price: 599000,
-    originalPrice: 899000,
-    quantity: 1,
-    slug: 'complete-react-development'
-  },
-  {
-    id: '2',
-    type: 'book',
-    title: 'Sách Toán học lớp 12 - Nâng cao',
-    author: 'PGS. Trần Văn B',
-    image: '/images/product/cart-1.png',
-    price: 299000,
-    quantity: 1,
-    slug: 'toan-hoc-lop-12-nang-cao'
-  },
-  {
-    id: '3',
-    type: 'course',
-    title: 'Advanced JavaScript Concepts',
-    instructor: 'Lê Thị C',
-    image: '/images/course/course-1/2.png',
-    price: 799000,
-    originalPrice: 1299000,
-    quantity: 1,
-    slug: 'advanced-javascript-concepts'
-  }
-];
 
 const validPromoCodes: PromoCode[] = [
   { code: 'WELCOME10', discount: 10, type: 'percentage' },
@@ -103,27 +65,119 @@ const suggestedItems = [
 ];
 
 export default function CartPage() {
-  const [cartItems, setCartItems] = useState<CartItem[]>(mockCartItems);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [promoCode, setPromoCode] = useState('');
   const [appliedPromo, setAppliedPromo] = useState<PromoCode | null>(null);
   const [promoError, setPromoError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const updateQuantity = (id: string, newQuantity: number) => {
+  // Fetch cart items from API
+  useEffect(() => {
+    const fetchCart = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          setIsLoading(false);
+          return;
+        }
+
+        const response = await fetch('http://localhost:8000/api/cart', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Cart API response:', data);
+          console.log('First item:', data.data?.[0]);
+          
+          // Transform API data to CartItem format
+          const items: CartItem[] = (data.data || []).map((item: any) => {
+            console.log('Processing item:', item);
+            console.log('Item type:', item.item_type);
+            console.log('Course:', item.course);
+            console.log('Book:', item.book);
+            
+            return {
+              id: String(item.id),
+              type: item.item_type === 'course' ? 'course' : 'book',
+              title: item.course?.title || item.book?.title || 'Unknown',
+              instructor: item.course?.instructor?.name,
+              author: item.book?.author?.name,
+              image: item.course?.thumbnail || item.book?.cover_image || '/images/default.jpg',
+              price: Number(item.course?.price || item.book?.price || 0),
+              originalPrice: item.course?.original_price || item.book?.original_price,
+              quantity: item.quantity || 1,
+              slug: String(item.item_id)
+            };
+          });
+          
+          console.log('Transformed items:', items);
+          setCartItems(items);
+        }
+      } catch (error) {
+        console.error('Failed to fetch cart:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCart();
+  }, []);
+
+  const updateQuantity = async (id: string, newQuantity: number) => {
     if (newQuantity < 1) {
       removeItem(id);
       return;
     }
     
-    setCartItems(prev =>
-      prev.map(item =>
-        item.id === id ? { ...item, quantity: newQuantity } : item
-      )
-    );
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch(`http://localhost:8000/api/cart/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ quantity: newQuantity }),
+      });
+
+      if (response.ok) {
+        setCartItems(prev =>
+          prev.map(item =>
+            item.id === id ? { ...item, quantity: newQuantity } : item
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Failed to update quantity:', error);
+    }
   };
 
-  const removeItem = (id: string) => {
-    setCartItems(prev => prev.filter(item => item.id !== id));
+  const removeItem = async (id: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch(`http://localhost:8000/api/cart/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        setCartItems(prev => prev.filter(item => item.id !== id));
+      }
+    } catch (error) {
+      console.error('Failed to remove item:', error);
+    }
   };
 
   const applyPromoCode = () => {
@@ -187,6 +241,19 @@ export default function CartPage() {
 
     setCartItems(prev => [...prev, newItem]);
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center py-16">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Đang tải giỏ hàng...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (cartItems.length === 0) {
     return (
@@ -278,7 +345,7 @@ export default function CartPage() {
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-1">
                           <Link 
-                            href={`/${item.type === 'course' ? 'courses' : 'books'}/${item.slug}`}
+                            href={`/${item.type === 'course' ? 'courses' : 'books'}/${item.id}`}
                             className="hover:text-blue-600 transition-colors"
                           >
                             {item.title}

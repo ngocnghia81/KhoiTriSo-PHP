@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { 
@@ -19,28 +19,12 @@ import {
   ArrowRightIcon
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid, HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
+import { courseService } from '@/services/courseService';
+import type { Course } from '@/types';
 
-interface Course {
-  id: string;
-  title: string;
-  description: string;
-  instructor: string;
-  instructorId: string;
-  thumbnail: string;
-  price: number;
-  originalPrice?: number;
-  isFree: boolean;
-  level: string;
-  duration: string;
-  lessons: number;
-  students: number;
-  rating: number;
-  reviews: number;
-  category: string;
+interface CourseDisplay extends Course {
   isPopular?: boolean;
-  tags: string[];
   isNew?: boolean;
-  discountPercent?: number;
 }
 
 const categories = [
@@ -63,152 +47,68 @@ const sortOptions = [
   { value: 'rating', label: 'Đánh giá cao nhất' },
 ];
 
-const courses: Course[] = [
-  {
-    id: 'toan-lop-12-free',
-    title: 'Toán lớp 12 miễn phí - Chuẩn bị THPT Quốc gia',
-    description: 'Khóa học Toán lớp 12 miễn phí được thiết kế đặc biệt cho học sinh chuẩn bị thi THPT Quốc gia với phương pháp giảng dạy hiệu quả.',
-    instructor: 'Thầy Nguyễn Văn A',
-    instructorId: 'nguyen-van-a',
-    thumbnail: '/images/course/course-1/1.png',
-    price: 0,
-    isFree: true,
-    level: 'Lớp 12',
-    duration: '12 giờ',
-    lessons: 40,
-    students: 1234,
-    rating: 4.9,
-    reviews: 456,
-    category: 'math',
-    isPopular: true,
-    tags: ['Miễn phí', 'THPT Quốc gia', 'Đại số', 'Hình học'],
-  },
-  {
-    id: 'vat-ly-lop-12-free',
-    title: 'Vật lý lớp 12 miễn phí - Phương pháp sinh động',
-    description: 'Khóa học Vật lý lớp 12 với phương pháp giảng dạy sinh động và dễ hiểu, giúp học sinh nắm vững kiến thức cơ bản.',
-    instructor: 'Cô Trần Thị B',
-    instructorId: 'tran-thi-b',
-    thumbnail: '/images/course/course-1/2.png',
-    price: 0,
-    isFree: true,
-    level: 'Lớp 12',
-    duration: '10 giờ',
-    lessons: 35,
-    students: 987,
-    rating: 4.8,
-    reviews: 321,
-    category: 'physics',
-    tags: ['Miễn phí', 'Vật lý', 'Thí nghiệm'],
-  },
-  {
-    id: 'hoa-hoc-lop-12-premium',
-    title: 'Hóa học lớp 12 - Khóa học nâng cao Premium',
-    description: 'Khóa học Hóa học lớp 12 nâng cao với nhiều bài tập thực hành và video thí nghiệm chi tiết.',
-    instructor: 'Thầy Lê Văn C',
-    instructorId: 'le-van-c',
-    thumbnail: '/images/course/course-1/3.png',
-    price: 899000,
-    originalPrice: 1299000,
-    discountPercent: 31,
-    isFree: false,
-    level: 'Lớp 12',
-    duration: '15 giờ',
-    lessons: 50,
-    students: 567,
-    rating: 4.7,
-    reviews: 189,
-    category: 'chemistry',
-    isNew: true,
-    tags: ['Premium', 'Thí nghiệm', 'Nâng cao'],
-  },
-  {
-    id: 'tieng-anh-lop-12',
-    title: 'Tiếng Anh lớp 12 - Luyện thi THPT Quốc gia',
-    description: 'Khóa học Tiếng Anh lớp 12 tập trung vào kỹ năng làm bài thi THPT Quốc gia với nhiều đề thi thử.',
-    instructor: 'Cô Phạm Thị D',
-    instructorId: 'pham-thi-d',
-    thumbnail: '/images/course/course-1/4.png',
-    price: 699000,
-    originalPrice: 999000,
-    discountPercent: 30,
-    isFree: false,
-    level: 'Lớp 12',
-    duration: '20 giờ',
-    lessons: 60,
-    students: 789,
-    rating: 4.9,
-    reviews: 234,
-    category: 'english',
-    tags: ['THPT Quốc gia', 'Luyện thi', 'Kỹ năng'],
-  },
-  {
-    id: 'van-hoc-lop-12',
-    title: 'Văn học lớp 12 - Phân tích tác phẩm',
-    description: 'Khóa học Văn học lớp 12 với phương pháp phân tích tác phẩm hiệu quả và kỹ thuật làm bài thi.',
-    instructor: 'Cô Nguyễn Thị E',
-    instructorId: 'nguyen-thi-e',
-    thumbnail: '/images/course/course-1/5.png',
-    price: 599000,
-    isFree: false,
-    level: 'Lớp 12',
-    duration: '18 giờ',
-    lessons: 45,
-    students: 432,
-    rating: 4.6,
-    reviews: 156,
-    category: 'literature',
-    tags: ['Phân tích', 'Tác phẩm', 'Kỹ thuật'],
-  },
-  {
-    id: 'toan-lop-11-nang-cao',
-    title: 'Toán lớp 11 nâng cao - Chuẩn bị vào lớp 12',
-    description: 'Khóa học Toán lớp 11 nâng cao giúp học sinh củng cố kiến thức và chuẩn bị tốt cho lớp 12.',
-    instructor: 'Thầy Hoàng Văn F',
-    instructorId: 'hoang-van-f',
-    thumbnail: '/images/course/course-1/6.png',
-    price: 799000,
-    originalPrice: 1199000,
-    discountPercent: 33,
-    isFree: false,
-    level: 'Lớp 11',
-    duration: '14 giờ',
-    lessons: 42,
-    students: 345,
-    rating: 4.8,
-    reviews: 123,
-    category: 'math',
-    isNew: true,
-    tags: ['Nâng cao', 'Lớp 11', 'Chuẩn bị'],
-  }
-];
-
 export default function CoursesPage() {
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedLevel, setSelectedLevel] = useState('Tất cả');
   const [sortBy, setSortBy] = useState('popular');
   const [searchTerm, setSearchTerm] = useState('');
   const [priceRange, setPriceRange] = useState([0, 2000000]);
   const [showFilters, setShowFilters] = useState(false);
-  const [favorites, setFavorites] = useState<string[]>([]);
+  const [favorites, setFavorites] = useState<number[]>([]);
+
+  // Fetch courses from API
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch('http://localhost:8000/api/courses', {
+          headers: {
+            'Accept': 'application/json',
+          },
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          console.log('Courses API response:', result);
+          setCourses(result.data || []);
+        }
+      } catch (error) {
+        console.error('Error fetching courses:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCourses();
+  }, []);
 
   const filteredAndSortedCourses = useMemo(() => {
     const filtered = courses.filter(course => {
       // Category filter
-      if (selectedCategory !== 'all' && course.category !== selectedCategory) {
-        return false;
+      if (selectedCategory !== 'all') {
+        const categoryName = course.category?.name.toLowerCase();
+        if (selectedCategory === 'free' && course.price > 0) return false;
+        if (selectedCategory === 'paid' && course.price === 0) return false;
+        // Match category by name
+        if (!['all', 'free', 'paid'].includes(selectedCategory) && 
+            !categoryName?.includes(selectedCategory)) {
+          return false;
+        }
       }
       
-      // Level filter
-      if (selectedLevel !== 'Tất cả' && course.level !== selectedLevel) {
-        return false;
-      }
+      // Level filter - skip for now as it's not in DB
       
       // Search filter
-      if (searchTerm && !course.title.toLowerCase().includes(searchTerm.toLowerCase()) &&
-          !course.description.toLowerCase().includes(searchTerm.toLowerCase()) &&
-          !course.instructor.toLowerCase().includes(searchTerm.toLowerCase())) {
-        return false;
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase();
+        const matchTitle = course.title.toLowerCase().includes(searchLower);
+        const matchDesc = course.description?.toLowerCase().includes(searchLower);
+        const matchInstructor = course.instructor?.name?.toLowerCase().includes(searchLower);
+        if (!matchTitle && !matchDesc && !matchInstructor) {
+          return false;
+        }
       }
       
       // Price range filter
@@ -223,21 +123,21 @@ export default function CoursesPage() {
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'newest':
-          return a.isNew ? -1 : 1;
+          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
         case 'price-low':
           return a.price - b.price;
         case 'price-high':
           return b.price - a.price;
         case 'rating':
-          return b.rating - a.rating;
+          return (b.rating || 0) - (a.rating || 0);
         case 'popular':
         default:
-          return b.students - a.students;
+          return (b.total_students || 0) - (a.total_students || 0);
       }
     });
 
     return filtered;
-  }, [selectedCategory, selectedLevel, sortBy, searchTerm, priceRange]);
+  }, [courses, selectedCategory, selectedLevel, sortBy, searchTerm, priceRange]);
 
   const formatPrice = (price: number) => {
     if (price === 0) return 'Miễn phí';
@@ -247,7 +147,7 @@ export default function CoursesPage() {
     }).format(price);
   };
 
-  const toggleFavorite = (courseId: string) => {
+  const toggleFavorite = (courseId: number) => {
     setFavorites(prev => 
       prev.includes(courseId) 
         ? prev.filter(id => id !== courseId)
@@ -255,9 +155,40 @@ export default function CoursesPage() {
     );
   };
 
-  const addToCart = (courseId: string) => {
-    // Implement add to cart logic
-    console.log('Added to cart:', courseId);
+  const addToCart = async (courseId: number, event: React.MouseEvent) => {
+    event.stopPropagation();
+    event.preventDefault();
+    
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Vui lòng đăng nhập để thêm vào giỏ hàng');
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/cart', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          item_id: courseId,
+          item_type: 1, // 1 = course
+          quantity: 1
+        })
+      });
+
+      if (response.ok) {
+        alert('Đã thêm vào giỏ hàng!');
+      } else {
+        alert('Có lỗi xảy ra, vui lòng thử lại');
+      }
+    } catch (error) {
+      console.error('Error adding to cart:', error);
+      alert('Có lỗi xảy ra, vui lòng thử lại');
+    }
   };
 
   return (
@@ -461,167 +392,159 @@ export default function CoursesPage() {
 
             {/* Course Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {filteredAndSortedCourses.map((course) => (
-                <div key={course.id} className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden group">
-                  {/* Course Image */}
-                  <div className="relative aspect-video overflow-hidden">
-                    <Image
-                      src={course.thumbnail}
-                      alt={course.title}
-                      fill
-                      className="object-cover group-hover:scale-105 transition-transform duration-300"
-                      quality={100}
-                      unoptimized={true}
-                    />
-                    
-                    {/* Badges */}
-                    <div className="absolute top-3 left-3 flex flex-wrap gap-2">
-                      {course.isFree && (
-                        <span className="px-2 py-1 bg-green-500 text-white text-xs font-semibold rounded-full">
-                          Miễn phí
-                        </span>
-                      )}
-                      {course.isNew && (
-                        <span className="px-2 py-1 bg-red-500 text-white text-xs font-semibold rounded-full">
-                          Mới
-                        </span>
-                      )}
-                      {course.isPopular && (
-                        <span className="px-2 py-1 bg-yellow-500 text-white text-xs font-semibold rounded-full">
-                          Phổ biến
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="absolute top-3 right-3 flex gap-2">
-                      <button
-                        onClick={() => toggleFavorite(course.id)}
-                        className="w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-colors"
-                      >
-                        {favorites.includes(course.id) ? (
-                          <HeartIconSolid className="h-4 w-4 text-red-500" />
-                        ) : (
-                          <HeartIcon className="h-4 w-4 text-gray-600" />
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Play Button Overlay */}
-                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Link
-                        href={`/courses/${course.id}`}
-                        className="w-16 h-16 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-colors"
-                      >
-                        <PlayCircleIcon className="h-8 w-8 text-blue-600" />
-                      </Link>
-                    </div>
-                  </div>
-
-                  {/* Course Info */}
-                  <div className="p-6">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-blue-600 font-semibold">
-                        {categories.find(c => c.id === course.category)?.name}
-                      </span>
-                      <span className="text-sm text-gray-500">{course.level}</span>
-                    </div>
-
-                    <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2">
-                      <Link href={`/courses/${course.id}`} className="hover:text-blue-600 transition-colors">
-                        {course.title}
-                      </Link>
-                    </h3>
-
-                    <p className="text-gray-600 text-sm mb-4 line-clamp-2">
-                      {course.description}
-                    </p>
-
-                    <div className="flex items-center mb-4">
-                      <Link
-                        href={`/teachers/${course.instructorId}`}
-                        className="text-sm text-gray-700 hover:text-blue-600 transition-colors"
-                      >
-                        {course.instructor}
-                      </Link>
-                    </div>
-
-                    {/* Course Stats */}
-                    <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
-                      <div className="flex items-center space-x-4">
-                        <div className="flex items-center">
-                          <ClockIcon className="h-4 w-4 mr-1" />
-                          <span>{course.duration}</span>
-                        </div>
-                        <div className="flex items-center">
-                          <BookOpenIcon className="h-4 w-4 mr-1" />
-                          <span>{course.lessons} bài</span>
-                        </div>
-                        <div className="flex items-center">
-                          <UserGroupIcon className="h-4 w-4 mr-1" />
-                          <span>{course.students.toLocaleString()}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Rating */}
-                    <div className="flex items-center mb-4">
-                      <div className="flex items-center space-x-1">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <StarIconSolid
-                            key={star}
-                            className={`h-4 w-4 ${
-                              star <= Math.floor(course.rating)
-                                ? 'text-yellow-400'
-                                : 'text-gray-300'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                      <span className="text-sm text-gray-600 ml-2">
-                        {course.rating} ({course.reviews} đánh giá)
-                      </span>
-                    </div>
-
-                    {/* Price & Actions */}
-                    <div className="flex items-center justify-between">
-                      <div>
-                        {course.isFree ? (
-                          <span className="text-lg font-bold text-green-600">
+              {loading ? (
+                <div className="col-span-full text-center py-16">
+                  <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
+                  <p className="mt-4 text-gray-600">Đang tải khóa học...</p>
+                </div>
+              ) : (
+                filteredAndSortedCourses.map((course) => (
+                  <div key={course.id} className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden group">
+                    {/* Course Image */}
+                    <div className="relative aspect-video overflow-hidden">
+                      <Image
+                        src={course.thumbnail || '/images/course/course-1/1.png'}
+                        alt={course.title}
+                        fill
+                        className="object-cover group-hover:scale-105 transition-transform duration-300"
+                        quality={100}
+                        unoptimized={true}
+                      />
+                      
+                      {/* Badges */}
+                      <div className="absolute top-3 left-3 flex flex-wrap gap-2">
+                        {course.is_free && (
+                          <span className="px-2 py-1 bg-green-500 text-white text-xs font-semibold rounded-full">
                             Miễn phí
                           </span>
-                        ) : (
-                          <div className="flex items-center space-x-2">
-                            <span className="text-lg font-bold text-blue-600">
-                              {formatPrice(course.price)}
-                            </span>
-                            {course.originalPrice && (
-                              <span className="text-sm text-gray-500 line-through">
-                                {formatPrice(course.originalPrice)}
-                              </span>
-                            )}
-                            {course.discountPercent && (
-                              <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full font-semibold">
-                                -{course.discountPercent}%
-                              </span>
-                            )}
-                          </div>
+                        )}
+                        {course.rating >= 4.5 && (
+                          <span className="px-2 py-1 bg-yellow-500 text-white text-xs font-semibold rounded-full">
+                            Nổi bật
+                          </span>
                         )}
                       </div>
 
-                      {!course.isFree && (
+                      {/* Actions */}
+                      <div className="absolute top-3 right-3 flex gap-2">
                         <button
-                          onClick={() => addToCart(course.id)}
-                          className="flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                          onClick={() => toggleFavorite(course.id)}
+                          className="w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-colors"
                         >
-                          <ShoppingCartIcon className="h-4 w-4 mr-1" />
-                          Thêm
+                          {favorites.includes(course.id) ? (
+                            <HeartIconSolid className="h-4 w-4 text-red-500" />
+                          ) : (
+                            <HeartIcon className="h-4 w-4 text-gray-600" />
+                          )}
                         </button>
-                      )}
+                      </div>
+
+                      {/* Play Button Overlay */}
+                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Link
+                          href={`/courses/${course.id}`}
+                          className="w-16 h-16 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-colors"
+                        >
+                          <PlayCircleIcon className="h-8 w-8 text-blue-600" />
+                        </Link>
+                      </div>
+                    </div>
+
+                    {/* Course Info */}
+                    <div className="p-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-blue-600 font-semibold">
+                          {course.category?.name || 'Chung'}
+                        </span>
+                        <span className="text-sm text-gray-500">{course.level || 'Tất cả'}</span>
+                      </div>
+
+                      <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2">
+                        <Link href={`/courses/${course.id}`} className="hover:text-blue-600 transition-colors">
+                          {course.title}
+                        </Link>
+                      </h3>
+
+                      <p className="text-gray-600 text-sm mb-4 line-clamp-2">
+                        {course.description}
+                      </p>
+
+                      <div className="flex items-center mb-4">
+                        <Link
+                          href={`/teachers/${course.instructor_id}`}
+                          className="text-sm text-gray-700 hover:text-blue-600 transition-colors"
+                        >
+                          {course.instructor?.name || 'Giảng viên'}
+                        </Link>
+                      </div>
+
+                      {/* Course Stats */}
+                      <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
+                        <div className="flex items-center space-x-4">
+                          <div className="flex items-center">
+                            <ClockIcon className="h-4 w-4 mr-1" />
+                            <span>{course.estimated_duration || 'N/A'}</span>
+                          </div>
+                          <div className="flex items-center">
+                            <BookOpenIcon className="h-4 w-4 mr-1" />
+                            <span>{course.total_lessons || 0} bài</span>
+                          </div>
+                          <div className="flex items-center">
+                            <UserGroupIcon className="h-4 w-4 mr-1" />
+                            <span>{(course.total_students || 0).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Rating */}
+                      <div className="flex items-center mb-4">
+                        <div className="flex items-center space-x-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <StarIconSolid
+                              key={star}
+                              className={`h-4 w-4 ${
+                                star <= Math.floor(course.rating || 0)
+                                  ? 'text-yellow-400'
+                                  : 'text-gray-300'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-sm text-gray-600 ml-2">
+                          {course.rating || 0} (0 đánh giá)
+                        </span>
+                      </div>
+
+                      {/* Price & Actions */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          {course.is_free || course.price === 0 ? (
+                            <span className="text-lg font-bold text-green-600">
+                              Miễn phí
+                            </span>
+                          ) : (
+                            <div className="flex items-center space-x-2">
+                              <span className="text-lg font-bold text-blue-600">
+                                {formatPrice(course.price)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {!course.is_free && course.price > 0 && (
+                          <button
+                            onClick={(e) => addToCart(course.id, e)}
+                            className="flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                          >
+                            <ShoppingCartIcon className="h-4 w-4 mr-1" />
+                            Thêm
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
 
             {/* Empty State */}

@@ -1,61 +1,28 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
   BookOpenIcon,
-  StarIcon,
   ShoppingCartIcon,
   HeartIcon,
   MagnifyingGlassIcon,
-  AdjustmentsHorizontalIcon,
   FunnelIcon,
-  TagIcon,
   UserIcon,
-  ArrowRightIcon,
-  CheckCircleIcon
+  ArrowRightIcon
 } from '@heroicons/react/24/outline';
 import { 
   StarIcon as StarIconSolid,
   HeartIcon as HeartIconSolid 
 } from '@heroicons/react/24/solid';
+import { bookService } from '@/services/bookService';
+import type { Book } from '@/types';
 
-interface Book {
-  id: string;
-  title: string;
-  description: string;
-  author: {
-    name: string;
-    id: string;
-  };
-  category: {
-    name: string;
-    slug: string;
-  };
-  coverImage: string;
-  price: number;
-  originalPrice?: number;
-  discountPercent?: number;
-  totalQuestions: number;
-  rating: number;
-  reviewsCount: number;
-  isActive: boolean;
-  publishedAt: string;
-  tags: string[];
-  slug: string;
+interface BookDisplay extends Book {
   isNew?: boolean;
   isBestseller?: boolean;
 }
-
-const categories = [
-  { id: 'all', name: 'Tất cả', count: 24 },
-  { id: 'toan-hoc', name: 'Toán học', count: 8 },
-  { id: 'vat-ly', name: 'Vật lý', count: 6 },
-  { id: 'hoa-hoc', name: 'Hóa học', count: 4 },
-  { id: 'sinh-hoc', name: 'Sinh học', count: 3 },
-  { id: 'ngu-van', name: 'Ngữ văn', count: 3 },
-];
 
 const grades = ['Tất cả', 'Lớp 10', 'Lớp 11', 'Lớp 12'];
 const sortOptions = [
@@ -67,152 +34,12 @@ const sortOptions = [
   { value: 'bestseller', label: 'Bán chạy nhất' },
 ];
 
-const books: Book[] = [
-  {
-    id: '1',
-    title: 'Sách Toán học lớp 12 - Nâng cao (Kèm video giải bài tập)',
-    description: 'Sách Toán học lớp 12 nâng cao được biên soạn theo chương trình mới nhất, kèm video giải bài tập chi tiết.',
-    author: {
-      name: 'PGS. TS. Nguyễn Văn Toán',
-      id: 'nguyen-van-toan'
-    },
-    category: {
-      name: 'Toán học',
-      slug: 'toan-hoc'
-    },
-    coverImage: '/images/books/toan-12-cover.jpg',
-    price: 299000,
-    originalPrice: 399000,
-    discountPercent: 25,
-    totalQuestions: 850,
-    rating: 4.8,
-    reviewsCount: 234,
-    isActive: true,
-    publishedAt: '2024-01-01',
-    tags: ['Toán 12', 'THPT Quốc gia', 'Nâng cao'],
-    slug: 'toan-hoc-lop-12-nang-cao',
-    isBestseller: true
-  },
-  {
-    id: '2',
-    title: 'Sách Vật lý lớp 12 - Nâng cao (Có video thí nghiệm)',
-    description: 'Sách Vật lý lớp 12 với video thí nghiệm thực tế, giúp học sinh hiểu sâu các hiện tượng vật lý.',
-    author: {
-      name: 'TS. Phạm Văn Lý',
-      id: 'pham-van-ly'
-    },
-    category: {
-      name: 'Vật lý',
-      slug: 'vat-ly'
-    },
-    coverImage: '/images/books/vat-ly-12-cover.jpg',
-    price: 279000,
-    originalPrice: 349000,
-    discountPercent: 20,
-    totalQuestions: 720,
-    rating: 4.7,
-    reviewsCount: 189,
-    isActive: true,
-    publishedAt: '2024-01-15',
-    tags: ['Vật lý 12', 'Thí nghiệm', 'THPT'],
-    slug: 'vat-ly-lop-12-nang-cao',
-    isNew: true
-  },
-  {
-    id: '3',
-    title: 'Sách Hóa học lớp 12 - Cơ bản và Nâng cao',
-    description: 'Tổng hợp kiến thức Hóa học lớp 12 từ cơ bản đến nâng cao với phương pháp học hiệu quả.',
-    author: {
-      name: 'PGS. Trần Thị Hóa',
-      id: 'tran-thi-hoa'
-    },
-    category: {
-      name: 'Hóa học',
-      slug: 'hoa-hoc'
-    },
-    coverImage: '/images/books/hoa-hoc-12-cover.jpg',
-    price: 289000,
-    originalPrice: 359000,
-    discountPercent: 19,
-    totalQuestions: 680,
-    rating: 4.6,
-    reviewsCount: 156,
-    isActive: true,
-    publishedAt: '2024-02-01',
-    tags: ['Hóa học 12', 'Cơ bản', 'Nâng cao'],
-    slug: 'hoa-hoc-lop-12-co-ban-nang-cao'
-  },
-  {
-    id: '4',
-    title: 'Sách Toán học lớp 11 - Cơ bản (Video HD)',
-    description: 'Kiến thức Toán học lớp 11 cơ bản với video giảng dạy HD, phù hợp cho mọi trình độ học sinh.',
-    author: {
-      name: 'TS. Lê Văn Số',
-      id: 'le-van-so'
-    },
-    category: {
-      name: 'Toán học',
-      slug: 'toan-hoc'
-    },
-    coverImage: '/images/books/toan-11-cover.jpg',
-    price: 259000,
-    totalQuestions: 620,
-    rating: 4.5,
-    reviewsCount: 123,
-    isActive: true,
-    publishedAt: '2024-02-15',
-    tags: ['Toán 11', 'Cơ bản', 'Video HD'],
-    slug: 'toan-hoc-lop-11-co-ban'
-  },
-  {
-    id: '5',
-    title: 'Sách Sinh học lớp 12 - Tổng hợp kiến thức',
-    description: 'Tổng hợp toàn bộ kiến thức Sinh học lớp 12 với sơ đồ tư duy và bài tập thực hành.',
-    author: {
-      name: 'ThS. Nguyễn Thị Sinh',
-      id: 'nguyen-thi-sinh'
-    },
-    category: {
-      name: 'Sinh học',
-      slug: 'sinh-hoc'
-    },
-    coverImage: '/images/books/sinh-hoc-12-cover.jpg',
-    price: 269000,
-    originalPrice: 319000,
-    discountPercent: 16,
-    totalQuestions: 580,
-    rating: 4.4,
-    reviewsCount: 98,
-    isActive: true,
-    publishedAt: '2024-03-01',
-    tags: ['Sinh học 12', 'Sơ đồ tư duy', 'Thực hành'],
-    slug: 'sinh-hoc-lop-12-tong-hop'
-  },
-  {
-    id: '6',
-    title: 'Sách Ngữ văn lớp 12 - Phân tích tác phẩm',
-    description: 'Phương pháp phân tích tác phẩm văn học lớp 12 với kỹ thuật làm bài thi hiệu quả.',
-    author: {
-      name: 'TS. Phạm Văn Văn',
-      id: 'pham-van-van'
-    },
-    category: {
-      name: 'Ngữ văn',
-      slug: 'ngu-van'
-    },
-    coverImage: '/images/books/ngu-van-12-cover.jpg',
-    price: 249000,
-    totalQuestions: 450,
-    rating: 4.3,
-    reviewsCount: 87,
-    isActive: true,
-    publishedAt: '2024-03-15',
-    tags: ['Ngữ văn 12', 'Phân tích', 'Kỹ thuật'],
-    slug: 'ngu-van-lop-12-phan-tich'
-  }
-];
-
 export default function BooksPage() {
+  const [books, setBooks] = useState<BookDisplay[]>([]);
+  const [categories, setCategories] = useState<Array<{ id: string; name: string; count: number }>>([
+    { id: 'all', name: 'Tất cả', count: 0 }
+  ]);
+  const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedGrade, setSelectedGrade] = useState('Tất cả');
   const [sortBy, setSortBy] = useState('popular');
@@ -221,25 +48,64 @@ export default function BooksPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
 
+  // Fetch books from API
+  useEffect(() => {
+    const fetchBooks = async () => {
+      try {
+        setLoading(true);
+        console.log('Fetching books...');
+        const response = await bookService.getAll();
+        console.log('Books response:', response);
+        console.log('Books data:', response.data);
+        setBooks(response.data || []);
+        
+        // Build categories from books
+        const categoryMap = new Map<string, number>();
+        response.data?.forEach((book: Book) => {
+          if (book.category?.name) {
+            const current = categoryMap.get(book.category.name) || 0;
+            categoryMap.set(book.category.name, current + 1);
+          }
+        });
+        
+        const cats = [
+          { id: 'all', name: 'Tất cả', count: response.data?.length || 0 },
+          ...Array.from(categoryMap.entries()).map(([name, count]) => ({
+            id: name.toLowerCase().replace(/\s+/g, '-'),
+            name,
+            count
+          }))
+        ];
+        console.log('Categories:', cats);
+        setCategories(cats);
+      } catch (error) {
+        console.error('Failed to fetch books:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBooks();
+  }, []);
+
   const filteredAndSortedBooks = useMemo(() => {
     const filtered = books.filter(book => {
       // Category filter
-      if (selectedCategory !== 'all' && book.category.slug !== selectedCategory) {
-        return false;
+      if (selectedCategory !== 'all') {
+        const categoryMatch = book.category?.name?.toLowerCase().replace(/\s+/g, '-') === selectedCategory;
+        if (!categoryMatch) return false;
       }
       
-      // Grade filter (extracted from tags)
-      if (selectedGrade !== 'Tất cả') {
-        const gradeNumber = selectedGrade.replace('Lớp ', '');
-        const hasGrade = book.tags.some(tag => tag.includes(gradeNumber));
-        if (!hasGrade) return false;
-      }
+      // Grade filter - skip for now as we don't have tags in DB
+      // Can be implemented later with proper grade field
       
       // Search filter
-      if (searchTerm && !book.title.toLowerCase().includes(searchTerm.toLowerCase()) &&
-          !book.description.toLowerCase().includes(searchTerm.toLowerCase()) &&
-          !book.author.name.toLowerCase().includes(searchTerm.toLowerCase())) {
-        return false;
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase();
+        const titleMatch = book.title?.toLowerCase().includes(searchLower);
+        const descMatch = book.description?.toLowerCase().includes(searchLower);
+        const authorMatch = book.author?.name?.toLowerCase().includes(searchLower);
+        if (!titleMatch && !descMatch && !authorMatch) return false;
       }
       
       // Price range filter
@@ -254,23 +120,21 @@ export default function BooksPage() {
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'newest':
-          return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+          return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
         case 'price-low':
-          return a.price - b.price;
+          return (a.price || 0) - (b.price || 0);
         case 'price-high':
-          return b.price - a.price;
+          return (b.price || 0) - (a.price || 0);
         case 'rating':
-          return b.rating - a.rating;
-        case 'bestseller':
-          return (b.isBestseller ? 1 : 0) - (a.isBestseller ? 1 : 0);
+          return (b.rating || 0) - (a.rating || 0);
         case 'popular':
         default:
-          return b.reviewsCount - a.reviewsCount;
+          return (b.total_reviews || 0) - (a.total_reviews || 0);
       }
     });
 
     return filtered;
-  }, [selectedCategory, selectedGrade, sortBy, searchTerm, priceRange]);
+  }, [books, selectedCategory, sortBy, searchTerm, priceRange]);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -287,8 +151,45 @@ export default function BooksPage() {
     );
   };
 
-  const addToCart = (bookId: string) => {
-    console.log('Added to cart:', bookId);
+  const addToCart = async (bookId: string, e?: React.MouseEvent) => {
+    // Prevent navigation to detail page
+    e?.stopPropagation();
+    e?.preventDefault();
+    
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Vui lòng đăng nhập để thêm vào giỏ hàng');
+        window.location.href = '/auth/login';
+        return;
+      }
+
+      // Add to cart via API
+      const response = await fetch('http://localhost:8000/api/cart', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          itemId: bookId,
+          itemType: 'book',
+          quantity: 1
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        alert('Đã thêm vào giỏ hàng!');
+      } else {
+        alert(data.message || 'Có lỗi xảy ra');
+      }
+    } catch (error) {
+      console.error('Add to cart error:', error);
+      alert('Không thể thêm vào giỏ hàng');
+    }
   };
 
   const renderStars = (rating: number) => {
@@ -524,136 +425,126 @@ export default function BooksPage() {
             </div>
 
             {/* Books Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {filteredAndSortedBooks.map((book) => (
-                <div key={book.id} className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden group">
-                  {/* Book Cover */}
-                  <div className="relative aspect-[3/4] overflow-hidden">
-                    <Link href={`/books/${book.slug}`}>
-                      <Image
-                        src={book.coverImage}
-                        alt={book.title}
-                        fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-300"
-                        quality={100}
-                        unoptimized={true}
-                      />
-                    </Link>
-                    
-                    {/* Badges */}
-                    <div className="absolute top-3 left-3 flex flex-col gap-2">
-                      {book.isNew && (
-                        <span className="px-2 py-1 bg-green-500 text-white text-xs font-semibold rounded-full">
-                          Mới
-                        </span>
-                      )}
-                      {book.isBestseller && (
-                        <span className="px-2 py-1 bg-red-500 text-white text-xs font-semibold rounded-full">
-                          Bán chạy
-                        </span>
-                      )}
-                      {book.discountPercent && (
-                        <span className="px-2 py-1 bg-orange-500 text-white text-xs font-semibold rounded-full">
-                          -{book.discountPercent}%
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="absolute top-3 right-3">
-                      <button
-                        onClick={() => toggleFavorite(book.id)}
-                        className="w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-colors"
-                      >
-                        {favorites.includes(book.id) ? (
-                          <HeartIconSolid className="h-4 w-4 text-red-500" />
+            {loading ? (
+              <div className="text-center py-16">
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                <p className="mt-4 text-gray-600">Đang tải sách...</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {filteredAndSortedBooks.map((book) => (
+                  <div key={book.id} className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden group">
+                    {/* Book Cover */}
+                    <div className="relative aspect-[3/4] overflow-hidden bg-gradient-to-br from-blue-100 to-blue-200">
+                      <Link href={`/books/${book.id}`}>
+                        {book.cover_image ? (
+                          <Image
+                            src={book.cover_image}
+                            alt={book.title}
+                            fill
+                            className="object-cover group-hover:scale-105 transition-transform duration-300"
+                            quality={100}
+                            unoptimized={true}
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                            }}
+                          />
                         ) : (
-                          <HeartIcon className="h-4 w-4 text-gray-600" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Book Info */}
-                  <div className="p-6">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-blue-600 font-semibold">
-                        {book.category.name}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        {book.totalQuestions} câu hỏi
-                      </span>
-                    </div>
-
-                    <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2">
-                      <Link href={`/books/${book.slug}`} className="hover:text-blue-600 transition-colors">
-                        {book.title}
-                      </Link>
-                    </h3>
-
-                    <p className="text-gray-600 text-sm mb-3 line-clamp-2">
-                      {book.description}
-                    </p>
-
-                    <div className="flex items-center mb-4">
-                      <UserIcon className="h-4 w-4 text-gray-400 mr-1" />
-                      <Link
-                        href={`/authors/${book.author.id}`}
-                        className="text-sm text-gray-700 hover:text-blue-600 transition-colors"
-                      >
-                        {book.author.name}
-                      </Link>
-                    </div>
-
-                    {/* Rating */}
-                    <div className="flex items-center mb-4">
-                      {renderStars(book.rating)}
-                      <span className="text-sm text-gray-600 ml-2">
-                        {book.rating} ({book.reviewsCount} đánh giá)
-                      </span>
-                    </div>
-
-                    {/* Price & Actions */}
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-lg font-bold text-blue-600">
-                            {formatPrice(book.price)}
-                          </span>
-                          {book.originalPrice && (
-                            <span className="text-sm text-gray-500 line-through">
-                              {formatPrice(book.originalPrice)}
-                            </span>
-                          )}
-                        </div>
-                        {book.originalPrice && (
-                          <div className="text-xs text-green-600 font-semibold">
-                            Tiết kiệm {formatPrice(book.originalPrice - book.price)}
+                          <div className="w-full h-full flex items-center justify-center">
+                            <BookOpenIcon className="w-24 h-24 text-blue-400 opacity-50" />
                           </div>
+                        )}
+                      </Link>
+                      
+                      {/* Badges */}
+                      <div className="absolute top-3 left-3 flex flex-col gap-2">
+                        {book.isNew && (
+                          <span className="px-2 py-1 bg-green-500 text-white text-xs font-semibold rounded-full">
+                            Mới
+                          </span>
+                        )}
+                        {book.price === 0 && (
+                          <span className="px-2 py-1 bg-green-500 text-white text-xs font-semibold rounded-full">
+                            Miễn phí
+                          </span>
                         )}
                       </div>
 
-                      <button
-                        onClick={() => addToCart(book.id)}
-                        className="flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                      >
-                        <ShoppingCartIcon className="h-4 w-4 mr-1" />
-                        Mua
-                      </button>
+                      {/* Actions */}
+                      <div className="absolute top-3 right-3">
+                        <button
+                          onClick={() => toggleFavorite(String(book.id))}
+                          className="w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-colors"
+                        >
+                          {favorites.includes(String(book.id)) ? (
+                            <HeartIconSolid className="h-4 w-4 text-red-500" />
+                          ) : (
+                            <HeartIcon className="h-4 w-4 text-gray-600" />
+                          )}
+                        </button>
+                      </div>
                     </div>
 
-                    {/* Tags */}
-                    <div className="flex flex-wrap gap-1 mt-3">
-                      {book.tags.slice(0, 2).map((tag, index) => (
-                        <span key={index} className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
-                          #{tag}
+                    {/* Book Info */}
+                    <div className="p-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-blue-600 font-semibold">
+                          {book.category?.name || 'Khác'}
                         </span>
-                      ))}
+                        <span className="text-sm text-gray-500">
+                          {book.total_questions || 0} câu hỏi
+                        </span>
+                      </div>
+
+                      <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2">
+                        <Link href={`/books/${book.id}`} className="hover:text-blue-600 transition-colors">
+                          {book.title}
+                        </Link>
+                      </h3>
+
+                      <p className="text-gray-600 text-sm mb-3 line-clamp-2">
+                        {book.description}
+                      </p>
+
+                      <div className="flex items-center mb-4">
+                        <UserIcon className="h-4 w-4 text-gray-400 mr-1" />
+                        <span className="text-sm text-gray-700">
+                          {book.author?.name || 'Tác giả'}
+                        </span>
+                      </div>
+
+                      {/* Rating */}
+                      <div className="flex items-center mb-4">
+                        {renderStars(book.rating || 0)}
+                        <span className="text-sm text-gray-600 ml-2">
+                          {book.rating || 0} ({book.total_reviews || 0} đánh giá)
+                        </span>
+                      </div>
+
+                      {/* Price & Actions */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-lg font-bold text-blue-600">
+                              {book.price === 0 ? 'Miễn phí' : formatPrice(book.price)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={(e) => addToCart(String(book.id), e)}
+                          className="flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          <ShoppingCartIcon className="h-4 w-4 mr-1" />
+                          {book.price === 0 ? 'Xem' : 'Mua'}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             {/* Empty State */}
             {filteredAndSortedBooks.length === 0 && (

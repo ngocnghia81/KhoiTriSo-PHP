@@ -6,6 +6,11 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Coupon;
 use App\Models\CouponUsage;
+use App\Models\CartItem;
+use App\Models\Course;
+use App\Models\Book;
+use App\Models\BookActivationCode;
+use App\Models\UserBook;
 use Illuminate\Http\Request;
 
 class OrderController extends Controller
@@ -21,15 +26,34 @@ class OrderController extends Controller
     public function show(int $id, Request $request)
     {
         $order = Order::with('items')->where('user_id', $request->user()->id)->findOrFail($id);
+        
+        // If order is paid, include activation codes for books
+        if ($order->status == 2) {
+            $activationCodes = [];
+            foreach ($order->items as $item) {
+                if ($item->item_type == 2) { // Book
+                    $code = BookActivationCode::where('book_id', $item->item_id)
+                        ->where('is_used', false)
+                        ->whereNull('used_by_id')
+                        ->orderBy('created_at', 'desc')
+                        ->first();
+                    
+                    if ($code) {
+                        $item->activation_code = $code->activation_code;
+                    }
+                }
+            }
+        }
+        
         return response()->json($order);
     }
 
     public function store(Request $request)
     {
         $data = $request->validate([
-            'items' => ['required','array','min:1'],
-            'items.*.itemId' => ['required','integer','min:1'],
-            'items.*.itemType' => ['required','integer','in:1,2,3'],
+            'items' => ['nullable','array','min:1'],
+            'items.*.itemId' => ['required_with:items','integer','min:1'],
+            'items.*.itemType' => ['required_with:items','integer','in:1,2,3'],
             'items.*.quantity' => ['nullable','integer','min:1'],
             'couponCode' => ['nullable','string','max:50'],
             'paymentMethod' => ['required','string','max:50'],
@@ -37,11 +61,52 @@ class OrderController extends Controller
             'orderNotes' => ['nullable','string'],
         ]);
 
+        // If no items provided, get from cart
+        if (empty($data['items'])) {
+            $cartItems = CartItem::where('user_id', $request->user()->id)->get();
+            if ($cartItems->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Giỏ hàng trống. Vui lòng thêm sản phẩm trước khi đặt hàng.'
+                ], 400);
+            }
+            
+            $data['items'] = $cartItems->map(function($item) {
+                return [
+                    'itemId' => $item->item_id,
+                    'itemType' => $item->item_type,
+                    'quantity' => $item->quantity ?? 1,
+                ];
+            })->toArray();
+        }
+
         $total = 0;
+        $itemsWithDetails = [];
+        
         foreach ($data['items'] as $i) {
             $qty = $i['quantity'] ?? 1;
-            // Simplified pricing stub (fetch real price by item & type)
-            $price = 100000; // placeholder
+            $itemType = $i['itemType'];
+            $itemId = $i['itemId'];
+            
+            // Get real item data
+            if ($itemType == 1) { // Course
+                $item = Course::find($itemId);
+                $itemName = $item ? $item->title : 'Unknown Course';
+                $price = $item ? $item->price : 0;
+            } else { // Book
+                $item = Book::find($itemId);
+                $itemName = $item ? $item->title : 'Unknown Book';
+                $price = $item ? $item->price : 0;
+            }
+            
+            $itemsWithDetails[] = [
+                'itemId' => $itemId,
+                'itemType' => $itemType,
+                'itemName' => $itemName,
+                'price' => $price,
+                'quantity' => $qty,
+            ];
+            
             $total += $price * $qty;
         }
         $discount = 0;
@@ -73,14 +138,14 @@ class OrderController extends Controller
             'order_notes' => $data['orderNotes'] ?? null,
         ]);
 
-        foreach ($data['items'] as $i) {
+        foreach ($itemsWithDetails as $item) {
             OrderItem::create([
                 'order_id' => $order->id,
-                'item_id' => $i['itemId'],
-                'item_type' => $i['itemType'],
-                'item_name' => 'Item '.$i['itemId'],
-                'price' => 100000,
-                'quantity' => $i['quantity'] ?? 1,
+                'item_id' => $item['itemId'],
+                'item_type' => $item['itemType'],
+                'item_name' => $item['itemName'],
+                'price' => $item['price'],
+                'quantity' => $item['quantity'],
             ]);
         }
 
@@ -92,6 +157,9 @@ class OrderController extends Controller
                 'discount_amount' => $discount,
             ]);
         }
+
+        // Clear cart after order creation
+        CartItem::where('user_id', $request->user()->id)->delete();
 
         return response()->json(['success' => true, 'order' => $order, 'paymentUrl' => null], 201);
     }
@@ -105,6 +173,51 @@ class OrderController extends Controller
         $order->status = 4;
         $order->save();
         return response()->json(['success' => true, 'message' => 'Order cancelled successfully']);
+    }
+
+    public function pay(int $id, Request $request)
+    {
+        $order = Order::where('user_id', $request->user()->id)->findOrFail($id);
+        if ($order->status !== 1) {
+            return response()->json(['success' => false, 'message' => 'Đơn hàng không thể thanh toán'], 400);
+        }
+        
+        $order->status = 2; // Paid
+        $order->paid_at = now();
+        $order->transaction_id = 'TXN-' . time() . '-' . $order->id;
+        $order->save();
+        
+        // Generate activation codes for books in the order
+        $orderItems = OrderItem::where('order_id', $order->id)->get();
+        $activationCodes = [];
+        
+        foreach ($orderItems as $item) {
+            if ($item->item_type == 2) { // Book
+                // Generate unique activation code
+                $code = 'BOOK-' . strtoupper(substr(md5(uniqid()), 0, 8));
+                
+                // Create activation code
+                $activationCode = BookActivationCode::create([
+                    'book_id' => $item->item_id,
+                    'activation_code' => $code,
+                    'is_used' => false,
+                    'expires_at' => now()->addYears(5),
+                ]);
+                
+                $activationCodes[] = [
+                    'book_id' => $item->item_id,
+                    'book_name' => $item->item_name,
+                    'code' => $code,
+                ];
+            }
+        }
+        
+        return response()->json([
+            'success' => true, 
+            'message' => 'Thanh toán thành công', 
+            'order' => $order,
+            'activation_codes' => $activationCodes
+        ]);
     }
 
     public function paymentCallback(int $id, Request $request)
