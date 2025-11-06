@@ -2,38 +2,112 @@
 
 namespace App\Http\Controllers;
 
+use App\Constants\MessageCode;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
-class AuthController extends Controller
+/**
+ * Auth Controller
+ * Authentication, Registration, Password Reset
+ */
+class AuthController extends BaseController
 {
-    public function register(Request $request)
+    /**
+     * Register new user
+     */
+    public function register(Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'username' => ['required', 'string', 'max:50', 'unique:users,username'],
-            'email' => ['required', 'string', 'email', 'max:100', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8'],
-            'fullName' => ['nullable', 'string', 'max:100'],
-            'phone' => ['nullable', 'string', 'max:20'],
-            'dateOfBirth' => ['nullable', 'date'],
-            'gender' => ['nullable', Rule::in([0,1,2])],
-        ]);
+        try {
+            $validator = Validator::make($request->all(), [
+                'username' => ['required', 'string', 'max:50', 'unique:users,username'],
+                'email' => ['required', 'string', 'email', 'max:100', 'unique:users,email'],
+                'password' => ['required', 'string', 'min:8'],
+                'fullName' => ['nullable', 'string', 'max:100'],
+                'phone' => ['nullable', 'string', 'max:20'],
+                'dateOfBirth' => ['nullable', 'date'],
+                'gender' => ['nullable', Rule::in([0,1,2])],
+            ]);
 
-        $user = new User();
-        $user->name = $data['username'];
-        $user->email = $data['email'];
-        $user->password = Hash::make($data['password']);
-        $user->save();
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
 
-        $token = $user->createToken('auth')->plainTextToken;
+            $data = $validator->validated();
 
-        return response()->json([
-            'code' => 201,
-            'message' => 'User registered successfully',
-            'result' => [
+            $user = new User();
+            $user->username = $data['username'];
+            $user->name = $request->input('fullName') ?? $request->input('name') ?? $data['username'];
+            $user->email = $data['email'];
+            $user->password = Hash::make($data['password']);
+            $user->save();
+
+            $token = $user->createToken('auth')->plainTextToken;
+
+            $responseData = [
+                'user' => [
+                    'id' => $user->id,
+                    'username' => $user->username ?? $user->name,
+                    'email' => $user->email,
+                    'role' => 1,
+                ],
+                'token' => $token,
+            ];
+
+            return $this->success($responseData);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in register: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Login user
+     */
+    public function login(Request $request): JsonResponse
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'email' => ['required', 'email'],
+                'password' => ['required', 'string'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $credentials = $validator->validated();
+
+            $user = User::where('email', $credentials['email'])->first();
+            
+            if (!$user || !Hash::check($credentials['password'], $user->password)) {
+                return $this->error(
+                    MessageCode::INVALID_CREDENTIALS,
+                    null,
+                    null,
+                    401
+                );
+            }
+
+            $user->last_login = now();
+            $user->save();
+
+            $token = $user->createToken('auth')->plainTextToken;
+
+            $responseData = [
                 'user' => [
                     'id' => $user->id,
                     'username' => $user->name,
@@ -41,69 +115,153 @@ class AuthController extends Controller
                     'role' => 1,
                 ],
                 'token' => $token,
-            ],
-        ], 201);
-    }
+                'refreshToken' => null,
+            ];
 
-    public function login(Request $request)
-    {
-        $credentials = $request->validate([
-            'email' => ['required', 'email'],
-            'password' => ['required', 'string'],
-        ]);
+            return $this->success($responseData);
 
-        $user = User::where('email', $credentials['email'])->first();
-        if (! $user || ! Hash::check($credentials['password'], $user->password)) {
-            return response()->json(['success' => false, 'message' => 'Invalid credentials'], 401);
+        } catch (\Exception $e) {
+            \Log::error('Error in login: ' . $e->getMessage());
+            return $this->internalError();
         }
-
-        $user->last_login = now();
-        $user->save();
-
-        $token = $user->createToken('auth')->plainTextToken;
-
-        return response()->json([
-            'success' => true,
-            'user' => [
-                'id' => $user->id,
-                'username' => $user->name,
-                'email' => $user->email,
-                'role' => 1,
-            ],
-            'token' => $token,
-            'refreshToken' => null,
-        ]);
     }
 
-    public function logout(Request $request)
+    /**
+     * Logout user
+     */
+    public function logout(Request $request): JsonResponse
     {
-        $request->user()->currentAccessToken()->delete();
-        return response()->json(['success' => true, 'message' => 'Logged out successfully']);
+        try {
+            if (!$request->user()) {
+                return $this->unauthorized();
+            }
+
+            $request->user()->currentAccessToken()->delete();
+            
+            return $this->success(null);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in logout: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function refresh(Request $request)
+    /**
+     * Refresh token
+     */
+    public function refresh(Request $request): JsonResponse
     {
-        return response()->json(['success' => true, 'token' => $request->user()?->createToken('auth')->plainTextToken, 'refreshToken' => null]);
+        try {
+            if (!$request->user()) {
+                return $this->unauthorized();
+            }
+
+            $token = $request->user()->createToken('auth')->plainTextToken;
+
+            $responseData = [
+                'token' => $token,
+                'refreshToken' => null,
+            ];
+
+            return $this->success($responseData);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in refresh: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function forgotPassword()
+    /**
+     * Forgot password
+     */
+    public function forgotPassword(Request $request): JsonResponse
     {
-        return response()->json(['success' => true, 'message' => 'Reset link sent to email']);
+        try {
+            $validator = Validator::make($request->all(), [
+                'email' => ['required', 'email'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            // TODO: Implement password reset email logic
+            
+            return $this->success(null);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in forgotPassword: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function resetPassword()
+    /**
+     * Reset password
+     */
+    public function resetPassword(Request $request): JsonResponse
     {
-        return response()->json(['success' => true, 'message' => 'Password reset successfully']);
+        try {
+            $validator = Validator::make($request->all(), [
+                'token' => ['required', 'string'],
+                'password' => ['required', 'string', 'min:8', 'confirmed'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            // TODO: Implement password reset logic
+            
+            return $this->success(null);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in resetPassword: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function verifyEmail()
+    /**
+     * Verify email
+     */
+    public function verifyEmail(Request $request): JsonResponse
     {
-        return response()->json(['success' => true, 'message' => 'Email verified successfully']);
+        try {
+            // TODO: Implement email verification logic
+            
+            return $this->success(null);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in verifyEmail: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function resendVerification()
+    /**
+     * Resend verification email
+     */
+    public function resendVerification(Request $request): JsonResponse
     {
-        return response()->json(['success' => true, 'message' => 'Verification email sent']);
+        try {
+            if (!$request->user()) {
+                return $this->unauthorized();
+            }
+
+            // TODO: Implement resend verification email logic
+            
+            return $this->success(null);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in resendVerification: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 }
 

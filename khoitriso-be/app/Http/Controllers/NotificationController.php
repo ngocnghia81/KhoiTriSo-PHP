@@ -2,56 +2,151 @@
 
 namespace App\Http\Controllers;
 
+use App\Constants\MessageCode;
 use App\Models\Notification;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Validator;
 
-class NotificationController extends Controller
+/**
+ * Notification Controller
+ */
+class NotificationController extends BaseController
 {
-    public function index(Request $request)
+    public function index(Request $request): JsonResponse
     {
-        $q = Notification::where('user_id', $request->user()->id);
-        if ($request->filled('isRead')) $q->where('is_read', filter_var($request->query('isRead'), FILTER_VALIDATE_BOOLEAN));
-        if ($request->filled('type')) $q->where('type', $request->integer('type'));
-        if ($request->filled('priority')) $q->where('priority', $request->integer('priority'));
-        $res = $q->orderByDesc('created_at')->paginate((int) $request->query('pageSize', 20));
-        $unreadCount = Notification::where('user_id', $request->user()->id)->where('is_read', false)->count();
-        return response()->json(['notifications' => $res->items(), 'total' => $res->total(), 'unreadCount' => $unreadCount, 'hasMore' => $res->hasMorePages()]);
+        try {
+            if (!$request->user()) {
+                return $this->unauthorized();
+            }
+
+            $q = Notification::where('user_id', $request->user()->id);
+            
+            if ($request->filled('isRead')) {
+                $q->where('is_read', filter_var($request->query('isRead'), FILTER_VALIDATE_BOOLEAN));
+            }
+            
+            if ($request->filled('type')) {
+                $q->where('type', $request->integer('type'));
+            }
+            
+            if ($request->filled('priority')) {
+                $q->where('priority', $request->integer('priority'));
+            }
+            
+            $page = (int) $request->query('page', 1);
+            $pageSize = (int) $request->query('pageSize', 20);
+            
+            $total = $q->count();
+            $notifications = $q->orderByDesc('created_at')
+                ->skip(($page - 1) * $pageSize)
+                ->take($pageSize)
+                ->get();
+            
+            $unreadCount = Notification::where('user_id', $request->user()->id)
+                ->where('is_read', false)
+                ->count();
+            
+            return response()->json([
+                'success' => true,
+                'message' => $this->getLanguage($request) === 'vi' ? 'Thành công' : 'Success',
+                'data' => [
+                    'notifications' => $notifications,
+                    'unreadCount' => $unreadCount,
+                ],
+                'pagination' => [
+                    'page' => $page,
+                    'limit' => $pageSize,
+                    'total' => $total,
+                    'totalPages' => ceil($total / $pageSize),
+                    'hasNextPage' => $page < ceil($total / $pageSize),
+                    'hasPreviousPage' => $page > 1,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in notifications index: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function markRead(int $id, Request $request)
+    public function markRead(int $id, Request $request): JsonResponse
     {
-        $n = Notification::where('user_id', $request->user()->id)->findOrFail($id);
-        $n->is_read = true;
-        $n->save();
-        return response()->json(['success' => true]);
+        try {
+            if (!$request->user()) {
+                return $this->unauthorized();
+            }
+
+            $n = Notification::where('user_id', $request->user()->id)->find($id);
+            
+            if (!$n) {
+                return $this->notFound('Notification');
+            }
+            
+            $n->is_read = true;
+            $n->save();
+            
+            return $this->success(null);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in markRead: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function markAllRead(Request $request)
+    public function markAllRead(Request $request): JsonResponse
     {
-        Notification::where('user_id', $request->user()->id)->update(['is_read' => true]);
-        return response()->json(['success' => true]);
+        try {
+            if (!$request->user()) {
+                return $this->unauthorized();
+            }
+
+            Notification::where('user_id', $request->user()->id)->update(['is_read' => true]);
+            
+            return $this->success(null);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in markAllRead: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'userId' => ['required','integer','exists:users,id'],
-            'title' => ['required','string','max:200'],
-            'message' => ['required','string'],
-            'type' => ['required','integer','in:1,2,3,4,5'],
-            'actionUrl' => ['nullable','string','max:500'],
-            'priority' => ['nullable','integer','in:1,2,3,4'],
-        ]);
-        $n = Notification::create([
-            'user_id' => $data['userId'],
-            'title' => $data['title'],
-            'message' => $data['message'],
-            'type' => $data['type'],
-            'action_url' => $data['actionUrl'] ?? null,
-            'priority' => $data['priority'] ?? 2,
-        ]);
-        return response()->json(['success' => true, 'notification' => $n], 201);
+        try {
+            $validator = Validator::make($request->all(), [
+                'userId' => ['required','integer','exists:users,id'],
+                'title' => ['required','string','max:200'],
+                'message' => ['required','string'],
+                'type' => ['required','integer','in:1,2,3,4,5'],
+                'actionUrl' => ['nullable','string','max:500'],
+                'priority' => ['nullable','integer','in:1,2,3,4'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+            
+            $n = Notification::create([
+                'user_id' => $data['userId'],
+                'title' => $data['title'],
+                'message' => $data['message'],
+                'type' => $data['type'],
+                'action_url' => $data['actionUrl'] ?? null,
+                'priority' => $data['priority'] ?? 2,
+            ]);
+            
+            return $this->success($n);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in notification store: ' . $e->getMessage());
+            return $this->internalError();
+        }
     }
 }
-
-
