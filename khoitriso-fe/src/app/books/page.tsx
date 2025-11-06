@@ -56,12 +56,15 @@ export default function BooksPage() {
         console.log('Fetching books...');
         const response = await bookService.getAll();
         console.log('Books response:', response);
-        console.log('Books data:', response.data);
-        setBooks(response.data || []);
+        
+        // Backend returns { data: [], total: 10, ... }
+        const booksData = Array.isArray(response.data) ? response.data : [];
+        console.log('Books data:', booksData);
+        setBooks(booksData);
         
         // Build categories from books
         const categoryMap = new Map<string, number>();
-        response.data?.forEach((book: Book) => {
+        booksData.forEach((book: Book) => {
           if (book.category?.name) {
             const current = categoryMap.get(book.category.name) || 0;
             categoryMap.set(book.category.name, current + 1);
@@ -69,7 +72,7 @@ export default function BooksPage() {
         });
         
         const cats = [
-          { id: 'all', name: 'Tất cả', count: response.data?.length || 0 },
+          { id: 'all', name: 'Tất cả', count: booksData.length },
           ...Array.from(categoryMap.entries()).map(([name, count]) => ({
             id: name.toLowerCase().replace(/\s+/g, '-'),
             name,

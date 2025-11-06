@@ -69,49 +69,14 @@ export default function Header() {
     const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [hasToken, setHasToken] = useState(false);
-    const [cartCount, setCartCount] = useState(0);
 
-    // Fetch cart count
+    // Check login status on mount
     useEffect(() => {
-        const fetchCartCount = async () => {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                setCartCount(0);
-                return;
-            }
-
-            try {
-                const response = await fetch('http://localhost:8000/api/cart', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Accept': 'application/json',
-                    },
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    setCartCount(data.totalItems || data.data?.length || 0);
-                }
-            } catch (error) {
-                console.error('Error fetching cart count:', error);
-            }
-        };
-
-        fetchCartCount();
-        
-        // Re-fetch when page becomes visible (user comes back to tab)
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible') {
-                fetchCartCount();
-            }
-        };
-        
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-        };
-    }, [hasToken]);
+        const token = localStorage.getItem("token");
+        if (token) {
+            setHasToken(true);
+        }
+    }, []);
 
     const handleLogout = async () => {
         try {
@@ -127,18 +92,6 @@ export default function Header() {
             window.location.href = "/";
         }
     };
-
-    function LoginButton() {
-
-        useEffect(() => {
-            const token = localStorage.getItem("user");
-            console.log(token);
-            if (token) {
-                setHasToken(true);
-            }
-        }, []);
-    }
-    LoginButton();
 
     // Function to check if a navigation item is active
     const isActive = (href: string, children?: Array<{ href: string }>) => {
@@ -375,11 +328,6 @@ export default function Header() {
                                 className="relative p-2 text-gray-600 hover:text-blue-600 transition-colors"
                             >
                                 <ShoppingBagIcon className="h-6 w-6" />
-                                {cartCount > 0 && (
-                                    <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                                        {cartCount > 99 ? '99+' : cartCount}
-                                    </span>
-                                )}
                             </Link>
 
                             {/* Menu Toggle */}
