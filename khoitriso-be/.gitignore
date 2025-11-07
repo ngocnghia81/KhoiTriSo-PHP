@@ -22,3 +22,14 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+# Google OAuth secrets
+client_secret_*.json
+*.json
+!composer.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!next.config.ts
+!next-env.d.ts
+!eslint.config.mjs
+!postcss.config.mjs
