@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { api } from '@/lib/api';
+import { httpClient } from '@/lib/http-client';
 import { useRouter } from 'next/navigation';
 
 interface Instructor {
@@ -23,6 +23,7 @@ interface EnrolledCourse {
   slug: string;
   description: string;
   thumbnail_url: string;
+  thumbnail?: string;
   video_url?: string;
   price: number;
   discount_price?: number;
@@ -42,33 +43,113 @@ const levelMap: Record<number, string> = {
   3: 'Nâng cao',
 };
 
+interface Book {
+  id: number;
+  title: string;
+  slug: string;
+  description: string;
+  cover_image: string;
+  author: string;
+  price: number;
+  isbn?: string;
+  published_at?: string;
+  activated_at?: string;
+}
+
 export default function MyLearningPage() {
   const router = useRouter();
   const [courses, setCourses] = useState<EnrolledCourse[]>([]);
+  const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'courses' | 'books'>('courses');
   const [filter, setFilter] = useState<'all' | 'in-progress' | 'completed'>('all');
+
+  // Check URL params on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('tab') === 'books') {
+        setActiveTab('books');
+      }
+    }
+  }, []);
 
   useEffect(() => {
     fetchMyCourses();
+    fetchMyBooks();
   }, []);
+
+  const fetchMyBooks = async () => {
+    try {
+      const response = await httpClient.get('books/my-books');
+      
+      console.log('Books API Response:', response);
+      
+      if (response.ok && response.data) {
+        const apiResponse = response.data as any;
+        // API returns { userBooks: [...], total: ..., hasMore: ... }
+        let booksData: Book[] = [];
+        
+        if (apiResponse.userBooks && Array.isArray(apiResponse.userBooks)) {
+          // Map UserBook to Book format
+          booksData = apiResponse.userBooks
+            .map((ub: any) => {
+              const book = ub.activation_code?.book || ub.book;
+              if (!book) return null;
+              return {
+                id: book.id,
+                title: book.title,
+                slug: book.slug,
+                description: book.description || '',
+                cover_image: book.cover_image || book.cover_image_url || '',
+                author: book.author || '',
+                price: book.price || 0,
+                isbn: book.isbn,
+                published_at: book.published_at,
+                activated_at: ub.activated_at || ub.created_at,
+              };
+            })
+            .filter((b: any) => b !== null);
+        } else if (Array.isArray(apiResponse)) {
+          booksData = apiResponse;
+        } else if (apiResponse.success && apiResponse.data) {
+          booksData = apiResponse.data;
+        }
+        
+        if (Array.isArray(booksData)) {
+          setBooks(booksData);
+          console.log('Books set:', booksData);
+        }
+      }
+    } catch (error: any) {
+      console.error('Lỗi khi tải sách:', error);
+    }
+  };
 
   const fetchMyCourses = async () => {
     try {
       setLoading(true);
-      const response: any = await api.get('/my-courses');
+      const response = await httpClient.get('my-courses');
       
       console.log('API Response:', response);
       console.log('Response data:', response.data);
       
-      if (response.data && Array.isArray(response.data)) {
-        setCourses(response.data);
-        console.log('Courses set:', response.data);
+      if (response.ok && response.data) {
+        const apiResponse = response.data as any;
+        // API returns { success: true, data: [...] }
+        const coursesData = apiResponse.success && apiResponse.data ? apiResponse.data : apiResponse;
+        
+        if (Array.isArray(coursesData)) {
+          setCourses(coursesData);
+          console.log('Courses set:', coursesData);
+        } else {
+          console.log('Response data is not an array:', coursesData);
+        }
       } else {
-        console.log('Response data is not an array:', response.data);
+        console.log('Failed to load courses:', response);
       }
     } catch (error: any) {
       console.error('Lỗi khi tải khóa học:', error);
-      console.error('Error response:', error.response);
       
       // Nếu chưa đăng nhập, chuyển về trang đăng nhập
       if (error.response?.status === 401) {
@@ -117,12 +198,46 @@ export default function MyLearningPage() {
       <div className="container mx-auto px-4">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Khóa học của tôi</h1>
-          <p className="text-gray-600">Tiếp tục hành trình học tập của bạn</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            {activeTab === 'courses' ? 'Khóa học của tôi' : 'Sách của tôi'}
+          </h1>
+          <p className="text-gray-600">
+            {activeTab === 'courses' 
+              ? 'Tiếp tục hành trình học tập của bạn'
+              : 'Khám phá và đọc các cuốn sách bạn đã mua'
+            }
+          </p>
         </div>
 
-        {/* Filter Tabs */}
+        {/* Tab Switcher */}
         <div className="flex gap-4 mb-6 border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab('courses')}
+            className={`pb-3 px-1 font-medium transition-colors ${
+              activeTab === 'courses'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Khóa học ({courses.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('books')}
+            className={`pb-3 px-1 font-medium transition-colors ${
+              activeTab === 'books'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Sách của tôi ({books.length})
+          </button>
+        </div>
+
+        {/* Courses Tab */}
+        {activeTab === 'courses' && (
+          <>
+            {/* Filter Tabs */}
+            <div className="flex gap-4 mb-6 border-b border-gray-200">
           <button
             onClick={() => setFilter('all')}
             className={`pb-3 px-1 font-medium transition-colors ${
@@ -185,12 +300,13 @@ export default function MyLearningPage() {
               <div key={course.id} className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow overflow-hidden">
                 {/* Thumbnail */}
                 <div className="relative h-48 bg-gray-200">
-                  {course.thumbnail_url ? (
+                  {(course.thumbnail_url || course.thumbnail) ? (
                     <Image
-                      src={course.thumbnail_url}
+                      src={(course.thumbnail_url || course.thumbnail) as string}
                       alt={course.title}
                       fill
                       className="object-cover"
+                      unoptimized
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-gray-400">
@@ -244,6 +360,87 @@ export default function MyLearningPage() {
               </div>
             ))}
           </div>
+        )}
+          </>
+        )}
+
+        {/* Books Tab */}
+        {activeTab === 'books' && (
+          <>
+            {books.length === 0 ? (
+              <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+                <div className="max-w-md mx-auto">
+                  <div className="text-6xl mb-4">📖</div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    Chưa có sách nào
+                  </h3>
+                  <p className="text-gray-600 mb-6">
+                    Kích hoạt mã sách hoặc mua sách để bắt đầu đọc
+                  </p>
+                  <Link
+                    href="/books"
+                    className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                  >
+                    Khám phá sách
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {books.map(book => (
+                  <div key={book.id} className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+                    {/* Cover Image */}
+                    <div className="relative h-64 bg-gray-200">
+                      {book.cover_image ? (
+                        <Image
+                          src={book.cover_image}
+                          alt={book.title}
+                          fill
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-400">
+                          <span className="text-6xl">📖</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Content */}
+                    <div className="p-4">
+                        {/* Title */}
+                        <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 hover:text-blue-600">
+                          <Link href={`/books/${book.id}/read`}>
+                            {book.title}
+                          </Link>
+                        </h3>
+
+                      {/* Author */}
+                      {book.author && (
+                        <p className="text-sm text-gray-600 mb-3">
+                          Tác giả: {book.author}
+                        </p>
+                      )}
+
+                      {/* Activated Date */}
+                      {book.activated_at && (
+                        <p className="text-xs text-gray-500 mb-4">
+                          Kích hoạt: {formatDate(book.activated_at)}
+                        </p>
+                      )}
+
+                        {/* CTA Button */}
+                        <Link
+                          href={`/books/${book.id}/read`}
+                          className="block w-full bg-blue-600 text-white text-center py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                        >
+                          Đọc sách
+                        </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

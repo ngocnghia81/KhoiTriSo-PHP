@@ -12,6 +12,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import { requireAuth, handleApiResponse } from '@/utils/authCheck';
+import { httpClient } from '@/lib/http-client';
+import { getCourse, enrollCourse } from '@/services/courses';
 
 interface Course {
   id: number;
@@ -46,21 +48,38 @@ export default function CourseDetailPage() {
   useEffect(() => {
     const fetchCourse = async () => {
       try {
-        const response = await fetch(`http://localhost:8000/api/courses/${params.id}`, {
-          headers: {
-            'Accept': 'application/json',
-          },
-        });
+        setLoading(true);
+        // Backend returns course directly (not wrapped in success/data)
+        const response = await httpClient.get(`courses/${params.id}`);
         
-        if (!response.ok) {
-          notFound();
-          return;
+        console.log('Course API response:', response);
+        
+        if (response.ok) {
+          // Backend returns course directly (not wrapped in success/data)
+          // response.data is the course object itself
+          const courseData = response.data as any;
+          
+          // Check if it's actually a course object (has id and title)
+          if (courseData && courseData.id && courseData.title) {
+            console.log('Course data:', courseData);
+            setCourse(courseData);
+          } else {
+            console.error('Invalid course data:', courseData);
+            notFound();
+          }
+        } else {
+          console.error('Failed to fetch course:', response);
+          // Check if it's 404
+          if (response.status === 404) {
+            notFound();
+          } else {
+            // Other errors, still show not found
+            notFound();
+          }
         }
-        
-        const data = await response.json();
-        setCourse(data);
       } catch (error) {
         console.error('Failed to fetch course:', error);
+        notFound();
       } finally {
         setLoading(false);
       }
@@ -71,45 +90,57 @@ export default function CourseDetailPage() {
     }
   }, [params.id]);
 
+  const handleEnroll = async () => {
+    // Check authentication
+    if (!requireAuth('Vui lòng đăng nhập để học khóa học này.')) {
+      return;
+    }
+
+    if (!course) {
+      return;
+    }
+
+    try {
+      const response = await enrollCourse(course.id);
+      
+      if (response) {
+        // Redirect to learn page
+        router.push(`/courses/${course.id}/learn`);
+      }
+    } catch (error: any) {
+      console.error('Error enrolling in course:', error);
+      alert(error?.message || 'Có lỗi xảy ra, vui lòng thử lại');
+    }
+  };
+
   const addToCart = async () => {
     // Check authentication
     if (!requireAuth('Vui lòng đăng nhập để thêm vào giỏ hàng.')) {
       return;
     }
 
-    const token = localStorage.getItem('token');
+    if (!course) {
+      return;
+    }
 
     try {
-      const response = await fetch('http://localhost:8000/api/cart', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          item_id: course?.id,
-          item_type: 1, // 1 = course
-          quantity: 1
-        })
+      const response = await httpClient.post('cart', {
+        item_id: course.id,
+        item_type: 1, // 1 = course
+        quantity: 1
       });
-
-      // Handle 401 and other errors
-      if (!handleApiResponse(response)) {
-        return;
-      }
 
       if (response.ok) {
         if (confirm('Đã thêm vào giỏ hàng! Đi đến giỏ hàng?')) {
           router.push('/cart');
         }
       } else {
-        const data = await response.json();
-        alert(data.message || 'Có lỗi xảy ra, vui lòng thử lại');
+        const errorData = response.error as any;
+        alert(errorData?.message || 'Có lỗi xảy ra, vui lòng thử lại');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding to cart:', error);
-      alert('Có lỗi xảy ra, vui lòng thử lại');
+      alert(error?.message || 'Có lỗi xảy ra, vui lòng thử lại');
     }
   };
 
@@ -156,17 +187,19 @@ export default function CourseDetailPage() {
               <div className="flex items-center space-x-6 text-gray-200">
                 <div className="flex items-center">
                   <StarIcon className="h-5 w-5 text-yellow-400 mr-1" />
-                  <span className="font-semibold">{course.rating}</span>
-                  <span className="ml-1">({course.total_reviews} đánh giá)</span>
+                  <span className="font-semibold">
+                    {typeof course.rating === 'number' ? course.rating.toFixed(2) : (parseFloat(course.rating) || 0).toFixed(2)}
+                  </span>
+                  <span className="ml-1">({(course.total_reviews || 0).toLocaleString('vi-VN')} đánh giá)</span>
                 </div>
                 <div className="flex items-center">
                   <UserGroupIcon className="h-5 w-5 mr-1" />
-                  <span>{course.total_students.toLocaleString()} học viên</span>
+                  <span>{(course.total_students || 0).toLocaleString('vi-VN')} học viên</span>
                 </div>
                 {course.estimated_duration && (
                   <div className="flex items-center">
                     <ClockIcon className="h-5 w-5 mr-1" />
-                    <span>{course.estimated_duration} giờ</span>
+                    <span>{course.estimated_duration}h</span>
                   </div>
                 )}
               </div>
@@ -216,14 +249,16 @@ export default function CourseDetailPage() {
                   <UserGroupIcon className="h-8 w-8 text-blue-600 mr-3" />
                   <div>
                     <p className="text-sm text-gray-600">Học viên</p>
-                    <p className="text-xl font-bold text-gray-900">{course.total_students.toLocaleString()}</p>
+                    <p className="text-xl font-bold text-gray-900">{(course.total_students || 0).toLocaleString('vi-VN')}</p>
                   </div>
                 </div>
                 <div className="flex items-center">
                   <StarIcon className="h-8 w-8 text-yellow-500 mr-3" />
                   <div>
                     <p className="text-sm text-gray-600">Đánh giá</p>
-                    <p className="text-xl font-bold text-gray-900">{course.rating} ⭐</p>
+                    <p className="text-xl font-bold text-gray-900">
+                      {typeof course.rating === 'number' ? course.rating.toFixed(2) : (parseFloat(course.rating) || 0).toFixed(2)} ⭐
+                    </p>
                   </div>
                 </div>
               </div>
@@ -254,6 +289,7 @@ export default function CourseDetailPage() {
               <div className="space-y-3">
                 {course.is_free || course.price === 0 ? (
                   <button 
+                    onClick={handleEnroll}
                     className="w-full px-6 py-4 bg-green-600 text-white text-lg font-semibold rounded-xl hover:bg-green-700 transition-colors"
                   >
                     Học ngay miễn phí

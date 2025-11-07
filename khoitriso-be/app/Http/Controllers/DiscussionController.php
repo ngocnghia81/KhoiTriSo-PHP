@@ -7,6 +7,7 @@ use App\Models\LessonDiscussion;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Discussion Controller
@@ -16,7 +17,9 @@ class DiscussionController extends BaseController
     public function list(int $lessonId, Request $request): JsonResponse
     {
         try {
-            $q = LessonDiscussion::where('lesson_id', $lessonId)->whereNull('parent_id');
+            $q = LessonDiscussion::with(['user:id,name,email,avatar'])
+                ->where('lesson_id', $lessonId)
+                ->whereNull('parent_id');
             
             $sortBy = $request->query('sortBy', 'created_at');
             $sortOrder = $request->query('sortOrder', 'desc');
@@ -60,13 +63,22 @@ class DiscussionController extends BaseController
 
             $data = $validator->validated();
             
-            $d = LessonDiscussion::create([
+            // Use raw SQL insert for PostgreSQL boolean compatibility
+            $discussionId = DB::table('lesson_discussions')->insertGetId([
                 'lesson_id' => $lessonId,
                 'user_id' => $request->user()->id,
                 'content' => $data['content'],
                 'video_timestamp' => $data['videoTimestamp'] ?? null,
                 'parent_id' => $data['parentId'] ?? null,
+                'is_instructor' => DB::raw('false'), // Default to false for student questions
+                'is_hidden' => DB::raw('false'),
+                'like_count' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
+            
+            // Load the created discussion with user relationship
+            $d = LessonDiscussion::with('user:id,name,email,avatar')->find($discussionId);
             
             return $this->success($d);
 

@@ -50,9 +50,12 @@ export async function login(payload: LoginPayload): Promise<AuthResponse> {
     throw new Error('Login failed');
   }
   
-  // Save token
+  // Save token and user data
   if (data.token && typeof window !== 'undefined') {
     localStorage.setItem(TOKEN_STORAGE_KEY, data.token);
+    if (data.user) {
+      localStorage.setItem('user', JSON.stringify(data.user));
+    }
     window.dispatchEvent(new Event('kts-auth-changed'));
   }
   
@@ -156,6 +159,10 @@ export async function loginWithGoogleIdToken(idToken: string): Promise<AuthRespo
     localStorage.setItem(TOKEN_STORAGE_KEY, data.token);
     if (data.refreshToken) {
       localStorage.setItem('refreshToken', data.refreshToken);
+    }
+    // Save user data
+    if (data.user) {
+      localStorage.setItem('user', JSON.stringify(data.user));
     }
     window.dispatchEvent(new Event('kts-auth-changed'));
   }

@@ -14,6 +14,7 @@ import {
   ArrowRightIcon,
   QuestionMarkCircleIcon
 } from '@heroicons/react/24/outline';
+import { httpClient } from '@/lib/http-client';
 
 interface ActivationForm {
   activationCode: string;
@@ -118,37 +119,40 @@ export default function BookActivationPage() {
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:8000/api/books/activate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          activationCode: formData.activationCode.trim()
-        })
+      const response = await httpClient.post('books/activate', {
+        activationCode: formData.activationCode.trim()
       });
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        // Extract book info from response
-        const userBook = data.userBook;
-        const expiryDate = userBook.expires_at ? new Date(userBook.expires_at) : new Date();
+      if (response.ok && response.data) {
+        const data = response.data as any;
         
-        const activatedBookData: ActivatedBook = {
-          title: userBook.book?.title || 'Sách điện tử',
-          expiryDate,
-          accessUrl: formData.questionId 
-            ? `/books/content?code=${formData.activationCode}&question=${formData.questionId}`
-            : `/books/content?code=${formData.activationCode}`
-        };
+        if (data.success) {
+          // Extract book info from response
+          const userBook = data.userBook;
+          const book = userBook.activation_code?.book || userBook.activationCode?.book || userBook.book;
+          const expiryDate = userBook.expires_at ? new Date(userBook.expires_at) : new Date();
+          
+          const activatedBookData: ActivatedBook = {
+            title: book?.title || 'Sách điện tử',
+            expiryDate,
+            accessUrl: formData.questionId 
+              ? `/books/${book?.id || ''}?question=${formData.questionId}`
+              : `/books/${book?.id || ''}`
+          };
 
-        setActivatedBook(activatedBookData);
-        setIsActivated(true);
+          setActivatedBook(activatedBookData);
+          setIsActivated(true);
+          
+          // Dispatch event to update my books list
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('kts-books-changed'));
+          }
+        } else {
+          setError(data.message || 'Mã kích hoạt không hợp lệ hoặc đã được sử dụng');
+        }
       } else {
-        setError(data.message || 'Mã kích hoạt không hợp lệ hoặc đã được sử dụng');
+        const errorData = response.error as any;
+        setError(errorData?.message || 'Mã kích hoạt không hợp lệ hoặc đã được sử dụng');
       }
     } catch (err) {
       console.error('Activation error:', err);

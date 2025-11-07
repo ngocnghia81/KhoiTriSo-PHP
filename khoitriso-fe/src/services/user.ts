@@ -21,7 +21,7 @@ export interface User {
  * Get current user profile
  */
 export async function getProfile() {
-  const response = await httpClient.get('user/profile');
+  const response = await httpClient.get('users/profile');
   
   if (!isSuccess(response)) {
     throw new Error(handleApiError(response));
@@ -35,7 +35,7 @@ export async function getProfile() {
  * Backend expects { fullName?, phone? }
  */
 export async function updateProfile(data: Partial<User> & { fullName?: string; phone?: string }) {
-  const response = await httpClient.put('user/profile', data);
+  const response = await httpClient.put('users/profile', data);
   
   if (!isSuccess(response)) {
     throw new Error(handleApiError(response));
@@ -52,7 +52,7 @@ export async function changePassword(data: {
   newPassword: string;
   newPassword_confirmation: string;
 }) {
-  const response = await httpClient.post('user/change-password', data);
+  const response = await httpClient.put('users/change-password', data);
   
   if (!isSuccess(response)) {
     throw new Error(handleApiError(response));

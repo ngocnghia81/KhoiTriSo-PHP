@@ -17,6 +17,15 @@ class BookChapter extends Model
     {
         return $this->belongsTo(Book::class, 'book_id');
     }
+
+    public function questions()
+    {
+        // context_type = 2 for book_chapter (assuming 1 = assignment, 2 = book_chapter)
+        return $this->hasMany(Question::class, 'context_id')
+            ->where('context_type', 2)
+            ->whereRaw('is_active = true')
+            ->orderBy('order_index');
+    }
 }
 
 

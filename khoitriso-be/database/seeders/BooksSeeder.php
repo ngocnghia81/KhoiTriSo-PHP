@@ -33,7 +33,7 @@ class BooksSeeder extends Seeder
                 'publication_year' => 2024,
                 'edition' => 1,
                 'price' => 299000,
-                'cover_image' => '/images/books/giai-tich-12.jpg',
+                'cover_image' => 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=600&h=800&fit=crop',
                 'ebook_file' => '/pdfs/books/giai-tich-12.pdf',
                 'is_active' => true,
                 'approval_status' => 2,
@@ -51,7 +51,7 @@ class BooksSeeder extends Seeder
                 'publication_year' => 2024,
                 'edition' => 1,
                 'price' => 249000,
-                'cover_image' => '/images/books/hinh-hoc-11.jpg',
+                'cover_image' => 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=600&h=800&fit=crop',
                 'ebook_file' => '/pdfs/books/hinh-hoc-11.pdf',
                 'is_active' => true,
                 'approval_status' => 2,
@@ -69,7 +69,7 @@ class BooksSeeder extends Seeder
                 'publication_year' => 2024,
                 'edition' => 1,
                 'price' => 0,
-                'cover_image' => '/images/books/de-thi-thu-toan.jpg',
+                'cover_image' => 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=600&h=800&fit=crop',
                 'ebook_file' => '/pdfs/books/de-thi-thu-toan.pdf',
                 'is_active' => true,
                 'approval_status' => 2,
@@ -89,7 +89,7 @@ class BooksSeeder extends Seeder
                 'publication_year' => 2024,
                 'edition' => 1,
                 'price' => 279000,
-                'cover_image' => '/images/books/vat-ly-12.jpg',
+                'cover_image' => 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=600&h=800&fit=crop',
                 'ebook_file' => '/pdfs/books/vat-ly-12.pdf',
                 'is_active' => true,
                 'approval_status' => 2,
@@ -109,7 +109,7 @@ class BooksSeeder extends Seeder
                 'publication_year' => 2024,
                 'edition' => 1,
                 'price' => 269000,
-                'cover_image' => '/images/books/hoa-hoc-12.jpg',
+                'cover_image' => 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=600&h=800&fit=crop',
                 'ebook_file' => '/pdfs/books/hoa-hoc-12.pdf',
                 'is_active' => true,
                 'approval_status' => 2,
@@ -129,7 +129,7 @@ class BooksSeeder extends Seeder
                 'publication_year' => 2024,
                 'edition' => 1,
                 'price' => 0,
-                'cover_image' => '/images/books/ngu-van-12.jpg',
+                'cover_image' => 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&h=800&fit=crop',
                 'ebook_file' => '/pdfs/books/ngu-van-12.pdf',
                 'is_active' => true,
                 'approval_status' => 2,
@@ -149,7 +149,7 @@ class BooksSeeder extends Seeder
                 'publication_year' => 2024,
                 'edition' => 1,
                 'price' => 329000,
-                'cover_image' => '/images/books/ielts-vocabulary.jpg',
+                'cover_image' => 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=600&h=800&fit=crop',
                 'ebook_file' => '/pdfs/books/ielts-vocabulary.pdf',
                 'is_active' => true,
                 'approval_status' => 2,
@@ -167,7 +167,7 @@ class BooksSeeder extends Seeder
                 'publication_year' => 2024,
                 'edition' => 1,
                 'price' => 299000,
-                'cover_image' => '/images/books/grammar-in-use.jpg',
+                'cover_image' => 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=600&h=800&fit=crop',
                 'ebook_file' => '/pdfs/books/grammar-in-use.pdf',
                 'is_active' => true,
                 'approval_status' => 2,
@@ -187,7 +187,7 @@ class BooksSeeder extends Seeder
                 'publication_year' => 2024,
                 'edition' => 1,
                 'price' => 399000,
-                'cover_image' => '/images/books/python-programming.jpg',
+                'cover_image' => 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600&h=800&fit=crop',
                 'ebook_file' => '/pdfs/books/python-programming.pdf',
                 'is_active' => true,
                 'approval_status' => 2,
@@ -205,7 +205,7 @@ class BooksSeeder extends Seeder
                 'publication_year' => 2024,
                 'edition' => 1,
                 'price' => 0,
-                'cover_image' => '/images/books/data-structures.jpg',
+                'cover_image' => 'https://images.unsplash.com/photo-1461749280684-dccba630e2f6?w=600&h=800&fit=crop',
                 'ebook_file' => '/pdfs/books/data-structures.pdf',
                 'is_active' => true,
                 'approval_status' => 2,
@@ -214,8 +214,11 @@ class BooksSeeder extends Seeder
             ],
         ];
         
-        foreach ($books as $book) {
-            DB::table('books')->insert($book);
+        foreach ($books as $bookData) {
+            // Convert boolean values for PostgreSQL
+            $bookData['is_active'] = $bookData['is_active'] ? DB::raw('true') : DB::raw('false');
+            
+            DB::table('books')->insert($bookData);
         }
     }
 }

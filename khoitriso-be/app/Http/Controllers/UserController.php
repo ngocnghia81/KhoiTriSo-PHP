@@ -6,21 +6,27 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
-class UserController extends Controller
+class UserController extends BaseController
 {
     public function profile(Request $request)
     {
         $u = $request->user();
-        return response()->json([
+        if (!$u) {
+            return $this->error('UNAUTHORIZED', null, 'User not authenticated', 401);
+        }
+        
+        $profileData = [
             'id' => $u->id,
             'username' => $u->name,
             'email' => $u->email,
             'fullName' => $u->name,
-            'avatar' => null,
+            'avatar' => $u->avatar, // Get avatar from database
             'role' => $u->role ?? 'student',
-            'isActive' => true,
+            'isActive' => $u->is_active ?? true,
             'emailVerified' => (bool) $u->email_verified_at,
-        ]);
+        ];
+        
+        return $this->success($profileData);
     }
 
     public function updateProfile(Request $request)
@@ -30,11 +36,28 @@ class UserController extends Controller
             'phone' => ['nullable', 'string', 'max:20'],
         ]);
         $u = $request->user();
+        if (!$u) {
+            return $this->error('UNAUTHORIZED', null, 'User not authenticated', 401);
+        }
+        
         if (isset($data['fullName'])) {
             $u->name = $data['fullName'];
         }
         $u->save();
-        return $this->profile($request);
+        
+        // Return updated profile
+        $profileData = [
+            'id' => $u->id,
+            'username' => $u->name,
+            'email' => $u->email,
+            'fullName' => $u->name,
+            'avatar' => $u->avatar,
+            'role' => $u->role ?? 'student',
+            'isActive' => $u->is_active ?? true,
+            'emailVerified' => (bool) $u->email_verified_at,
+        ];
+        
+        return $this->success($profileData);
     }
 
     public function changePassword(Request $request)

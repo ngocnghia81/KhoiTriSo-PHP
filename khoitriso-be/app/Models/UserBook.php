@@ -17,6 +17,16 @@ class UserBook extends Model
         'is_active' => 'boolean',
         'expires_at' => 'datetime',
     ];
+
+    public function activationCode()
+    {
+        return $this->belongsTo(BookActivationCode::class, 'activation_code_id');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
 }
 
 

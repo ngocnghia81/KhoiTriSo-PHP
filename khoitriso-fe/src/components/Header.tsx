@@ -13,6 +13,9 @@ import {
     MagnifyingGlassIcon,
     ShoppingBagIcon,
     BookOpenIcon,
+    UserCircleIcon,
+    ArrowRightOnRectangleIcon,
+    AcademicCapIcon,
 } from "@heroicons/react/24/outline";
 import { ChevronDownIcon } from "@heroicons/react/20/solid";
 import Logo from "./Logo";
@@ -62,13 +65,47 @@ export default function Header() {
     const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [hasToken, setHasToken] = useState(false);
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const [user, setUser] = useState<any>(null);
 
-    // Check login status on mount
+    // Check login status and get user info on mount
     useEffect(() => {
         const token = localStorage.getItem("token");
         if (token) {
             setHasToken(true);
+            // Get user info from localStorage
+            try {
+                const userStr = localStorage.getItem("user");
+                if (userStr) {
+                    setUser(JSON.parse(userStr));
+                }
+            } catch (e) {
+                console.error("Failed to parse user data", e);
+            }
         }
+
+        // Listen for auth changes
+        const handleAuthChange = () => {
+            const token = localStorage.getItem("token");
+            setHasToken(!!token);
+            if (token) {
+                try {
+                    const userStr = localStorage.getItem("user");
+                    if (userStr) {
+                        setUser(JSON.parse(userStr));
+                    }
+                } catch (e) {
+                    console.error("Failed to parse user data", e);
+                }
+            } else {
+                setUser(null);
+            }
+        };
+
+        window.addEventListener("kts-auth-changed", handleAuthChange);
+        return () => {
+            window.removeEventListener("kts-auth-changed", handleAuthChange);
+        };
     }, []);
 
     const handleLogout = async () => {
@@ -216,12 +253,90 @@ export default function Header() {
                             {/* Auth Buttons */}
                             <div className="flex items-center space-x-3">
                                 {hasToken ? (
-                                    <button
-                                        onClick={handleLogout}
-                                        className="px-6 py-2 font-semibold rounded-full transition-all duration-300 transform bg-red-600 text-white hover:bg-red-700 hover:shadow-lg hover:scale-105"
-                                    >
-                                        Đăng xuất
-                                    </button>
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => setUserMenuOpen(!userMenuOpen)}
+                                            className="flex items-center space-x-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-full transition-all duration-200 hover:opacity-90"
+                                        >
+                                            {user?.avatar ? (
+                                                <Image
+                                                    src={user.avatar}
+                                                    alt={user?.username || user?.email || "User"}
+                                                    width={40}
+                                                    height={40}
+                                                    className="w-10 h-10 rounded-full object-cover shadow-lg ring-2 ring-white"
+                                                    unoptimized
+                                                />
+                                            ) : (
+                                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold shadow-lg ring-2 ring-white">
+                                                    {user?.username ? (
+                                                        user.username.charAt(0).toUpperCase()
+                                                    ) : user?.email ? (
+                                                        user.email.charAt(0).toUpperCase()
+                                                    ) : (
+                                                        <UserCircleIcon className="w-6 h-6" />
+                                                    )}
+                                                </div>
+                                            )}
+                                        </button>
+
+                                        {/* User Dropdown Menu */}
+                                        {userMenuOpen && (
+                                            <>
+                                                <div
+                                                    className="fixed inset-0 z-40"
+                                                    onClick={() => setUserMenuOpen(false)}
+                                                />
+                                                <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-2xl ring-1 ring-black ring-opacity-5 z-50 overflow-hidden">
+                                                    <div className="px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white">
+                                                        <p className="text-sm font-semibold truncate">
+                                                            {user?.username || user?.email || "Người dùng"}
+                                                        </p>
+                                                        <p className="text-xs text-blue-100 truncate">
+                                                            {user?.email || ""}
+                                                        </p>
+                                                    </div>
+                                                    <div className="py-1">
+                                                        <Link
+                                                            href="/profile"
+                                                            onClick={() => setUserMenuOpen(false)}
+                                                            className="flex items-center px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                                        >
+                                                            <UserCircleIcon className="w-5 h-5 mr-3 text-gray-400" />
+                                                            <span>Hồ sơ</span>
+                                                        </Link>
+                                                        <Link
+                                                            href="/my-learning"
+                                                            onClick={() => setUserMenuOpen(false)}
+                                                            className="flex items-center px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                                        >
+                                                            <AcademicCapIcon className="w-5 h-5 mr-3 text-gray-400" />
+                                                            <span>Khóa học đã mua</span>
+                                                        </Link>
+                                                        <Link
+                                                            href="/my-learning?tab=books"
+                                                            onClick={() => setUserMenuOpen(false)}
+                                                            className="flex items-center px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                                        >
+                                                            <BookOpenIcon className="w-5 h-5 mr-3 text-gray-400" />
+                                                            <span>Sách của tôi</span>
+                                                        </Link>
+                                                        <div className="border-t border-gray-100 my-1" />
+                                                        <button
+                                                            onClick={() => {
+                                                                setUserMenuOpen(false);
+                                                                handleLogout();
+                                                            }}
+                                                            className="w-full flex items-center px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                                        >
+                                                            <ArrowRightOnRectangleIcon className="w-5 h-5 mr-3" />
+                                                            <span>Đăng xuất</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
                                 ) : (
                                     <>
                                         <Link

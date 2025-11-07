@@ -20,6 +20,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid, HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
 import { courseService } from '@/services/courseService';
+import { getCourses } from '@/services/courses';
+import { httpClient } from '@/lib/http-client';
 import type { Course } from '@/types';
 import { requireAuth, handleApiResponse } from '@/utils/authCheck';
 
@@ -64,16 +66,15 @@ export default function CoursesPage() {
     const fetchCourses = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:8000/api/courses', {
-          headers: {
-            'Accept': 'application/json',
-          },
-        });
+        // Backend returns { data: [...], total: ..., current_page: ... }
+        const response = await httpClient.get('courses');
+        console.log('Courses API response:', response);
         
-        if (response.ok) {
-          const result = await response.json();
-          console.log('Courses API response:', result);
-          setCourses(result.data || []);
+        if (response.ok && response.data) {
+          // Backend returns { data: [...], total: ... } directly (not wrapped in success)
+          const responseData = response.data as any;
+          const courses = responseData.data || responseData || [];
+          setCourses(Array.isArray(courses) ? courses : []);
         }
       } catch (error) {
         console.error('Error fetching courses:', error);
@@ -165,32 +166,21 @@ export default function CoursesPage() {
       return;
     }
 
-    const token = localStorage.getItem('token');
-
     try {
-      const response = await fetch('http://localhost:8000/api/cart', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          item_id: courseId,
-          item_type: 1, // 1 = course
-          quantity: 1
-        })
+      const response = await httpClient.post('cart', {
+        item_id: courseId,
+        item_type: 1, // 1 = course
+        quantity: 1
       });
-
-      // Handle 401 and other errors
-      if (!handleApiResponse(response)) {
-        return;
-      }
 
       if (response.ok) {
         alert('Đã thêm vào giỏ hàng!');
+        // Dispatch event to update cart count
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('kts-cart-changed'));
+        }
       } else {
-        const data = await response.json();
+        const data = response.error;
         alert(data.message || 'Có lỗi xảy ra, vui lòng thử lại');
       }
     } catch (error) {

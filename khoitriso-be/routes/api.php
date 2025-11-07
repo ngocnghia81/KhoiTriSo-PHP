@@ -16,7 +16,7 @@ Route::get('language/translations/all', [\App\Http\Controllers\LanguageControlle
 Route::get('courses', [\App\Http\Controllers\CourseController::class, 'index']);
 Route::get('courses/{id}', [\App\Http\Controllers\CourseController::class, 'show']);
 Route::get('books', [\App\Http\Controllers\BookController::class, 'index']);
-Route::get('books/{id}', [\App\Http\Controllers\BookController::class, 'show']);
+Route::get('books/{id}', [\App\Http\Controllers\BookController::class, 'show'])->where('id', '[0-9]+');
 Route::get('categories', [\App\Http\Controllers\CategoryController::class, 'index']);
 Route::get('categories/{id}', [\App\Http\Controllers\CategoryController::class, 'show']);
 
@@ -143,6 +143,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Courses (protected routes)
     Route::get('my-courses', [\App\Http\Controllers\CourseController::class, 'myLearning']);
     Route::post('courses', [\App\Http\Controllers\CourseController::class, 'store']);
+    // Enroll route must be before courses/{id} to avoid route conflict
+    Route::post('courses/{id}/enroll', [\App\Http\Controllers\CourseController::class, 'enroll']);
     Route::put('courses/{id}', [\App\Http\Controllers\CourseController::class, 'update']);
     Route::delete('courses/{id}', [\App\Http\Controllers\CourseController::class, 'destroy']);
 
@@ -163,6 +165,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('books/activate', [\App\Http\Controllers\BookController::class, 'activate']);
     Route::get('books/my-books', [\App\Http\Controllers\BookController::class, 'myBooks']);
     Route::get('books/{id}/chapters', [\App\Http\Controllers\BookController::class, 'chapters']);
+    Route::get('books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\BookController::class, 'chapterQuestions']);
 
     // Cart
     Route::get('cart', [\App\Http\Controllers\CartController::class, 'index']);
@@ -227,6 +230,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('discussions/{id}/like', [\App\Http\Controllers\DiscussionController::class, 'like']);
     Route::get('discussions/{id}/replies', [\App\Http\Controllers\DiscussionController::class, 'replies']);
     Route::post('discussions/{id}/replies', [\App\Http\Controllers\DiscussionController::class, 'reply']);
+
+    // Notes
+    Route::get('lessons/{id}/notes', [\App\Http\Controllers\NoteController::class, 'list']);
+    Route::post('lessons/{id}/notes', [\App\Http\Controllers\NoteController::class, 'store']);
+    Route::put('notes/{id}', [\App\Http\Controllers\NoteController::class, 'update']);
+    Route::delete('notes/{id}', [\App\Http\Controllers\NoteController::class, 'destroy']);
 
     // Learning paths
     Route::get('learning-paths', [\App\Http\Controllers\LearningPathController::class, 'index']);

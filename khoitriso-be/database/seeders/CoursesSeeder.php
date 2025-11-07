@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use App\Models\Category;
+use App\Models\Course;
 
 class CoursesSeeder extends Seeder
 {
@@ -32,7 +33,7 @@ class CoursesSeeder extends Seeder
                 'language' => 'vi',
                 'is_free' => false,
                 'price' => 599000,
-                'thumbnail' => '/images/courses/toan-12-dai-so.jpg',
+                'thumbnail' => 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=800&h=600&fit=crop',
                 'is_published' => true,
                 'is_active' => true,
                 'approval_status' => 2,
@@ -53,7 +54,7 @@ class CoursesSeeder extends Seeder
                 'language' => 'vi',
                 'is_free' => false,
                 'price' => 499000,
-                'thumbnail' => '/images/courses/toan-11-hinh-hoc.jpg',
+                'thumbnail' => 'https://images.unsplash.com/photo-1509228468518-180dd4864904?w=800&h=600&fit=crop',
                 'is_published' => true,
                 'is_active' => true,
                 'approval_status' => 2,
@@ -74,7 +75,7 @@ class CoursesSeeder extends Seeder
                 'language' => 'vi',
                 'is_free' => true,
                 'price' => 0,
-                'thumbnail' => '/images/courses/giai-tich-12.jpg',
+                'thumbnail' => 'https://images.unsplash.com/photo-1596495577886-d920f1fb7238?w=800&h=600&fit=crop',
                 'is_published' => true,
                 'is_active' => true,
                 'approval_status' => 2,
@@ -97,7 +98,7 @@ class CoursesSeeder extends Seeder
                 'language' => 'vi',
                 'is_free' => false,
                 'price' => 549000,
-                'thumbnail' => '/images/courses/vat-ly-12-dien-tu.jpg',
+                'thumbnail' => 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=800&h=600&fit=crop',
                 'is_published' => true,
                 'is_active' => true,
                 'approval_status' => 2,
@@ -118,7 +119,7 @@ class CoursesSeeder extends Seeder
                 'language' => 'vi',
                 'is_free' => true,
                 'price' => 0,
-                'thumbnail' => '/images/courses/vat-ly-11-co-hoc.jpg',
+                'thumbnail' => 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=800&h=600&fit=crop',
                 'is_published' => true,
                 'is_active' => true,
                 'approval_status' => 2,
@@ -141,7 +142,7 @@ class CoursesSeeder extends Seeder
                 'language' => 'vi',
                 'is_free' => false,
                 'price' => 529000,
-                'thumbnail' => '/images/courses/hoa-12-huu-co.jpg',
+                'thumbnail' => 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=800&h=600&fit=crop',
                 'is_published' => true,
                 'is_active' => true,
                 'approval_status' => 2,
@@ -164,7 +165,7 @@ class CoursesSeeder extends Seeder
                 'language' => 'vi',
                 'is_free' => false,
                 'price' => 799000,
-                'thumbnail' => '/images/courses/python-full.jpg',
+                'thumbnail' => 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=800&h=600&fit=crop',
                 'is_published' => true,
                 'is_active' => true,
                 'approval_status' => 2,
@@ -185,7 +186,7 @@ class CoursesSeeder extends Seeder
                 'language' => 'vi',
                 'is_free' => false,
                 'price' => 999000,
-                'thumbnail' => '/images/courses/react-nodejs.jpg',
+                'thumbnail' => 'https://images.unsplash.com/photo-1461749280684-dccba630e2f6?w=800&h=600&fit=crop',
                 'is_published' => true,
                 'is_active' => true,
                 'approval_status' => 2,
@@ -208,7 +209,7 @@ class CoursesSeeder extends Seeder
                 'language' => 'vi',
                 'is_free' => false,
                 'price' => 699000,
-                'thumbnail' => '/images/courses/ielts-speaking.jpg',
+                'thumbnail' => 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800&h=600&fit=crop',
                 'is_published' => true,
                 'is_active' => true,
                 'approval_status' => 2,
@@ -229,7 +230,7 @@ class CoursesSeeder extends Seeder
                 'language' => 'vi',
                 'is_free' => true,
                 'price' => 0,
-                'thumbnail' => '/images/courses/english-grammar.jpg',
+                'thumbnail' => 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800&h=600&fit=crop',
                 'is_published' => true,
                 'is_active' => true,
                 'approval_status' => 2,
@@ -241,8 +242,13 @@ class CoursesSeeder extends Seeder
             ],
         ];
         
-        foreach ($courses as $course) {
-            DB::table('courses')->insert($course);
+        foreach ($courses as $courseData) {
+            // Convert boolean values for PostgreSQL
+            $courseData['is_free'] = $courseData['is_free'] ? DB::raw('true') : DB::raw('false');
+            $courseData['is_published'] = $courseData['is_published'] ? DB::raw('true') : DB::raw('false');
+            $courseData['is_active'] = $courseData['is_active'] ? DB::raw('true') : DB::raw('false');
+            
+            DB::table('courses')->insert($courseData);
         }
     }
 }

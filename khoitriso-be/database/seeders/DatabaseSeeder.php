@@ -19,6 +19,8 @@ class DatabaseSeeder extends Seeder
             UsersAndCouponsSeeder::class,
             CoursesSeeder::class,
             BooksSeeder::class,
+            BookActivationCodesSeeder::class, // Create activation codes for books
+            BookContentSeeder::class, // Create chapters, questions, options, and solutions for books
             CompleteCourseContentSeeder::class, // Add lessons, materials, assignments
             TestEnrollmentSeeder::class, // Enroll student in courses
         ]);

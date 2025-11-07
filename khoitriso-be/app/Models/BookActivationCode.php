@@ -16,6 +16,11 @@ class BookActivationCode extends Model
     protected $casts = [
         'is_used' => 'boolean',
     ];
+
+    public function book()
+    {
+        return $this->belongsTo(Book::class, 'book_id');
+    }
 }
 
 

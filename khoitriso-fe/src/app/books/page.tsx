@@ -17,6 +17,7 @@ import {
   HeartIcon as HeartIconSolid 
 } from '@heroicons/react/24/solid';
 import { bookService } from '@/services/bookService';
+import { httpClient } from '@/lib/http-client';
 import type { Book } from '@/types';
 import { requireAuth, handleApiResponse } from '@/utils/authCheck';
 
@@ -166,38 +167,26 @@ export default function BooksPage() {
     }
     
     try {
-      const token = localStorage.getItem('token');
       console.log('Adding book to cart:', bookId);
 
       // Add to cart via API
-      const response = await fetch('http://localhost:8000/api/cart', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          itemId: bookId,
-          itemType: 'book',
-          quantity: 1
-        }),
+      const response = await httpClient.post('cart', {
+        item_id: bookId,
+        item_type: 2, // 2 = book
+        quantity: 1
       });
 
       console.log('Cart response status:', response.status);
 
-      // Handle 401 and other errors
-      if (!handleApiResponse(response)) {
-        return;
-      }
-
-      const data = await response.json();
-      console.log('Cart response data:', data);
-      
-      if (response.ok && data.success) {
+      if (response.ok) {
         alert('Đã thêm vào giỏ hàng!');
+        // Dispatch event to update cart count
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('kts-cart-changed'));
+        }
       } else {
-        alert(data.message || 'Có lỗi xảy ra');
+        const data = response.error;
+        alert(data?.message || 'Có lỗi xảy ra, vui lòng thử lại');
       }
     } catch (error) {
       console.error('Add to cart error:', error);

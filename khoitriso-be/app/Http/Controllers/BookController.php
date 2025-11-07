@@ -6,13 +6,16 @@ use App\Models\Book;
 use App\Models\BookActivationCode;
 use App\Models\BookChapter;
 use App\Models\UserBook;
+use App\Models\Question;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class BookController extends Controller
 {
     public function index(Request $request)
     {
-        $q = Book::query()->where('is_active', true)->with('category:id,name','author:id,name');
+        $q = Book::query()->whereRaw('is_active = true')->with('category:id,name','author:id,name');
         if ($request->filled('category')) $q->where('category_id', $request->integer('category'));
         if ($s = $request->query('search')) $q->where('title', 'like', "%$s%");
         if ($request->filled('approvalStatus')) $q->where('approval_status', $request->integer('approvalStatus'));
@@ -29,10 +32,58 @@ class BookController extends Controller
         ]);
     }
 
-    public function show(int $id)
+    public function show(int $id, Request $request)
     {
         $book = Book::with(['author','category','chapters' => function ($q) { $q->orderBy('order_index'); }])->findOrFail($id);
-        return response()->json($book);
+        
+        // Check if user owns this book
+        // Try to authenticate user if token is provided (for public route)
+        $user = null;
+        $token = $request->bearerToken();
+        
+        if ($token) {
+            try {
+                // Use Sanctum's personal access token to authenticate
+                $personalAccessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
+                if ($personalAccessToken) {
+                    $user = $personalAccessToken->tokenable;
+                }
+            } catch (\Exception $e) {
+                // Token invalid or expired, continue as guest
+                \Log::warning('Failed to authenticate user in BookController::show: ' . $e->getMessage());
+            }
+        }
+        
+        $isOwned = false;
+        if ($user) {
+            // Check via UserBook -> activationCode -> book_id
+            $userBook = \App\Models\UserBook::where('user_id', $user->id)
+                ->whereRaw('is_active = true')
+                ->whereHas('activationCode', function($q) use ($id) {
+                    $q->where('book_id', $id);
+                })
+                ->first();
+            
+            $isOwned = $userBook !== null;
+        }
+        
+        // Add question count to each chapter
+        $chapters = $book->chapters->map(function($chapter) {
+            $questionCount = Question::where('context_type', 2)
+                ->where('context_id', $chapter->id)
+                ->whereRaw('is_active = true')
+                ->count();
+            
+            $chapterData = $chapter->toArray();
+            $chapterData['question_count'] = $questionCount;
+            return $chapterData;
+        });
+        
+        $bookData = $book->toArray();
+        $bookData['is_owned'] = $isOwned;
+        $bookData['chapters'] = $chapters;
+        
+        return response()->json($bookData);
     }
 
     public function store(Request $request)
@@ -106,38 +157,173 @@ class BookController extends Controller
 
     public function activate(Request $request)
     {
-        $data = $request->validate([
-            'activationCode' => ['required','string','max:50'],
-        ]);
-        $code = BookActivationCode::where('activation_code', $data['activationCode'])->first();
-        if (! $code || $code->is_used) {
-            return response()->json(['success' => false, 'message' => 'Invalid/used code'], 400);
-        }
-        $code->is_used = true;
-        $code->used_by_id = $request->user()->id;
-        $code->save();
+        try {
+            $data = $request->validate([
+                'activationCode' => ['required','string','max:50'],
+            ]);
+            // Use whereRaw for PostgreSQL boolean compatibility
+            $code = BookActivationCode::where('activation_code', $data['activationCode'])
+                ->whereRaw('is_used = false')
+                ->whereNull('used_by_id')
+                ->first();
+            
+            if (! $code) {
+                return response()->json(['success' => false, 'message' => 'Mã kích hoạt không hợp lệ hoặc đã được sử dụng'], 400);
+            }
+            
+            // Use DB::table for PostgreSQL boolean compatibility
+            DB::table('book_activation_codes')
+                ->where('id', $code->id)
+                ->update([
+                    'is_used' => DB::raw('true'),
+                    'used_by_id' => $request->user()->id,
+                    'updated_at' => now(),
+                ]);
+            
+            // Refresh the code model to get updated values
+            $code->refresh();
 
-        $userBook = UserBook::create([
-            'activation_code_id' => $code->id,
-            'user_id' => $request->user()->id,
-            'expires_at' => now()->addYears(2),
-            'is_active' => true,
-        ]);
-        return response()->json(['success' => true, 'userBook' => $userBook]);
+            // Use DB::table for PostgreSQL compatibility
+            $userBookId = DB::table('user_books')->insertGetId([
+                'activation_code_id' => $code->id,
+                'user_id' => $request->user()->id,
+                'expires_at' => now()->addYears(2),
+                'is_active' => DB::raw('true'),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            
+            $userBook = UserBook::find($userBookId);
+            
+            // Load relationships
+            $userBook->load(['activationCode.book']);
+            
+            return response()->json([
+                'success' => true, 
+                'userBook' => $userBook,
+                'message' => 'Kích hoạt sách thành công'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error activating book: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Có lỗi xảy ra khi kích hoạt sách'], 500);
+        }
     }
 
     public function myBooks(Request $request)
     {
-        $pageSize = (int) $request->query('pageSize', 20);
-        $query = UserBook::where('user_id', $request->user()->id)->with(['activationCode','activationCode.book']);
-        $res = $query->paginate(max(1, min(100, $pageSize)));
-        return response()->json(['userBooks' => $res->items(), 'total' => $res->total(), 'hasMore' => $res->hasMorePages()]);
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json(['error' => 'Unauthorized'], 401);
+            }
+
+            $pageSize = (int) $request->query('pageSize', 20);
+            $query = UserBook::where('user_id', $user->id)
+                ->whereRaw('is_active = true')
+                ->with(['activationCode', 'activationCode.book']);
+            
+            $res = $query->paginate(max(1, min(100, $pageSize)));
+            
+            return response()->json([
+                'userBooks' => $res->items(),
+                'total' => $res->total(),
+                'hasMore' => $res->hasMorePages()
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error in myBooks: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
     }
 
     public function chapters(int $id)
     {
         $chapters = BookChapter::where('book_id', $id)->orderBy('order_index')->get();
         return response()->json(['chapters' => $chapters]);
+    }
+
+    public function chapterQuestions(int $bookId, int $chapterId, Request $request)
+    {
+        try {
+            // Verify chapter belongs to book
+            $chapter = BookChapter::where('id', $chapterId)
+                ->where('book_id', $bookId)
+                ->firstOrFail();
+            
+            // Check if user owns the book
+            $isOwned = false;
+            if ($request->user()) {
+                $userBook = \App\Models\UserBook::where('user_id', $request->user()->id)
+                    ->whereRaw('is_active = true')
+                    ->whereHas('activationCode', function($q) use ($bookId) {
+                        $q->where('book_id', $bookId);
+                    })
+                    ->first();
+                
+                $isOwned = $userBook !== null;
+            }
+            
+            if (!$isOwned) {
+                return response()->json(['error' => 'Bạn cần mua sách để xem nội dung'], 403);
+            }
+            
+            // Get questions for this chapter (context_type = 2 for book_chapter)
+            $questions = Question::where('context_type', 2)
+                ->where('context_id', $chapterId)
+                ->whereRaw('is_active = true')
+                ->with(['options', 'bookSolutions'])
+                ->orderBy('order_index')
+                ->get();
+            
+            // Format questions with solutions
+            $formattedQuestions = $questions->map(function($question) {
+                $solution = $question->bookSolutions->first();
+                
+                return [
+                    'id' => $question->id,
+                    'content' => $question->question_content,
+                    'type' => $question->question_type, // 1 = multiple choice, 2 = essay
+                    'difficulty' => $question->difficulty_level,
+                    'points' => $question->default_points,
+                    'explanation' => $question->explanation_content,
+                    'image' => $question->question_image,
+                    'video_url' => $question->video_url,
+                    'order_index' => $question->order_index,
+                    'options' => $question->options->map(function($option) {
+                        return [
+                            'id' => $option->id,
+                            'content' => $option->option_content,
+                            'image' => $option->option_image,
+                            'is_correct' => $option->is_correct,
+                            'points' => $option->points_value,
+                            'explanation' => $option->explanation_text,
+                            'order_index' => $option->order_index,
+                        ];
+                    })->sortBy('order_index')->values(),
+                    'solution' => $solution ? [
+                        'id' => $solution->id,
+                        'type' => $solution->solution_type, // 1 = video, 2 = text, 3 = latex, 4 = image
+                        'content' => $solution->content,
+                        'video_url' => $solution->video_url,
+                        'image_url' => $solution->image_url,
+                        'latex_content' => $solution->latex_content,
+                    ] : null,
+                ];
+            });
+            
+            return response()->json([
+                'chapter' => [
+                    'id' => $chapter->id,
+                    'title' => $chapter->title,
+                    'description' => $chapter->description,
+                    'order_index' => $chapter->order_index,
+                ],
+                'questions' => $formattedQuestions,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error in chapterQuestions: ' . $e->getMessage());
+            return response()->json(['error' => 'Lỗi khi tải câu hỏi'], 500);
+        }
     }
 }
 

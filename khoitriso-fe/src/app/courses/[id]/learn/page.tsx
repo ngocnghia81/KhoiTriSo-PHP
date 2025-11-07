@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { httpClient } from '@/lib/http-client';
 import Link from 'next/link';
 
 interface Material {
@@ -31,17 +31,35 @@ interface Lesson {
 
 interface Discussion {
   id: number;
-  user_name: string;
+  user_id?: number;
+  user?: {
+    id: number;
+    name: string;
+    email?: string;
+    avatar?: string;
+  };
+  user_name?: string; // For backward compatibility
   content: string;
+  video_timestamp?: number;
+  videoTimestamp?: number;
+  parent_id?: number;
+  parentId?: number;
+  like_count?: number;
+  likeCount?: number;
+  is_instructor?: boolean;
+  isInstructor?: boolean;
   created_at: string;
+  createdAt?: string;
   replies?: Discussion[];
 }
 
 interface Note {
   id: number;
   content: string;
-  timestamp: number;
+  video_timestamp?: number | null;
+  timestamp?: number; // For backward compatibility
   created_at: string;
+  updated_at?: string;
 }
 
 interface Course {
@@ -78,6 +96,10 @@ export default function CourseLearningPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
   const [newQuestion, setNewQuestion] = useState('');
+  const [videoRef, setVideoRef] = useState<HTMLVideoElement | null>(null);
+  const [currentVideoTime, setCurrentVideoTime] = useState<number>(0);
+  const [youtubePlayer, setYoutubePlayer] = useState<any>(null);
+  const [isYouTube, setIsYouTube] = useState<boolean>(false);
 
   useEffect(() => {
     console.log('🟢 useEffect triggered');
@@ -92,6 +114,15 @@ export default function CourseLearningPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId]);
+
+  // Load discussions when currentLesson changes
+  useEffect(() => {
+    if (currentLesson && currentLesson.id) {
+      console.log('Loading discussions for current lesson:', currentLesson.id);
+      loadLessonData(currentLesson.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLesson?.id]);
 
   const loadStoredData = () => {
     // Load completed lessons from localStorage
@@ -128,22 +159,26 @@ export default function CourseLearningPage() {
       console.log('Making API request to:', `/courses/${courseId}`);
       
       // Fetch course with lessons
-      const response = await api.get(`/courses/${courseId}`);
+      const response = await httpClient.get(`courses/${courseId}`);
       
       console.log('Learn page - Full response:', response);
-      console.log('Learn page - Lessons:', response?.lessons);
+      console.log('Learn page - Response data:', response.data);
       
-      if (response) {
+      if (response.ok && response.data) {
+        const courseData = response.data as any;
         console.log('Setting course...');
-        console.log('Total lessons in response:', response.lessons?.length);
-        console.log('Lessons array:', response.lessons);
+        console.log('Total lessons in response:', courseData.lessons?.length);
+        console.log('Lessons array:', courseData.lessons);
         
-        setCourse(response);
+        setCourse(courseData);
         
         // Set first lesson as current
-        if (response.lessons && response.lessons.length > 0) {
-          setCurrentLesson(response.lessons[0]);
-          console.log('First lesson set:', response.lessons[0]);
+        if (courseData.lessons && courseData.lessons.length > 0) {
+          const firstLesson = courseData.lessons[0];
+          setCurrentLesson(firstLesson);
+          console.log('First lesson set:', firstLesson);
+          // Load discussions for first lesson
+          // Note: loadLessonData is defined below, so we'll use useEffect to call it
         } else {
           console.log('No lessons found in response');
         }
@@ -167,28 +202,110 @@ export default function CourseLearningPage() {
     }
   };
 
+  const loadLessonData = async (lessonId: number) => {
+    // Load notes from API
+    try {
+      console.log('Loading notes for lesson:', lessonId);
+      const notesResponse = await httpClient.get(`lessons/${lessonId}/notes`);
+      console.log('Notes API response:', notesResponse);
+      
+      if (notesResponse.ok && notesResponse.data) {
+        const notesData = notesResponse.data as any;
+        // API returns { success: true, data: [...] }
+        let notesArray = [];
+        if (notesData.success && notesData.data) {
+          notesArray = notesData.data;
+        } else if (Array.isArray(notesData)) {
+          notesArray = notesData;
+        } else if (notesData.data && Array.isArray(notesData.data)) {
+          notesArray = notesData.data;
+        }
+        
+        const formattedNotes = Array.isArray(notesArray) ? notesArray.map((n: any) => ({
+          id: n.id,
+          content: n.content,
+          video_timestamp: n.video_timestamp,
+          timestamp: n.video_timestamp || 0, // For backward compatibility
+          created_at: n.created_at || new Date().toISOString(),
+          updated_at: n.updated_at,
+        })) : [];
+        
+        // Sort by created_at descending (newest first)
+        formattedNotes.sort((a, b) => {
+          const dateA = new Date(a.created_at).getTime();
+          const dateB = new Date(b.created_at).getTime();
+          return dateB - dateA; // Descending order
+        });
+        
+        console.log('Formatted notes:', formattedNotes);
+        setNotes(formattedNotes);
+      } else {
+        console.error('Failed to load notes:', notesResponse);
+        setNotes([]);
+      }
+    } catch (error) {
+      console.error('Error loading notes:', error);
+      setNotes([]);
+    }
+
+    // Load discussions from API
+    try {
+      console.log('Loading discussions for lesson:', lessonId);
+      const response = await httpClient.get(`lessons/${lessonId}/discussions`);
+      console.log('Discussions API response:', response);
+      
+      if (response.ok && response.data) {
+        const apiResponse = response.data as any;
+        console.log('API Response:', apiResponse);
+        
+        // API returns { success: true, data: [...], total: ... } from paginated method
+        let discussionsData = [];
+        if (apiResponse.success && apiResponse.data) {
+          discussionsData = apiResponse.data;
+        } else if (Array.isArray(apiResponse)) {
+          discussionsData = apiResponse;
+        } else if (apiResponse.data && Array.isArray(apiResponse.data)) {
+          discussionsData = apiResponse.data;
+        }
+        
+        console.log('Discussions data:', discussionsData);
+        
+        const formattedDiscussions = Array.isArray(discussionsData) ? discussionsData.map((d: any) => ({
+          id: d.id,
+          user_id: d.user_id,
+          user: d.user,
+          user_name: d.user?.name || d.user_name || 'Người dùng',
+          content: d.content,
+          video_timestamp: d.video_timestamp || d.videoTimestamp,
+          parent_id: d.parent_id || d.parentId,
+          like_count: d.like_count || d.likeCount || 0,
+          is_instructor: d.is_instructor || d.isInstructor || false,
+          created_at: d.created_at || d.createdAt || new Date().toISOString(),
+        })) : [];
+        
+        // Sort by created_at descending (newest first)
+        formattedDiscussions.sort((a, b) => {
+          const dateA = new Date(a.created_at).getTime();
+          const dateB = new Date(b.created_at).getTime();
+          return dateB - dateA; // Descending order
+        });
+        
+        console.log('Formatted discussions:', formattedDiscussions);
+        setDiscussions(formattedDiscussions);
+      } else {
+        console.error('Failed to load discussions:', response);
+        setDiscussions([]);
+      }
+    } catch (error) {
+      console.error('Error loading discussions:', error);
+      setDiscussions([]);
+    }
+  };
+
   const handleLessonClick = (lesson: Lesson) => {
     setCurrentLesson(lesson);
     // Load notes and discussions for this lesson
     loadLessonData(lesson.id);
-  };
-
-  const loadLessonData = async (lessonId: number) => {
-    // Load lesson-specific data from localStorage
-    const lessonNotes = localStorage.getItem(`notes-${courseId}-${lessonId}`);
-    const lessonDiscussions = localStorage.getItem(`discussions-${courseId}-${lessonId}`);
-    
-    if (lessonNotes) {
-      setNotes(JSON.parse(lessonNotes));
-    } else {
-      setNotes([]);
-    }
-
-    if (lessonDiscussions) {
-      setDiscussions(JSON.parse(lessonDiscussions));
-    } else {
-      setDiscussions([]);
-    }
   };
 
   const toggleLessonCompletion = (lessonId: number) => {
@@ -207,21 +324,57 @@ export default function CourseLearningPage() {
     if (!note.trim() || !currentLesson) return;
     
     try {
-      const newNote: Note = {
-        id: Date.now(),
+      // Get current video time if available
+      let videoTimestamp: number | null = null;
+      if (isYouTube && youtubePlayer && youtubePlayer.getCurrentTime) {
+        try {
+          videoTimestamp = Math.floor(youtubePlayer.getCurrentTime());
+        } catch (e) {
+          console.error('Error getting YouTube current time:', e);
+        }
+      } else if (videoRef && videoRef.currentTime) {
+        videoTimestamp = Math.floor(videoRef.currentTime);
+      } else if (currentVideoTime > 0) {
+        videoTimestamp = currentVideoTime;
+      }
+      
+      console.log('Saving note to lesson:', currentLesson.id, 'at timestamp:', videoTimestamp);
+      const response = await httpClient.post(`lessons/${currentLesson.id}/notes`, {
         content: note,
-        timestamp: 0,
-        created_at: new Date().toISOString()
-      };
+        videoTimestamp: videoTimestamp,
+      });
       
-      const updatedNotes = [...notes, newNote];
-      setNotes(updatedNotes);
-      setNote('');
+      console.log('Note API response:', response);
       
-      // Save to localStorage
-      localStorage.setItem(`notes-${courseId}-${currentLesson.id}`, JSON.stringify(updatedNotes));
+      if (response.ok && response.data) {
+        const responseData = response.data as any;
+        // API returns { success: true, data: {...} }
+        const savedNote = responseData.success && responseData.data ? responseData.data : responseData;
+        
+        const newNote: Note = {
+          id: savedNote.id,
+          content: savedNote.content,
+          video_timestamp: savedNote.video_timestamp,
+          timestamp: savedNote.video_timestamp || 0,
+          created_at: savedNote.created_at || new Date().toISOString(),
+          updated_at: savedNote.updated_at,
+        };
+        
+        // Add new note and sort by created_at descending
+        const updatedNotes = [...notes, newNote].sort((a, b) => {
+          const dateA = new Date(a.created_at).getTime();
+          const dateB = new Date(b.created_at).getTime();
+          return dateB - dateA; // Descending order
+        });
+        setNotes(updatedNotes);
+        setNote('');
+      } else {
+        console.error('Failed to save note:', response);
+        alert('Không thể lưu ghi chú. Vui lòng thử lại.');
+      }
     } catch (error) {
       console.error('Lỗi khi lưu ghi chú:', error);
+      alert('Có lỗi xảy ra khi lưu ghi chú. Vui lòng thử lại.');
     }
   };
 
@@ -229,21 +382,69 @@ export default function CourseLearningPage() {
     if (!newQuestion.trim() || !currentLesson) return;
     
     try {
-      const newDiscussion: Discussion = {
-        id: Date.now(),
-        user_name: 'Bạn',
+      // Get current video time if available
+      let videoTimestamp: number | null = null;
+      if (isYouTube && youtubePlayer && youtubePlayer.getCurrentTime) {
+        try {
+          videoTimestamp = Math.floor(youtubePlayer.getCurrentTime());
+        } catch (e) {
+          console.error('Error getting YouTube current time:', e);
+        }
+      } else if (videoRef && videoRef.currentTime) {
+        videoTimestamp = Math.floor(videoRef.currentTime);
+      } else if (currentVideoTime > 0) {
+        videoTimestamp = currentVideoTime;
+      }
+      
+      console.log('Posting question to lesson:', currentLesson.id, 'at timestamp:', videoTimestamp, 'isYouTube:', isYouTube, 'hasPlayer:', !!youtubePlayer);
+      const response = await httpClient.post(`lessons/${currentLesson.id}/discussions`, {
         content: newQuestion,
-        created_at: new Date().toISOString()
-      };
+        videoTimestamp: videoTimestamp,
+      });
       
-      const updatedDiscussions = [newDiscussion, ...discussions];
-      setDiscussions(updatedDiscussions);
-      setNewQuestion('');
+      console.log('Discussion API response:', response);
       
-      // Save to localStorage
-      localStorage.setItem(`discussions-${courseId}-${currentLesson.id}`, JSON.stringify(updatedDiscussions));
-    } catch (error) {
-      console.error('Lỗi khi đăng câu hỏi:', error);
+      if (response.ok && response.data) {
+        const apiResponse = response.data as any;
+        console.log('API Response data:', apiResponse);
+        
+        // Backend returns { success: true, data: {...} }
+        const newDiscussionData = apiResponse.data || apiResponse;
+        
+        if (!newDiscussionData || !newDiscussionData.id) {
+          console.error('Invalid discussion data:', newDiscussionData);
+          alert('Dữ liệu trả về không hợp lệ. Vui lòng thử lại.');
+          return;
+        }
+        
+        const newDiscussion: Discussion = {
+          id: newDiscussionData.id,
+          user_id: newDiscussionData.user_id,
+          user: newDiscussionData.user,
+          user_name: newDiscussionData.user?.name || 'Bạn',
+          content: newDiscussionData.content,
+          video_timestamp: newDiscussionData.video_timestamp,
+          like_count: newDiscussionData.like_count || 0,
+          is_instructor: newDiscussionData.is_instructor || false,
+          created_at: newDiscussionData.created_at || new Date().toISOString(),
+        };
+        
+        // Add new discussion and sort by created_at descending
+        const updatedDiscussions = [newDiscussion, ...discussions].sort((a, b) => {
+          const dateA = new Date(a.created_at).getTime();
+          const dateB = new Date(b.created_at).getTime();
+          return dateB - dateA; // Descending order
+        });
+        setDiscussions(updatedDiscussions);
+        setNewQuestion('');
+      } else {
+        console.error('Failed to post question:', response);
+        const errorMsg = response.error?.message || 'Có lỗi xảy ra khi đăng câu hỏi. Vui lòng thử lại.';
+        alert(errorMsg);
+      }
+    } catch (error: any) {
+      console.error('Error posting question:', error);
+      alert(error?.message || 'Có lỗi xảy ra khi đăng câu hỏi. Vui lòng thử lại.');
     }
   };
 
@@ -319,21 +520,20 @@ export default function CourseLearningPage() {
           {currentLesson.video_url ? (
             <div className="bg-black aspect-video">
               {currentLesson.video_url.includes('youtube.com') || currentLesson.video_url.includes('youtu.be') ? (
-                <iframe
-                  key={currentLesson.id}
-                  className="w-full h-full"
-                  src={currentLesson.video_url.replace('watch?v=', 'embed/')}
-                  title={currentLesson.title}
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
+                <div id={`youtube-player-${currentLesson.id}`} className="w-full h-full"></div>
               ) : (
                 <video
                   key={currentLesson.id}
+                  ref={(el) => setVideoRef(el)}
                   controls
                   className="w-full h-full"
                   src={currentLesson.video_url}
+                  onTimeUpdate={(e) => {
+                    const video = e.currentTarget;
+                    if (video) {
+                      setCurrentVideoTime(Math.floor(video.currentTime));
+                    }
+                  }}
                 >
                   Trình duyệt của bạn không hỗ trợ video.
                 </video>
@@ -477,17 +677,42 @@ export default function CourseLearningPage() {
                     discussions.map(discussion => (
                       <div key={discussion.id} className="border border-gray-200 rounded-lg p-4">
                         <div className="flex items-start gap-3">
-                          <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-semibold">
-                            {discussion.user_name ? discussion.user_name.charAt(0).toUpperCase() : 'U'}
-                          </div>
+                          {discussion.user?.avatar ? (
+                            <img 
+                              src={discussion.user.avatar} 
+                              alt={discussion.user_name || 'User'}
+                              className="w-10 h-10 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-semibold">
+                              {(discussion.user_name || discussion.user?.name || 'U').charAt(0).toUpperCase()}
+                            </div>
+                          )}
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="font-semibold text-gray-900">{discussion.user_name || 'Người dùng'}</span>
+                              <span className="font-semibold text-gray-900">
+                                {discussion.user_name || discussion.user?.name || 'Người dùng'}
+                              </span>
+                              {discussion.is_instructor && (
+                                <span className="px-2 py-0.5 bg-blue-100 text-blue-600 text-xs font-medium rounded">
+                                  Giảng viên
+                                </span>
+                              )}
                               <span className="text-sm text-gray-500">
                                 {new Date(discussion.created_at).toLocaleDateString('vi-VN')}
                               </span>
+                              {discussion.video_timestamp && discussion.video_timestamp > 0 && (
+                                <span className="text-xs text-gray-400">
+                                  @ {Math.floor(discussion.video_timestamp / 60)}:{(discussion.video_timestamp % 60).toString().padStart(2, '0')}
+                                </span>
+                              )}
                             </div>
                             <p className="text-gray-700">{discussion.content}</p>
+                            {discussion.like_count && discussion.like_count > 0 && (
+                              <div className="mt-2 text-sm text-gray-500">
+                                👍 {discussion.like_count} lượt thích
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -502,6 +727,11 @@ export default function CourseLearningPage() {
                 {/* Add Note Form */}
                 <div className="bg-gray-50 rounded-lg p-4 mb-6">
                   <h3 className="font-semibold text-gray-900 mb-3">Thêm ghi chú</h3>
+                  {currentVideoTime > 0 && (
+                    <div className="mb-2 text-sm text-gray-600">
+                      Thời gian video hiện tại: {Math.floor(currentVideoTime / 60)}:{(currentVideoTime % 60).toString().padStart(2, '0')}
+                    </div>
+                  )}
                   <textarea
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
@@ -514,7 +744,7 @@ export default function CourseLearningPage() {
                     disabled={!note.trim()}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Lưu ghi chú
+                    Lưu ghi chú {currentVideoTime > 0 && `(@ ${Math.floor(currentVideoTime / 60)}:${(currentVideoTime % 60).toString().padStart(2, '0')})`}
                   </button>
                 </div>
 
@@ -528,9 +758,16 @@ export default function CourseLearningPage() {
                     notes.map(noteItem => (
                       <div key={noteItem.id} className="border border-gray-200 rounded-lg p-4">
                         <div className="flex items-start justify-between mb-2">
-                          <span className="text-sm text-gray-500">
-                            {new Date(noteItem.created_at).toLocaleDateString('vi-VN')}
-                          </span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm text-gray-500">
+                              {new Date(noteItem.created_at).toLocaleDateString('vi-VN')}
+                            </span>
+                            {noteItem.video_timestamp !== null && noteItem.video_timestamp !== undefined && (
+                              <span className="text-xs px-2 py-1 bg-blue-100 text-blue-600 rounded font-medium">
+                                @ {Math.floor(noteItem.video_timestamp / 60)}:{(noteItem.video_timestamp % 60).toString().padStart(2, '0')}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <p className="text-gray-700 whitespace-pre-wrap">{noteItem.content}</p>
                       </div>

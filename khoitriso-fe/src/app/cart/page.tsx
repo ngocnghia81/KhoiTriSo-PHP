@@ -15,6 +15,7 @@ import {
   ShieldCheckIcon
 } from '@heroicons/react/24/outline';
 import { requireAuth, handleApiResponse } from '@/utils/authCheck';
+import { httpClient } from '@/lib/http-client';
 
 interface CartItem {
   id: string;
@@ -81,27 +82,15 @@ export default function CartPage() {
       }
 
       try {
-        const token = localStorage.getItem('token');
+        const response = await httpClient.get('cart');
 
-        const response = await fetch('http://localhost:8000/api/cart', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json',
-          },
-        });
-
-        // Handle 401 and other errors
-        if (!handleApiResponse(response)) {
-          return;
-        }
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Cart API response:', data);
-          console.log('First item:', data.data?.[0]);
+        if (response.ok && response.data) {
+          const apiResponse = response.data as any;
+          console.log('Cart API response:', apiResponse);
+          console.log('First item:', apiResponse.data?.[0]);
           
           // Transform API data to CartItem format
-          const items: CartItem[] = (data.data || []).map((item: any) => {
+          const items: CartItem[] = (apiResponse.data || []).map((item: any) => {
             console.log('Processing item:', item);
             console.log('Item type:', item.item_type);
             console.log('Course:', item.course);
@@ -141,18 +130,7 @@ export default function CartPage() {
     }
     
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      const response = await fetch(`http://localhost:8000/api/cart/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({ quantity: newQuantity }),
-      });
+      const response = await httpClient.put(`cart/${id}`, { quantity: newQuantity });
 
       if (response.ok) {
         setCartItems(prev =>
@@ -168,16 +146,7 @@ export default function CartPage() {
 
   const removeItem = async (id: string) => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      const response = await fetch(`http://localhost:8000/api/cart/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-        },
-      });
+      const response = await httpClient.delete(`cart/${id}`);
 
       if (response.ok) {
         setCartItems(prev => prev.filter(item => item.id !== id));

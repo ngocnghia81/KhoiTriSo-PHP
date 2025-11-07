@@ -5,17 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class LessonDiscussion extends Model
+class LessonNote extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'lesson_id','user_id','parent_id','content','video_timestamp','is_instructor','like_count','is_hidden'
-    ];
-
-    protected $casts = [
-        'is_instructor' => 'boolean',
-        'is_hidden' => 'boolean',
+        'user_id',
+        'lesson_id',
+        'content',
+        'video_timestamp',
     ];
 
     public function user()
@@ -28,12 +26,3 @@ class LessonDiscussion extends Model
         return $this->belongsTo(Lesson::class, 'lesson_id');
     }
 }
-
-
-
-
-
-
-
-
-

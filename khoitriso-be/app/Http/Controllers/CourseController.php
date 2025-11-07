@@ -3,15 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Models\Course;
+use App\Models\CourseEnrollment;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 
 class CourseController extends BaseController
 {
     public function index(Request $request)
     {
         $query = Course::with(['instructor:id,name,email', 'category:id,name'])
-            ->where('is_active', true);
+            ->whereRaw('is_active = true');
         if ($request->filled('category')) {
             $query->where('category_id', $request->integer('category'));
         }
@@ -42,17 +44,51 @@ class CourseController extends BaseController
 
     public function show(int $id)
     {
-        $course = Course::with([
-            'instructor', 
-            'category', 
-            'lessons' => function ($q) {
-                $q->orderBy('lesson_order');
-            },
-            'lessons.materials' => function ($q) {
-                $q->orderBy('created_at');
-            }
-        ])->findOrFail($id);
-        return response()->json($course);
+        try {
+            $course = Course::with([
+                'instructor', 
+                'category', 
+                'lessons' => function ($q) {
+                    $q->orderBy('lesson_order');
+                },
+                'lessons.materials' => function ($q) {
+                    $q->orderBy('created_at');
+                }
+            ])->findOrFail($id);
+            
+            // Calculate real-time statistics
+            $totalLessons = $course->lessons()->whereRaw('is_published = true')->count();
+            
+            // Calculate total duration from lessons (video_duration is in minutes)
+            $totalDurationMinutes = $course->lessons()
+                ->whereRaw('is_published = true')
+                ->sum('video_duration') ?? 0;
+            $estimatedDurationHours = $totalDurationMinutes > 0 ? round($totalDurationMinutes / 60, 1) : 0;
+            
+            // Count active enrollments
+            $totalStudents = \App\Models\CourseEnrollment::where('course_id', $id)
+                ->whereRaw('is_active = true')
+                ->count();
+            
+            // Get rating and reviews (if exists in database, otherwise use defaults)
+            $rating = is_numeric($course->rating) ? (float) $course->rating : 0.0;
+            $totalReviews = is_numeric($course->total_reviews) ? (int) $course->total_reviews : 0;
+            
+            // Add calculated fields to course object
+            $course->total_lessons = $totalLessons;
+            $course->estimated_duration = $estimatedDurationHours;
+            $course->total_students = $totalStudents;
+            $course->rating = $rating;
+            $course->total_reviews = $totalReviews;
+            
+            return response()->json($course);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json(['error' => 'Course not found'], 404);
+        } catch (\Exception $e) {
+            \Log::error('Error fetching course: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json(['error' => 'Internal server error'], 500);
+        }
     }
 
     public function store(Request $request): JsonResponse
@@ -131,46 +167,119 @@ class CourseController extends BaseController
     }
 
     /**
+     * Enroll user in a course
+     */
+    public function enroll(Request $request, int $id)
+    {
+        \Log::info('Enroll endpoint called', ['course_id' => $id, 'user_id' => $request->user()?->id]);
+        
+        $user = $request->user();
+        if (!$user) {
+            return $this->error('UNAUTHORIZED', null, 'User not authenticated', 401);
+        }
+        
+        $course = Course::findOrFail($id);
+        
+        // Check if course is free or user already enrolled
+        $existingEnrollment = CourseEnrollment::where('user_id', $user->id)
+            ->where('course_id', $id)
+            ->first();
+            
+        if ($existingEnrollment) {
+            if ($existingEnrollment->is_active) {
+                return $this->success(['enrollment' => $existingEnrollment, 'message' => 'Bạn đã đăng ký khóa học này rồi']);
+            } else {
+                // Reactivate enrollment using raw SQL for PostgreSQL boolean
+                DB::table('course_enrollments')
+                    ->where('id', $existingEnrollment->id)
+                    ->update([
+                        'is_active' => DB::raw('true'),
+                        'enrolled_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                $existingEnrollment->refresh();
+                return $this->success(['enrollment' => $existingEnrollment, 'message' => 'Đã kích hoạt lại khóa học']);
+            }
+        }
+        
+        // Check if course is free
+        if (!$course->is_free && $course->price > 0) {
+            return $this->error('COURSE_NOT_FREE', null, 'Khóa học này không miễn phí. Vui lòng mua khóa học trước.', 400);
+        }
+        
+        // Create enrollment using raw SQL for PostgreSQL boolean compatibility
+        try {
+            $enrollmentId = DB::table('course_enrollments')->insertGetId([
+                'user_id' => $user->id,
+                'course_id' => $id,
+                'enrolled_at' => now(),
+                'progress_percentage' => 0,
+                'is_active' => DB::raw('true'), // Explicit boolean for PostgreSQL
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            
+            $enrollment = CourseEnrollment::find($enrollmentId);
+            
+            return $this->success(['enrollment' => $enrollment, 'message' => 'Đăng ký khóa học thành công']);
+        } catch (\Exception $e) {
+            \Log::error('Error creating enrollment: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->error('DATABASE_ERROR', null, 'Lỗi khi đăng ký khóa học: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * Get user's enrolled courses (My Learning)
      */
-    public function myLearning(Request $request)
+public function myLearning(Request $request)
     {
-        $user = $request->user();
-        
-        $enrollments = \App\Models\CourseEnrollment::where('user_id', $user->id)
-            ->where('is_active', true)
-            ->with(['course' => function($q) {
-                $q->with(['instructor:id,name,email', 'category:id,name'])
-                  ->where('is_active', true);
-            }])
-            ->orderByDesc('enrolled_at')
-            ->get();
-
-        $courses = $enrollments->map(function($enrollment) {
-            if (!$enrollment->course) return null;
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json(['error' => 'Unauthorized'], 401);
+            }
             
-            return [
-                'id' => $enrollment->course->id,
-                'title' => $enrollment->course->title,
-                'slug' => $enrollment->course->slug,
-                'description' => $enrollment->course->description,
-                'thumbnail_url' => $enrollment->course->thumbnail_url,
-                'video_url' => $enrollment->course->video_url,
-                'price' => $enrollment->course->price,
-                'discount_price' => $enrollment->course->discount_price,
-                'level' => $enrollment->course->level,
-                'duration' => $enrollment->course->duration,
-                'rating' => $enrollment->course->rating,
-                'total_students' => $enrollment->course->total_students,
-                'instructor' => $enrollment->course->instructor,
-                'category' => $enrollment->course->category,
-                'progress_percentage' => $enrollment->progress_percentage ?? 0,
-                'enrolled_at' => $enrollment->enrolled_at,
-                'completed_at' => $enrollment->completed_at,
-            ];
-        })->filter()->values();
+            $enrollments = \App\Models\CourseEnrollment::where('user_id', $user->id)
+                ->whereRaw('is_active = true')
+                ->with(['course' => function($q) {
+                    $q->with(['instructor:id,name,email', 'category:id,name'])
+                      ->whereRaw('is_active = true');
+                }])
+                ->orderByDesc('enrolled_at')
+                ->get();
 
-        return $this->success($courses);
+            $courses = $enrollments->map(function($enrollment) {
+                if (!$enrollment->course) return null;
+                
+                return [
+                    'id' => $enrollment->course->id,
+                    'title' => $enrollment->course->title,
+                    'slug' => $enrollment->course->slug,
+                    'description' => $enrollment->course->description,
+                    'thumbnail_url' => $enrollment->course->thumbnail ?? null,
+                    'thumbnail' => $enrollment->course->thumbnail ?? null,
+                    'video_url' => $enrollment->course->video_url ?? null,
+                    'price' => $enrollment->course->price,
+                    'discount_price' => $enrollment->course->discount_price,
+                    'level' => $enrollment->course->level,
+                    'duration' => $enrollment->course->estimated_duration ?? $enrollment->course->duration ?? null,
+                    'rating' => $enrollment->course->rating,
+                    'total_students' => $enrollment->course->total_students,
+                    'instructor' => $enrollment->course->instructor,
+                    'category' => $enrollment->course->category,
+                    'progress_percentage' => $enrollment->progress_percentage ?? 0,
+                    'enrolled_at' => $enrollment->enrolled_at,
+                    'completed_at' => $enrollment->completed_at,
+                ];
+            })->filter()->values();
+
+            return $this->success($courses);
+        } catch (\Exception $e) {
+            \Log::error('Error in myLearning: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->error('INTERNAL_SERVER_ERROR', 'Lỗi máy chủ nội bộ', 500);
+        }
     }
 }
 

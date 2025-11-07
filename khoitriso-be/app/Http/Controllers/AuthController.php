@@ -126,6 +126,7 @@ class AuthController extends BaseController
                     'id' => $user->id,
                     'username' => $user->name,
                     'email' => $user->email,
+                    'avatar' => $user->avatar,
                     'role' => $user->role ?? 'student',
                 ],
                 'token' => $token,

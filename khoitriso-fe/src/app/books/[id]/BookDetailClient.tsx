@@ -58,6 +58,7 @@ interface Book {
   reviews: BookReview[];
   relatedBooks: RelatedBook[];
   tags: string[];
+  isOwned?: boolean;
   activationInfo: {
     accessDuration: string;
     videoContent: boolean;
@@ -467,37 +468,68 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
 
             {activeTab === 'chapters' && (
               <div className="space-y-6">
-                <h3 className="text-xl font-semibold text-gray-900">
-                  Nội dung sách ({book.chapters.length} chương)
-                </h3>
-                <div className="space-y-4">
-                  {book.chapters.map((chapter, index) => (
-                    <div key={chapter.id} className="border border-gray-200 rounded-lg p-6">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="text-lg font-semibold text-gray-900 mb-2">
-                            {chapter.title}
-                          </h4>
-                          <p className="text-gray-600 mb-3">
-                            {chapter.description}
-                          </p>
-                          <div className="flex items-center space-x-4 text-sm text-gray-500">
-                            <span>{chapter.questionCount} câu hỏi</span>
-                            <span>•</span>
-                            <span>Video HD</span>
-                            <span>•</span>
-                            <span>Lời giải chi tiết</span>
-                          </div>
+                {book.isOwned ? (
+                  <>
+                    <h3 className="text-xl font-semibold text-gray-900">
+                      Nội dung sách ({book.chapters.length} chương)
+                    </h3>
+                    <div className="space-y-4">
+                      {book.chapters.length > 0 ? (
+                        book.chapters.map((chapter, index) => (
+                          <Link
+                            key={chapter.id}
+                            href={`/books/${book.id}/chapters/${chapter.id}`}
+                            className="block border border-gray-200 rounded-lg p-6 hover:border-blue-500 hover:shadow-md transition-all"
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <h4 className="text-lg font-semibold text-gray-900 mb-2">
+                                  {chapter.title}
+                                </h4>
+                                <p className="text-gray-600 mb-3">
+                                  {chapter.description}
+                                </p>
+                                <div className="flex items-center space-x-4 text-sm text-gray-500">
+                                  <span>{chapter.questionCount || 0} câu hỏi</span>
+                                  <span>•</span>
+                                  <span>Video HD</span>
+                                  <span>•</span>
+                                  <span>Lời giải chi tiết</span>
+                                </div>
+                              </div>
+                              <div className="ml-4 text-right">
+                                <span className="text-2xl font-bold text-blue-600">
+                                  {String(index + 1).padStart(2, '0')}
+                                </span>
+                                <ArrowRightIcon className="h-5 w-5 text-gray-400 mt-2" />
+                              </div>
+                            </div>
+                          </Link>
+                        ))
+                      ) : (
+                        <div className="text-center py-12 text-gray-500">
+                          Chưa có chương nào trong sách này
                         </div>
-                        <div className="ml-4 text-right">
-                          <span className="text-2xl font-bold text-blue-600">
-                            {String(index + 1).padStart(2, '0')}
-                          </span>
-                        </div>
-                      </div>
+                      )}
                     </div>
-                  ))}
-                </div>
+                  </>
+                ) : (
+                  <div className="text-center py-12">
+                    <BookOpenIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                      Bạn cần mua sách để xem nội dung
+                    </h3>
+                    <p className="text-gray-600 mb-6">
+                      Mua sách để truy cập {book.chapters.length} chương với {book.totalQuestions} câu hỏi và lời giải chi tiết
+                    </p>
+                    <button
+                      onClick={addToCart}
+                      className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                    >
+                      Thêm vào giỏ hàng
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

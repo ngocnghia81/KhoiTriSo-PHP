@@ -12,6 +12,7 @@ use App\Models\Book;
 use App\Models\BookActivationCode;
 use App\Models\UserBook;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
@@ -25,27 +26,50 @@ class OrderController extends Controller
 
     public function show(int $id, Request $request)
     {
-        $order = Order::with('items')->where('user_id', $request->user()->id)->findOrFail($id);
-        
-        // If order is paid, include activation codes for books
-        if ($order->status == 2) {
-            $activationCodes = [];
-            foreach ($order->items as $item) {
-                if ($item->item_type == 2) { // Book
-                    $code = BookActivationCode::where('book_id', $item->item_id)
-                        ->where('is_used', false)
-                        ->whereNull('used_by_id')
-                        ->orderBy('created_at', 'desc')
-                        ->first();
-                    
-                    if ($code) {
-                        $item->activation_code = $code->activation_code;
+        try {
+            $order = Order::with('items')->where('user_id', $request->user()->id)->findOrFail($id);
+            
+            // If order is paid, include activation codes for books
+            if ($order->status == 2) {
+                foreach ($order->items as $item) {
+                    if ($item->item_type == 2) { // Book
+                        // Find the most recent unused activation code for this book
+                        // Created after the order was created (to ensure it's for this order)
+                        $query = BookActivationCode::where('book_id', $item->item_id)
+                            ->whereRaw('is_used = false')
+                            ->whereNull('used_by_id');
+                        
+                        // Only find codes created after order was created
+                        if ($order->created_at) {
+                            $query->where('created_at', '>=', $order->created_at);
+                        }
+                        
+                        $code = $query->orderBy('created_at', 'desc')->first();
+                        
+                        // If not found, try to find any unused code for this book (fallback)
+                        if (!$code) {
+                            $code = BookActivationCode::where('book_id', $item->item_id)
+                                ->whereRaw('is_used = false')
+                                ->whereNull('used_by_id')
+                                ->orderBy('created_at', 'desc')
+                                ->first();
+                        }
+                        
+                        if ($code) {
+                            $item->activation_code = $code->activation_code;
+                        } else {
+                            \Log::warning("No activation code found for book_id: {$item->item_id} in order: {$order->id}");
+                        }
                     }
                 }
             }
+            
+            return response()->json($order);
+        } catch (\Exception $e) {
+            \Log::error('Error in OrderController::show: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json(['success' => false, 'message' => 'Lỗi khi tải đơn hàng'], 500);
         }
-        
-        return response()->json($order);
     }
 
     public function store(Request $request)
@@ -194,15 +218,33 @@ class OrderController extends Controller
         
         foreach ($orderItems as $item) {
             if ($item->item_type == 1) { // Course
-                // Enroll user in course
-                $enrollment = \App\Models\CourseEnrollment::firstOrCreate([
-                    'user_id' => $order->user_id,
-                    'course_id' => $item->item_id,
-                ], [
-                    'enrolled_at' => now(),
-                    'progress_percentage' => 0,
-                    'is_active' => true,
-                ]);
+                // Enroll user in course - use DB::table for PostgreSQL compatibility
+                $existing = DB::table('course_enrollments')
+                    ->where('user_id', $order->user_id)
+                    ->where('course_id', $item->item_id)
+                    ->first();
+                
+                if (!$existing) {
+                    DB::table('course_enrollments')->insert([
+                        'user_id' => $order->user_id,
+                        'course_id' => $item->item_id,
+                        'enrolled_at' => now(),
+                        'progress_percentage' => 0,
+                        'is_active' => DB::raw('true'),
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                } else {
+                    // Reactivate if inactive
+                    DB::table('course_enrollments')
+                        ->where('user_id', $order->user_id)
+                        ->where('course_id', $item->item_id)
+                        ->update([
+                            'is_active' => DB::raw('true'),
+                            'enrolled_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                }
                 
                 $enrolledCourses[] = [
                     'course_id' => $item->item_id,
@@ -213,19 +255,27 @@ class OrderController extends Controller
                 // Generate unique activation code
                 $code = 'BOOK-' . strtoupper(substr(md5(uniqid()), 0, 8));
                 
-                // Create activation code
-                $activationCode = BookActivationCode::create([
-                    'book_id' => $item->item_id,
-                    'activation_code' => $code,
-                    'is_used' => false,
-                    'expires_at' => now()->addYears(5),
-                ]);
-                
-                $activationCodes[] = [
-                    'book_id' => $item->item_id,
-                    'book_name' => $item->item_name,
-                    'code' => $code,
-                ];
+                try {
+                    // Create activation code - use DB::table for PostgreSQL compatibility
+                    $activationCodeId = DB::table('book_activation_codes')->insertGetId([
+                        'book_id' => $item->item_id,
+                        'activation_code' => $code,
+                        'is_used' => DB::raw('false'),
+                        'used_by_id' => null,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                    
+                    \Log::info("Created activation code for book_id: {$item->item_id}, code: {$code}, id: {$activationCodeId}");
+                    
+                    $activationCodes[] = [
+                        'book_id' => $item->item_id,
+                        'book_name' => $item->item_name,
+                        'code' => $code,
+                    ];
+                } catch (\Exception $e) {
+                    \Log::error("Failed to create activation code for book_id: {$item->item_id}, error: " . $e->getMessage());
+                }
             }
         }
         
@@ -254,22 +304,42 @@ class OrderController extends Controller
             
             foreach ($orderItems as $item) {
                 if ($item->item_type == 1) { // Course
-                    \App\Models\CourseEnrollment::firstOrCreate([
-                        'user_id' => $order->user_id,
-                        'course_id' => $item->item_id,
-                    ], [
-                        'enrolled_at' => now(),
-                        'progress_percentage' => 0,
-                        'is_active' => true,
-                    ]);
+                    // Use DB::table for PostgreSQL compatibility
+                    $existing = DB::table('course_enrollments')
+                        ->where('user_id', $order->user_id)
+                        ->where('course_id', $item->item_id)
+                        ->first();
+                    
+                    if (!$existing) {
+                        DB::table('course_enrollments')->insert([
+                            'user_id' => $order->user_id,
+                            'course_id' => $item->item_id,
+                            'enrolled_at' => now(),
+                            'progress_percentage' => 0,
+                            'is_active' => DB::raw('true'),
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    } else {
+                        DB::table('course_enrollments')
+                            ->where('user_id', $order->user_id)
+                            ->where('course_id', $item->item_id)
+                            ->update([
+                                'is_active' => DB::raw('true'),
+                                'enrolled_at' => now(),
+                                'updated_at' => now(),
+                            ]);
+                    }
                 } elseif ($item->item_type == 2) { // Book
                     // Generate activation code for books
                     $code = 'BOOK-' . strtoupper(substr(md5(uniqid()), 0, 8));
-                    BookActivationCode::create([
+                    DB::table('book_activation_codes')->insert([
                         'book_id' => $item->item_id,
                         'activation_code' => $code,
-                        'is_used' => false,
+                        'is_used' => DB::raw('false'),
                         'expires_at' => now()->addYears(5),
+                        'created_at' => now(),
+                        'updated_at' => now(),
                     ]);
                 }
             }

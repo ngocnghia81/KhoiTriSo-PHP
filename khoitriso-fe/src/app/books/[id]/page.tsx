@@ -31,6 +31,7 @@ interface Book {
   reviews: BookReview[];
   relatedBooks: RelatedBook[];
   tags: string[];
+  isOwned?: boolean;
   activationInfo: {
     accessDuration: string;
     videoContent: boolean;
@@ -73,10 +74,21 @@ interface RelatedBook {
 // Fetch book from API using ID
 async function getBook(id: string): Promise<Book | null> {
   try {
-    const response = await fetch(`http://localhost:8000/api/books/${id}`, {
-      headers: {
-        'Accept': 'application/json',
-      },
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8080/api';
+    
+    // Get token from cookies or headers if available
+    const headers: HeadersInit = {
+      'Accept': 'application/json',
+    };
+    
+    // Try to get token from cookies (for server-side)
+    if (typeof window === 'undefined') {
+      // Server-side: token might be in cookies, but we can't access it here
+      // The API will handle unauthenticated requests
+    }
+    
+    const response = await fetch(`${apiUrl}/books/${id}`, {
+      headers,
       cache: 'no-store',
     });
     
@@ -117,10 +129,17 @@ async function getBook(id: string): Promise<Book | null> {
         'Cập nhật nội dung liên tục',
         'Hỗ trợ học tập 24/7'
       ],
-      chapters: [],
+      chapters: book.chapters?.map((ch: any) => ({
+        id: String(ch.id),
+        title: ch.title,
+        description: ch.description || '',
+        questionCount: ch.question_count || 0,
+        orderIndex: ch.order_index || 0,
+      })) || [],
       reviews: [],
       relatedBooks: [],
       tags: [],
+      isOwned: book.is_owned || false,
       activationInfo: {
         accessDuration: '2 năm',
         videoContent: true,

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { useAuthGuard } from '@/hooks/useAuthGuard';
 import {
   UserCircleIcon,
@@ -67,25 +68,31 @@ export default function ProfilePage() {
     (async () => {
       setLoadingProfile(true);
       setProfileError('');
-      const res = await getProfile();
-      if (res.ok && res.data) {
-        const fullName = res.data.fullName || res.data.username || '';
-        const [firstName, ...rest] = fullName.split(' ');
-        setProfileData({
-          firstName: firstName || '',
-          lastName: rest.join(' '),
-          email: res.data.email,
-          phone: '',
-          dateOfBirth: '',
-          address: '',
-          bio: '',
-          avatar: res.data.avatar || '',
-          role: typeof res.data.role === 'number' ? 'student' : (res.data.role as any)
-        });
-      } else {
-        setProfileError('Không tải được thông tin hồ sơ. Vui lòng đăng nhập lại.');
+      try {
+        const res = await getProfile();
+        if (res) {
+          const fullName = res.fullName || res.username || '';
+          const [firstName, ...rest] = fullName.split(' ');
+          setProfileData({
+            firstName: firstName || '',
+            lastName: rest.join(' '),
+            email: res.email || '',
+            phone: '',
+            dateOfBirth: '',
+            address: '',
+            bio: '',
+            avatar: res.avatar || '',
+            role: typeof res.role === 'number' ? 'student' : (res.role as any)
+          });
+        } else {
+          setProfileError('Không tải được thông tin hồ sơ. Vui lòng đăng nhập lại.');
+        }
+      } catch (error: any) {
+        console.error('Error loading profile:', error);
+        setProfileError(error.message || 'Không tải được thông tin hồ sơ. Vui lòng đăng nhập lại.');
+      } finally {
+        setLoadingProfile(false);
       }
-      setLoadingProfile(false);
     })();
   }, []);
 
@@ -172,9 +179,22 @@ export default function ProfilePage() {
           <div className="px-6 py-4">
             <div className="flex items-center">
               <div className="relative">
-                <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                  <UserCircleIcon className="h-12 w-12 text-white" />
-                </div>
+                {profileData.avatar ? (
+                  <div className="h-20 w-20 rounded-full overflow-hidden ring-2 ring-white shadow-lg">
+                    <Image
+                      src={profileData.avatar}
+                      alt={profileData.firstName || 'User'}
+                      width={80}
+                      height={80}
+                      className="w-full h-full object-cover"
+                      unoptimized
+                    />
+                  </div>
+                ) : (
+                  <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                    <UserCircleIcon className="h-12 w-12 text-white" />
+                  </div>
+                )}
                 <button className="absolute bottom-0 right-0 bg-white rounded-full p-1.5 shadow-sm border border-gray-300 hover:bg-gray-50">
                   <CameraIcon className="h-4 w-4 text-gray-600" />
                 </button>

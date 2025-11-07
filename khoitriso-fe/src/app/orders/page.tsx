@@ -10,6 +10,7 @@ import {
   TruckIcon
 } from '@heroicons/react/24/outline';
 import { requireAuth, handleApiResponse } from '@/utils/authCheck';
+import { httpClient } from '@/lib/http-client';
 
 interface Order {
   id: number;
@@ -42,23 +43,12 @@ export default function OrdersPage() {
         return;
       }
 
-      const token = localStorage.getItem('token');
-
       try {
-        const response = await fetch('http://localhost:8000/api/orders', {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json',
-          },
-        });
+        const response = await httpClient.get('orders');
 
-        // Handle 401 and other errors
-        if (!handleApiResponse(response)) {
-          return;
-        }
-
-        if (response.ok) {
-          const data = await response.json();
+        if (response.ok && response.data) {
+          const data = response.data as any;
+          // Backend returns { orders: [...], total: ..., hasMore: ... }
           setOrders(data.orders || []);
         }
       } catch (error) {

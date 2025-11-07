@@ -63,7 +63,8 @@ function SearchContent() {
 
       setLoading(true);
       try {
-        const url = `http://localhost:8000/api/search?q=${encodeURIComponent(searchQuery)}&type=${activeTab === 'all' ? 'all' : activeTab}`;
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8080/api';
+        const url = `${apiUrl}/search?q=${encodeURIComponent(searchQuery)}&type=${activeTab === 'all' ? 'all' : activeTab}`;
         console.log('Fetching search results:', url);
         
         const response = await fetch(url, {

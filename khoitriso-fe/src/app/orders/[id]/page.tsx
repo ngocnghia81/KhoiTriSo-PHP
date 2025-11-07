@@ -12,6 +12,7 @@ import {
   PrinterIcon,
   DocumentTextIcon
 } from '@heroicons/react/24/outline';
+import { httpClient } from '@/lib/http-client';
 
 interface OrderItem {
   id: number;
@@ -100,21 +101,15 @@ export default function OrderDetailPage() {
     const fetchOrder = async () => {
       const token = localStorage.getItem('token');
       if (!token) {
-        router.push('/login');
+        router.push('/auth/login');
         return;
       }
 
       try {
-        const response = await fetch(`http://localhost:8000/api/orders/${params.id}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/json',
-          },
-        });
+        const response = await httpClient.get(`orders/${params.id}`);
 
-        if (response.ok) {
-          const data = await response.json();
-          setOrder(data);
+        if (response.ok && response.data) {
+          setOrder(response.data as Order);
         } else {
           router.push('/orders');
         }
@@ -153,27 +148,22 @@ export default function OrderDetailPage() {
       return;
     }
 
-    const token = localStorage.getItem('token');
     try {
-      const response = await fetch(`http://localhost:8000/api/orders/${params.id}/pay`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await httpClient.post(`orders/${params.id}/pay`, {});
 
-      const data = await response.json();
-      console.log('Payment response:', response.status, data);
-
-      if (response.ok && data.success) {
-        alert('Thanh toán thành công!');
-        window.location.reload();
+      if (response.ok && response.data) {
+        const data = response.data as any;
+        if (data.success) {
+          alert('Thanh toán thành công!');
+          window.location.reload();
+        } else {
+          const errorMsg = data.message || 'Thanh toán thất bại, vui lòng thử lại';
+          alert(errorMsg);
+        }
       } else {
-        const errorMsg = data.message || 'Thanh toán thất bại, vui lòng thử lại';
+        const errorData = response.error as any;
+        const errorMsg = errorData?.message || 'Thanh toán thất bại, vui lòng thử lại';
         alert(errorMsg);
-        console.error('Payment failed:', data);
       }
     } catch (error) {
       console.error('Error paying order:', error);
@@ -186,21 +176,20 @@ export default function OrderDetailPage() {
       return;
     }
 
-    const token = localStorage.getItem('token');
     try {
-      const response = await fetch(`http://localhost:8000/api/orders/${params.id}/cancel`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-        },
-      });
+      const response = await httpClient.post(`orders/${params.id}/cancel`, {});
 
-      if (response.ok) {
-        alert('Đã hủy đơn hàng thành công');
-        window.location.reload();
+      if (response.ok && response.data) {
+        const data = response.data as any;
+        if (data.success) {
+          alert('Đã hủy đơn hàng thành công');
+          window.location.reload();
+        } else {
+          alert(data.message || 'Không thể hủy đơn hàng');
+        }
       } else {
-        alert('Không thể hủy đơn hàng');
+        const errorData = response.error as any;
+        alert(errorData?.message || 'Không thể hủy đơn hàng');
       }
     } catch (error) {
       console.error('Error canceling order:', error);

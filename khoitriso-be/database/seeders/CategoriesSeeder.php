@@ -28,7 +28,8 @@ class CategoriesSeeder extends Seeder
             if ($existing) {
                 $parentIds[$r['name']] = $existing->id;
             } else {
-                $id = DB::table('categories')->insertGetId($r + ['is_active' => true, 'created_at' => $now, 'updated_at' => $now]);
+                $data = $r + ['is_active' => DB::raw('true'), 'created_at' => $now, 'updated_at' => $now];
+                $id = DB::table('categories')->insertGetId($data);
                 $parentIds[$r['name']] = $id;
             }
         }
@@ -42,7 +43,7 @@ class CategoriesSeeder extends Seeder
         foreach ($mathChildren as $c) {
             $exists = DB::table('categories')->where('name', $c['name'])->where('parent_id', $parentIds['Toán học'])->exists();
             if (!$exists) {
-                DB::table('categories')->insert($c + ['parent_id' => $parentIds['Toán học'], 'is_active' => true, 'created_at' => $now, 'updated_at' => $now]);
+                DB::table('categories')->insert($c + ['parent_id' => $parentIds['Toán học'], 'is_active' => DB::raw('true'), 'created_at' => $now, 'updated_at' => $now]);
             }
         }
         // Subcategories for Tin học
@@ -55,7 +56,7 @@ class CategoriesSeeder extends Seeder
         foreach ($itChildren as $c) {
             $exists = DB::table('categories')->where('name', $c['name'])->where('parent_id', $parentIds['Tin học'])->exists();
             if (!$exists) {
-                DB::table('categories')->insert($c + ['parent_id' => $parentIds['Tin học'], 'is_active' => true, 'created_at' => $now, 'updated_at' => $now]);
+                DB::table('categories')->insert($c + ['parent_id' => $parentIds['Tin học'], 'is_active' => DB::raw('true'), 'created_at' => $now, 'updated_at' => $now]);
             }
         }
     }

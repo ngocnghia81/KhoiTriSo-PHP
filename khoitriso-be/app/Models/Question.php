@@ -22,6 +22,18 @@ class Question extends Model
     {
         return $this->hasMany(QuestionOption::class, 'question_id');
     }
+
+    public function bookSolution()
+    {
+        return $this->hasOne(BookQuestionSolution::class, 'question_id');
+    }
+
+    public function bookSolutions()
+    {
+        return $this->hasMany(BookQuestionSolution::class, 'question_id')
+            ->whereRaw('is_active = true')
+            ->orderBy('order_index');
+    }
 }
 
 
