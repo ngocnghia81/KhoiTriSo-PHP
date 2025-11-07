@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use App\Models\RefreshToken;
+use Illuminate\Support\Str;
 
 /**
  * Auth Controller
@@ -48,18 +50,25 @@ class AuthController extends BaseController
             $user->name = $request->input('fullName') ?? $request->input('name') ?? $data['username'];
             $user->email = $data['email'];
             $user->password = Hash::make($data['password']);
+            $user->role = 'student'; // Default role for new registrations
             $user->save();
 
             $token = $user->createToken('auth')->plainTextToken;
+            $refresh = RefreshToken::create([
+                'user_id' => $user->id,
+                'token' => Str::random(64),
+                'expires_at' => now()->addDays(30),
+            ]);
 
             $responseData = [
                 'user' => [
                     'id' => $user->id,
                     'username' => $user->username ?? $user->name,
                     'email' => $user->email,
-                    'role' => 1,
+                    'role' => $user->role ?? 'student',
                 ],
                 'token' => $token,
+                'refreshToken' => $refresh->token,
             ];
 
             return $this->success($responseData);
@@ -106,16 +115,21 @@ class AuthController extends BaseController
             $user->save();
 
             $token = $user->createToken('auth')->plainTextToken;
+            $refresh = RefreshToken::create([
+                'user_id' => $user->id,
+                'token' => Str::random(64),
+                'expires_at' => now()->addDays(30),
+            ]);
 
             $responseData = [
                 'user' => [
                     'id' => $user->id,
                     'username' => $user->name,
                     'email' => $user->email,
-                    'role' => 1,
+                    'role' => $user->role ?? 'student',
                 ],
                 'token' => $token,
-                'refreshToken' => null,
+                'refreshToken' => $refresh->token,
             ];
 
             return $this->success($responseData);
@@ -152,18 +166,46 @@ class AuthController extends BaseController
     public function refresh(Request $request): JsonResponse
     {
         try {
-            if (!$request->user()) {
-                return $this->unauthorized();
+            $validator = Validator::make($request->all(), [
+                'refresh_token' => ['required','string']
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
             }
 
-            $token = $request->user()->createToken('auth')->plainTextToken;
+            $rt = RefreshToken::where('token', $request->input('refresh_token'))
+                ->where('revoked', false)
+                ->first();
 
-            $responseData = [
+            if (!$rt || $rt->expires_at->isPast()) {
+                return $this->error(MessageCode::UNAUTHORIZED, null, null, 401);
+            }
+
+            $user = User::find($rt->user_id);
+            if (!$user) {
+                return $this->error(MessageCode::UNAUTHORIZED, null, null, 401);
+            }
+
+            // rotate
+            $rt->revoked = true;
+            $rt->save();
+            $newRt = RefreshToken::create([
+                'user_id' => $user->id,
+                'token' => Str::random(64),
+                'expires_at' => now()->addDays(30),
+            ]);
+
+            $token = $user->createToken('auth')->plainTextToken;
+
+            return $this->success([
                 'token' => $token,
-                'refreshToken' => null,
-            ];
-
-            return $this->success($responseData);
+                'refreshToken' => $newRt->token,
+            ]);
 
         } catch (\Exception $e) {
             \Log::error('Error in refresh: ' . $e->getMessage());

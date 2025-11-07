@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'upload_worker' => [
+        'base_url' => env('UPLOAD_WORKER_BASE_URL'),
+        'jwt_key' => env('UPLOAD_WORKER_JWT_KEY'),
+        'backend_jwt_key' => env('UPLOAD_WORKER_BACKEND_JWT_KEY'),
+    ],
+
 ];

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSidebar } from '@/contexts/SidebarContext';
 import ResizablePanel from './ResizablePanel';
+import { getCourses, AdminCourse } from '@/services/admin';
 import {
   HomeIcon,
   AcademicCapIcon,
@@ -49,13 +50,7 @@ const navigation = [
   {
     name: 'Khóa học',
     icon: AcademicCapIcon,
-    children: [
-      { name: 'Danh sách khóa học', href: '/dashboard/courses' },
-      { name: 'Tạo khóa học mới', href: '/dashboard/courses/create' },
-      { name: 'Bài giảng', href: '/dashboard/lessons' },
-      { name: 'Tài liệu', href: '/dashboard/materials' },
-      { name: 'Lớp học trực tuyến', href: '/dashboard/live-classes' },
-    ],
+    children: [], // Will be populated dynamically from database
   },
   {
     name: 'Bài tập & Kiểm tra',
@@ -150,6 +145,50 @@ export default function DashboardSidebar() {
     toggleCollapse 
   } = useSidebar();
   const [expandedItems, setExpandedItems] = useState<string[]>(['Tổng quan']);
+  const [courses, setCourses] = useState<AdminCourse[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(false);
+
+  // Fetch courses from database
+  useEffect(() => {
+    const fetchCourses = async () => {
+      setCoursesLoading(true);
+      try {
+        const response = await getCourses({ page: 1, pageSize: 10 });
+        setCourses(response.courses);
+      } catch (error) {
+        console.error('Error fetching courses:', error);
+      } finally {
+        setCoursesLoading(false);
+      }
+    };
+    fetchCourses();
+  }, []);
+
+  // Build courses menu items dynamically
+  const coursesMenuItems = [
+    { name: 'Danh sách khóa học', href: '/dashboard/courses' },
+    { name: 'Tạo khóa học mới', href: '/dashboard/courses/create' },
+    ...(courses.length > 0 ? [
+      ...courses.slice(0, 5).map(course => ({
+        name: course.title,
+        href: `/dashboard/courses/${course.id}`,
+      }))
+    ] : []),
+    { name: 'Bài giảng', href: '/dashboard/lessons' },
+    { name: 'Tài liệu', href: '/dashboard/materials' },
+    { name: 'Lớp học trực tuyến', href: '/dashboard/live-classes' },
+  ];
+
+  // Build navigation with dynamic courses menu
+  const dynamicNavigation = navigation.map(item => {
+    if (item.name === 'Khóa học') {
+      return {
+        ...item,
+        children: coursesMenuItems,
+      };
+    }
+    return item;
+  });
 
   const toggleExpanded = (itemName: string) => {
     setExpandedItems(prev => 
@@ -239,7 +278,7 @@ export default function DashboardSidebar() {
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 overflow-y-auto">
           <div className="space-y-1">
-            {navigation.map((item) => (
+            {dynamicNavigation.map((item) => (
               <div key={item.name}>
                 {item.children ? (
                   <div>

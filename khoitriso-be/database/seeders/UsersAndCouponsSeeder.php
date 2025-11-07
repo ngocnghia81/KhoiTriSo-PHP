@@ -20,6 +20,7 @@ class UsersAndCouponsSeeder extends Seeder
                 'password' => Hash::make('admin123'),
                 'email_verified_at' => $now,
                 'is_active' => true,
+                'role' => 'admin',
                 'created_at' => $now,
                 'updated_at' => $now,
             ]
@@ -34,6 +35,7 @@ class UsersAndCouponsSeeder extends Seeder
                 'password' => Hash::make('instructor123'),
                 'email_verified_at' => $now,
                 'is_active' => true,
+                'role' => 'instructor',
                 'created_at' => $now,
                 'updated_at' => $now,
             ]
@@ -48,6 +50,7 @@ class UsersAndCouponsSeeder extends Seeder
                 'password' => Hash::make('student123'),
                 'email_verified_at' => $now,
                 'is_active' => true,
+                'role' => 'student',
                 'created_at' => $now,
                 'updated_at' => $now,
             ]

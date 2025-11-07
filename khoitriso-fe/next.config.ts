@@ -18,7 +18,7 @@ const nextConfig: NextConfig = {
     },
     async rewrites() {
         // Proxy BE to avoid CORS in local dev
-        const backend = process.env.BACKEND_ORIGIN || "http://127.0.0.1:8000";
+        const backend = process.env.BACKEND_ORIGIN || "http://127.0.0.1:8080/api";
         const forum = process.env.FORUM_ORIGIN || "http://127.0.0.1:9000";
         return [
             {

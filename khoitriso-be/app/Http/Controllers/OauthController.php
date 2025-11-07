@@ -9,6 +9,9 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Http;
+use App\Models\RefreshToken;
+use Illuminate\Support\Str;
 
 /**
  * OAuth Controller
@@ -161,6 +164,7 @@ class OauthController extends BaseController
             $user = User::firstOrCreate(['email' => $providerId.'@google.local'], [
                 'name' => 'Google User',
                 'password' => Hash::make(str()->random(10)),
+                'role' => 'student',
             ]);
             
             OauthAccount::firstOrCreate(
@@ -169,11 +173,93 @@ class OauthController extends BaseController
             );
             
             $token = $user->createToken('auth')->plainTextToken;
-            
-            return $this->success(['token' => $token]);
+            $refresh = RefreshToken::create([
+                'user_id' => $user->id,
+                'token' => Str::random(64),
+                'expires_at' => now()->addDays(30),
+            ]);
+            return $this->success(['token' => $token, 'refreshToken' => $refresh->token]);
 
         } catch (\Exception $e) {
             \Log::error('Error in studentGoogleCallback: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Google one-tap / id_token login
+     */
+    public function googleTokenLogin(Request $request): JsonResponse
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'idToken' => ['required','string'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $idToken = $request->input('idToken');
+
+            // Verify with Google tokeninfo endpoint
+            $resp = Http::asForm()->get('https://oauth2.googleapis.com/tokeninfo', [ 'id_token' => $idToken ]);
+            if (!$resp->ok()) {
+                return $this->error(MessageCode::UNAUTHORIZED, null, null, 401);
+            }
+            $payload = $resp->json();
+            $aud = $payload['aud'] ?? null;
+            $email = $payload['email'] ?? null;
+            $name = $payload['name'] ?? 'Google User';
+
+            $allowedAud = env('GOOGLE_CLIENT_ID') ?? env('Authentication__Google__ClientId');
+            if ($allowedAud && $aud !== $allowedAud) {
+                return $this->error(MessageCode::UNAUTHORIZED, null, null, 401);
+            }
+
+            // Find or create user
+            $user = null;
+            if ($email) {
+                $user = User::where('email', $email)->first();
+            }
+            if (!$user) {
+                $user = User::create([
+                    'name' => $name,
+                    'email' => $email ?: (sha1($idToken).'@google.local'),
+                    'password' => Hash::make(str()->random(10)),
+                    'role' => 'student',
+                ]);
+            }
+
+            OauthAccount::firstOrCreate(
+                ['provider' => 'google', 'provider_id' => $payload['sub'] ?? sha1($idToken)],
+                ['user_id' => $user->id]
+            );
+
+            $token = $user->createToken('auth')->plainTextToken;
+            $refresh = RefreshToken::create([
+                'user_id' => $user->id,
+                'token' => Str::random(64),
+                'expires_at' => now()->addDays(30),
+            ]);
+
+            return $this->success([
+                'user' => [
+                    'id' => $user->id,
+                    'username' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role ?? 'student',
+                ],
+                'token' => $token,
+                'refreshToken' => $refresh->token,
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in googleTokenLogin: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -198,6 +284,7 @@ class OauthController extends BaseController
             $user = User::firstOrCreate(['email' => $providerId.'@facebook.local'], [
                 'name' => 'Facebook User',
                 'password' => Hash::make(str()->random(10)),
+                'role' => 'student',
             ]);
             
             OauthAccount::firstOrCreate(

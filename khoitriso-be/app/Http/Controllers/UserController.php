@@ -17,7 +17,7 @@ class UserController extends Controller
             'email' => $u->email,
             'fullName' => $u->name,
             'avatar' => null,
-            'role' => 1,
+            'role' => $u->role ?? 'student',
             'isActive' => true,
             'emailVerified' => (bool) $u->email_verified_at,
         ]);

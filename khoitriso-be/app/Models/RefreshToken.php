@@ -5,27 +5,22 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class BookActivationCode extends Model
+class RefreshToken extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'book_id','activation_code','is_used','used_by_id'
+        'user_id',
+        'token',
+        'expires_at',
+        'revoked',
     ];
 
     protected $casts = [
-        'is_used' => 'boolean',
+        'expires_at' => 'datetime',
+        'revoked' => 'boolean',
     ];
 }
-
-
-
-
-
-
-
-
-
 
 
 

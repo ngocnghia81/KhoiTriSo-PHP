@@ -24,6 +24,76 @@ Route::get('categories/{id}', [\App\Http\Controllers\CategoryController::class, 
 Route::get('search', [\App\Http\Controllers\SearchController::class, 'search']);
 Route::get('search/suggestions', [\App\Http\Controllers\SearchController::class, 'suggestions']);
 
+Route::get('test/config', function () {
+    try {
+        $uploadWorkerBaseUrl = config('services.upload_worker.base_url');
+        $jwtKey = config('services.upload_worker.jwt_key');
+        $backendJwtKey = config('services.upload_worker.backend_jwt_key');
+        
+        return response()->json([
+            'success' => true,
+            'upload_worker' => [
+                'base_url' => $uploadWorkerBaseUrl ? 'SET' : 'NOT SET',
+                'base_url_value' => $uploadWorkerBaseUrl,
+                'jwt_key' => $jwtKey ? 'SET' : 'NOT SET',
+                'backend_jwt_key' => $backendJwtKey ? 'SET' : 'NOT SET',
+            ],
+            'env' => [
+                'UPLOAD_WORKER_BASE_URL' => env('UPLOAD_WORKER_BASE_URL') ? 'SET' : 'NOT SET',
+                'UPLOAD_WORKER_JWT_KEY' => env('UPLOAD_WORKER_JWT_KEY') ? 'SET' : 'NOT SET',
+                'UPLOAD_WORKER_BACKEND_JWT_KEY' => env('UPLOAD_WORKER_BACKEND_JWT_KEY') ? 'SET' : 'NOT SET',
+            ],
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+});
+
+Route::get('test/db', function () {
+    try {
+        $dbName = config('database.connections.pgsql.database');
+        $dbHost = parse_url(config('database.connections.pgsql.url'), PHP_URL_HOST) 
+            ?: config('database.connections.pgsql.host');
+        
+        $userCount = \App\Models\User::count();
+        $adminCount = \App\Models\User::where('role', 'admin')->count();
+        $instructorCount = \App\Models\User::where('role', 'instructor')->count();
+        $studentCount = \App\Models\User::where('role', 'student')->count();
+        
+        $testUsers = \App\Models\User::select('id', 'name', 'email', 'role')
+            ->whereIn('email', [
+                'admin@khoitriso.edu.vn',
+                'instructor@khoitriso.edu.vn',
+                'student@gmail.com'
+            ])
+            ->get();
+        
+        return response()->json([
+            'success' => true,
+            'database' => [
+                'name' => $dbName,
+                'host' => $dbHost,
+                'connection' => 'OK'
+            ],
+            'stats' => [
+                'total_users' => $userCount,
+                'admins' => $adminCount,
+                'instructors' => $instructorCount,
+                'students' => $studentCount,
+            ],
+            'test_users' => $testUsers,
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'error' => $e->getMessage(),
+        ], 500);
+    }
+});
+
 Route::prefix('auth')->group(function () {
     Route::post('register', [\App\Http\Controllers\AuthController::class, 'register']);
     Route::post('login', [\App\Http\Controllers\AuthController::class, 'login']);
@@ -36,6 +106,7 @@ Route::prefix('auth')->group(function () {
     // OAuth Students
     Route::get('google', [\App\Http\Controllers\OauthController::class, 'studentGoogle']);
     Route::get('google/callback', [\App\Http\Controllers\OauthController::class, 'studentGoogleCallback']);
+    Route::post('google/token-login', [\App\Http\Controllers\OauthController::class, 'googleTokenLogin']);
     Route::get('facebook', [\App\Http\Controllers\OauthController::class, 'studentFacebook']);
     Route::get('facebook/callback', [\App\Http\Controllers\OauthController::class, 'studentFacebookCallback']);
 
@@ -193,8 +264,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('users/search', [\App\Http\Controllers\UserController::class, 'search']);
 
     // Uploads
+    Route::post('upload/presign', [\App\Http\Controllers\UploadController::class, 'presign']);
+    Route::post('upload/confirm/{fileKey}', [\App\Http\Controllers\UploadController::class, 'confirm']);
+    Route::get('upload/info/{fileKey}', [\App\Http\Controllers\UploadController::class, 'info']);
+    Route::delete('upload/{fileKey}', [\App\Http\Controllers\UploadController::class, 'delete']);
+    Route::post('upload/batch-delete', [\App\Http\Controllers\UploadController::class, 'batchDelete']);
+    
+    // Legacy upload endpoints (direct upload)
     Route::post('upload/image', [\App\Http\Controllers\UploadController::class, 'image']);
-    Route::post('upload/video', [\App\Http\Controllers\UploadController::class, 'video']);
     Route::post('upload/video', [\App\Http\Controllers\UploadController::class, 'video']);
     Route::post('upload/ebook', [\App\Http\Controllers\UploadController::class, 'ebook']);
 
@@ -213,6 +290,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('admin/users/{id}', [\App\Http\Controllers\AdminController::class, 'updateUser']);
     Route::post('admin/create-instructor', [\App\Http\Controllers\AdminController::class, 'createInstructor']);
     Route::post('admin/reset-instructor-password', [\App\Http\Controllers\AdminController::class, 'resetInstructorPassword']);
+    Route::get('admin/courses', [\App\Http\Controllers\AdminController::class, 'listCourses']);
 
     // Forum (MongoDB-backed)
     Route::prefix('forum-api')->group(function () {

@@ -24,8 +24,13 @@ class CategoriesSeeder extends Seeder
         ];
         $parentIds = [];
         foreach ($roots as $r) {
-            $id = DB::table('categories')->insertGetId($r + ['is_active' => true, 'created_at' => $now, 'updated_at' => $now]);
-            $parentIds[$r['name']] = $id;
+            $existing = DB::table('categories')->where('name', $r['name'])->first();
+            if ($existing) {
+                $parentIds[$r['name']] = $existing->id;
+            } else {
+                $id = DB::table('categories')->insertGetId($r + ['is_active' => true, 'created_at' => $now, 'updated_at' => $now]);
+                $parentIds[$r['name']] = $id;
+            }
         }
         // Subcategories for Toán học
         $mathChildren = [
@@ -35,7 +40,10 @@ class CategoriesSeeder extends Seeder
             ['name' => 'Xác suất thống kê','description' => 'Xác suất và thống kê','icon' => 'statistics-icon','order_index' => 4],
         ];
         foreach ($mathChildren as $c) {
-            DB::table('categories')->insert($c + ['parent_id' => $parentIds['Toán học'], 'is_active' => true, 'created_at' => $now, 'updated_at' => $now]);
+            $exists = DB::table('categories')->where('name', $c['name'])->where('parent_id', $parentIds['Toán học'])->exists();
+            if (!$exists) {
+                DB::table('categories')->insert($c + ['parent_id' => $parentIds['Toán học'], 'is_active' => true, 'created_at' => $now, 'updated_at' => $now]);
+            }
         }
         // Subcategories for Tin học
         $itChildren = [
@@ -45,7 +53,10 @@ class CategoriesSeeder extends Seeder
             ['name' => 'Trí tuệ nhân tạo','description' => 'AI và Machine Learning','icon' => 'ai-icon','order_index' => 4],
         ];
         foreach ($itChildren as $c) {
-            DB::table('categories')->insert($c + ['parent_id' => $parentIds['Tin học'], 'is_active' => true, 'created_at' => $now, 'updated_at' => $now]);
+            $exists = DB::table('categories')->where('name', $c['name'])->where('parent_id', $parentIds['Tin học'])->exists();
+            if (!$exists) {
+                DB::table('categories')->insert($c + ['parent_id' => $parentIds['Tin học'], 'is_active' => true, 'created_at' => $now, 'updated_at' => $now]);
+            }
         }
     }
 }

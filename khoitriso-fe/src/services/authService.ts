@@ -17,18 +17,35 @@ export const authService = {
    * POST /api/auth/login
    */
   login: async (credentials: LoginRequest): Promise<AuthResponse> => {
-    const response: any = await api.post('/auth/login', credentials);
-    
-    // Backend returns: { success, user, token, refreshToken }
-    // api.post returns response.data which is the backend response directly
-    if (response.success && response.user && response.token) {
-      const { token, user } = response;
-      authUtils.setToken(token);
-      authUtils.setUser(user);
-      return { token, user, tokenType: 'Bearer' };
+    try {
+      const response: any = await api.post('/auth/login', credentials);
+      
+      // Backend returns: { success: true, data: { user, token, refreshToken } }
+      if (response.success && response.data) {
+        const { token, refreshToken, user } = response.data;
+        if (token && user) {
+          authUtils.setToken(token, refreshToken);
+          authUtils.setUser(user);
+          return { token, user, tokenType: 'Bearer' };
+        }
+      }
+      
+      // Fallback: check if response has token/user at root level
+      if (response.token && response.user) {
+        authUtils.setToken(response.token, response.refreshToken);
+        authUtils.setUser(response.user);
+        return { token: response.token, user: response.user, tokenType: 'Bearer' };
+      }
+      
+      throw new Error(response.message || 'Đăng nhập thất bại');
+    } catch (error: any) {
+      // Extract error message from axios error response
+      const errorMsg = error?.response?.data?.message 
+        || error?.response?.data?.data?.message
+        || error?.message 
+        || 'Đăng nhập thất bại. Vui lòng kiểm tra lại email và mật khẩu.';
+      throw new Error(errorMsg);
     }
-    
-    throw new Error(response.message || 'Login failed');
   },
 
   /**

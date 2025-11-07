@@ -121,7 +121,7 @@ export default function ProfilePage() {
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     const fullName = `${profileData.firstName} ${profileData.lastName}`.trim();
-    const res = await updateProfile({ name: fullName, phone: profileData.phone });
+    const res = await updateProfile({ fullName: fullName, phone: profileData.phone } as any);
     if (res.ok) {
       setIsEditing(false);
       alert('Cập nhật thông tin thành công!');

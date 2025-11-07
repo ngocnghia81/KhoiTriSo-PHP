@@ -71,7 +71,16 @@ export async function getCourse(id: number) {
 /**
  * Create new course
  */
-export async function createCourse(data: Partial<Course>) {
+export async function createCourse(data: {
+  title: string;
+  description: string;
+  thumbnail: string;
+  categoryId: number;
+  level: number;
+  isFree: boolean;
+  price: number;
+  staticPagePath: string;
+}) {
   const response = await httpClient.post('courses', data);
   
   if (!isSuccess(response)) {

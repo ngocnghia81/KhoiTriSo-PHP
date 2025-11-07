@@ -4,8 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Course;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
-class CourseController extends Controller
+class CourseController extends BaseController
 {
     public function index(Request $request)
     {
@@ -47,31 +48,47 @@ class CourseController extends Controller
         return response()->json($course);
     }
 
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'title' => ['required','string','max:200'],
-            'description' => ['required','string'],
-            'thumbnail' => ['required','string','max:255'],
-            'categoryId' => ['required','integer','exists:categories,id'],
-            'level' => ['required','integer','in:1,2,3'],
-            'isFree' => ['required','boolean'],
-            'price' => ['required','numeric','min:0'],
-            'staticPagePath' => ['required','string'],
-        ]);
-        $course = Course::create([
-            'title' => $data['title'],
-            'description' => $data['description'],
-            'thumbnail' => $data['thumbnail'],
-            'category_id' => $data['categoryId'],
-            'level' => $data['level'],
-            'is_free' => $data['isFree'],
-            'price' => $data['price'],
-            'static_page_path' => $data['staticPagePath'],
-            'instructor_id' => $request->user()->id,
-            'approval_status' => 1,
-        ]);
-        return response()->json(['success' => true, 'course' => $course], 201);
+        try {
+            $data = $request->validate([
+                'title' => ['required','string','max:200'],
+                'description' => ['required','string'],
+                'thumbnail' => ['required','string','max:255'],
+                'categoryId' => ['required','integer','exists:categories,id'],
+                'level' => ['required','integer','in:1,2,3'],
+                'isFree' => ['required','boolean'],
+                'price' => ['required','numeric','min:0'],
+                'staticPagePath' => ['required','string'],
+            ]);
+            
+            $course = Course::create([
+                'title' => $data['title'],
+                'description' => $data['description'],
+                'thumbnail' => $data['thumbnail'],
+                'category_id' => $data['categoryId'],
+                'level' => $data['level'],
+                'is_free' => $data['isFree'],
+                'price' => $data['price'],
+                'static_page_path' => $data['staticPagePath'],
+                'instructor_id' => $request->user()->id,
+                'approval_status' => 1,
+                'is_active' => true,
+                'is_published' => false,
+            ]);
+            
+            return $this->success($course, null, $request);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $errors = [];
+            foreach ($e->errors() as $field => $messages) {
+                $errors[] = ['field' => $field, 'messages' => $messages];
+            }
+            return $this->validationError($errors);
+        } catch (\Exception $e) {
+            \Log::error('Error creating course: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
     }
 
     public function update(Request $request, int $id)

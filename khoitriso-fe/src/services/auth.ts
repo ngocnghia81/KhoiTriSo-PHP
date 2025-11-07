@@ -24,6 +24,10 @@ export async function login(payload: LoginPayload) {
   const token = extractToken(res.data);
   if (token && typeof window !== 'undefined') localStorage.setItem(TOKEN_STORAGE_KEY, token);
   if (typeof window !== 'undefined') {
+    // persist refresh token if provided
+    try {
+      if (res.data?.refreshToken) localStorage.setItem('refreshToken', res.data.refreshToken);
+    } catch {}
     try { window.dispatchEvent(new Event('kts-auth-changed')); } catch {}
   }
   return res.data;
@@ -39,6 +43,9 @@ export async function register(payload: RegisterPayload) {
   const token = extractToken(res.data);
   if (token && typeof window !== 'undefined') localStorage.setItem(TOKEN_STORAGE_KEY, token);
   if (typeof window !== 'undefined') {
+    try {
+      if (res.data?.refreshToken) localStorage.setItem('refreshToken', res.data.refreshToken);
+    } catch {}
     try { window.dispatchEvent(new Event('kts-auth-changed')); } catch {}
   }
   return res.data;
@@ -48,15 +55,28 @@ export async function logout() {
   // Optimistic: clear token and notify UI immediately
   if (typeof window !== 'undefined') {
     try { localStorage.removeItem(TOKEN_STORAGE_KEY); } catch {}
+    try { localStorage.removeItem('refreshToken'); } catch {}
     try { window.dispatchEvent(new Event('kts-auth-changed')); } catch {}
   }
   try { await http.post('auth/logout'); } catch {}
 }
 
 export async function refresh(): Promise<boolean> {
-  const res = await http.post<AuthTokenResponse>('auth/refresh');
+  let body: any = undefined;
+  if (typeof window !== 'undefined') {
+    try {
+      const rt = localStorage.getItem('refreshToken');
+      if (rt) body = { refresh_token: rt };
+    } catch {}
+  }
+  const res = await http.post<AuthTokenResponse>('auth/refresh', body);
   if (!res.ok) return false;
   const token = extractToken(res.data);
+  if (typeof window !== 'undefined') {
+    try {
+      if (res.data?.refreshToken) localStorage.setItem('refreshToken', res.data.refreshToken);
+    } catch {}
+  }
   if (token && typeof window !== 'undefined') localStorage.setItem(TOKEN_STORAGE_KEY, token);
   if (typeof window !== 'undefined') {
     try { window.dispatchEvent(new Event('kts-auth-changed')); } catch {}

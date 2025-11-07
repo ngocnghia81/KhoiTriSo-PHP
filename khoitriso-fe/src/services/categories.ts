@@ -18,14 +18,20 @@ export interface Category {
 /**
  * Get all categories
  */
-export async function getCategories() {
+export async function getCategories(): Promise<Category[]> {
   const response = await httpClient.get('categories');
   
   if (!isSuccess(response)) {
     throw new Error(handleApiError(response));
   }
   
-  return extractData(response);
+  const data = extractData(response);
+  // API returns { categories: [...] }
+  if (data && typeof data === 'object' && 'categories' in data) {
+    return (data as any).categories || [];
+  }
+  // Fallback: if data is already an array
+  return Array.isArray(data) ? data : [];
 }
 
 /**

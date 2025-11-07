@@ -32,8 +32,9 @@ export async function getProfile() {
 
 /**
  * Update profile
+ * Backend expects { fullName?, phone? }
  */
-export async function updateProfile(data: Partial<User>) {
+export async function updateProfile(data: Partial<User> & { fullName?: string; phone?: string }) {
   const response = await httpClient.put('user/profile', data);
   
   if (!isSuccess(response)) {

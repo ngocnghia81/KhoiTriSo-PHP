@@ -110,13 +110,16 @@ export async function logout(): Promise<void> {
  * Refresh token
  */
 export async function refresh(): Promise<boolean> {
-  const response = await httpClient.post<AuthResponse>('auth/refresh');
+  const storedRt = (typeof window !== 'undefined') ? localStorage.getItem('refreshToken') : null;
+  const response = storedRt
+    ? await httpClient.post<AuthResponse>('auth/refresh', { refresh_token: storedRt })
+    : await httpClient.post<AuthResponse>('auth/refresh');
   
   if (!isSuccess(response)) {
     return false;
   }
   
-  const data = extractData(response);
+  const data = extractData(response) as any;
   if (!data || !data.token) {
     return false;
   }
@@ -124,10 +127,40 @@ export async function refresh(): Promise<boolean> {
   // Save new token
   if (typeof window !== 'undefined') {
     localStorage.setItem(TOKEN_STORAGE_KEY, data.token);
+    if (data.refreshToken) {
+      localStorage.setItem('refreshToken', data.refreshToken);
+    }
     window.dispatchEvent(new Event('kts-auth-changed'));
   }
   
   return true;
+}
+
+/**
+ * Google Login via ID Token
+ */
+export async function loginWithGoogleIdToken(idToken: string): Promise<AuthResponse> {
+  const response = await httpClient.post<AuthResponse>('auth/google/token-login', { idToken });
+  
+  if (!isSuccess(response)) {
+    const errorMessage = handleApiError(response);
+    throw new Error(errorMessage);
+  }
+  
+  const data = extractData(response) as any;
+  if (!data || !data.token) {
+    throw new Error('Google login failed');
+  }
+  
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(TOKEN_STORAGE_KEY, data.token);
+    if (data.refreshToken) {
+      localStorage.setItem('refreshToken', data.refreshToken);
+    }
+    window.dispatchEvent(new Event('kts-auth-changed'));
+  }
+  
+  return data as any;
 }
 
 /**
