@@ -297,10 +297,20 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Admin
     Route::get('admin/users', [\App\Http\Controllers\AdminController::class, 'listUsers']);
+    Route::get('admin/users/{id}', [\App\Http\Controllers\AdminController::class, 'getUser']);
     Route::put('admin/users/{id}', [\App\Http\Controllers\AdminController::class, 'updateUser']);
+    Route::put('admin/users/{id}/toggle-status', [\App\Http\Controllers\AdminController::class, 'toggleUserStatus']);
+    Route::get('admin/users/{id}/courses', [\App\Http\Controllers\AdminController::class, 'getUserCourses']);
+    Route::get('admin/users/{id}/books', [\App\Http\Controllers\AdminController::class, 'getUserBooks']);
     Route::post('admin/create-instructor', [\App\Http\Controllers\AdminController::class, 'createInstructor']);
     Route::post('admin/reset-instructor-password', [\App\Http\Controllers\AdminController::class, 'resetInstructorPassword']);
     Route::get('admin/courses', [\App\Http\Controllers\AdminController::class, 'listCourses']);
+    Route::get('admin/instructors/{id}', [\App\Http\Controllers\AdminController::class, 'getInstructor']);
+    Route::get('admin/instructors/{id}/courses', [\App\Http\Controllers\AdminController::class, 'getInstructorCourses']);
+    Route::get('admin/instructors/{id}/books', [\App\Http\Controllers\AdminController::class, 'getInstructorBooks']);
+    Route::put('admin/instructors/{id}/toggle-status', [\App\Http\Controllers\AdminController::class, 'toggleInstructorStatus']);
+    Route::get('admin/courses/{id}/enrollments', [\App\Http\Controllers\AdminController::class, 'getCourseEnrollments']);
+    Route::get('admin/books/{id}/purchases', [\App\Http\Controllers\AdminController::class, 'getBookPurchases']);
 
     // Forum (MongoDB-backed)
     Route::prefix('forum-api')->group(function () {

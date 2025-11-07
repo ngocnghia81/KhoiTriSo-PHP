@@ -338,20 +338,12 @@ export default function Header() {
                                         )}
                                     </div>
                                 ) : (
-                                    <>
-                                        <Link
-                                            href="/auth/login"
-                                            className="px-6 py-2 font-semibold rounded-full transition-all duration-300 transform bg-gray-800 text-white hover:bg-gray-700 hover:shadow-lg hover:scale-105"
-                                        >
-                                            Đăng nhập
-                                        </Link>
-                                        <Link
-                                            href="/auth/register"
-                                            className="px-6 py-2 font-semibold rounded-full transition-all duration-300 transform bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg hover:scale-105"
-                                        >
-                                            Đăng ký
-                                        </Link>
-                                    </>
+                                    <Link
+                                        href="/auth/login"
+                                        className="px-6 py-2 font-semibold rounded-full transition-all duration-300 transform bg-gray-800 text-white hover:bg-gray-700 hover:shadow-lg hover:scale-105"
+                                    >
+                                        Đăng nhập
+                                    </Link>
                                 )}
                             </div>
 

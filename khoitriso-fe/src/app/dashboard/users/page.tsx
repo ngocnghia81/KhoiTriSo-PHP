@@ -12,6 +12,7 @@ import {
   XCircleIcon
 } from '@heroicons/react/24/outline';
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { getUsers, updateUser, createInstructor, AdminUser } from '@/services/admin';
 import { useToast } from '@/components/ToastProvider';
 
@@ -70,6 +71,7 @@ const getRoleBadge = (role: string) => {
 };
 
 export default function UsersPage() {
+  const router = useRouter();
   const { users, loading, page, setPage, total, totalPages, q, setQ, role, setRole, status, setStatus, fetchUsers } = useUsersData();
   const activeUsers = users.filter(u => u.isActive).length;
   const inactiveUsers = total - activeUsers;
@@ -258,7 +260,11 @@ export default function UsersPage() {
                   </tr>
                 ) : (
                   users.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
+                    <tr 
+                      key={user.id} 
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => router.push(`/dashboard/users/${user.id}`)}
+                    >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="flex-shrink-0 h-10 w-10">
@@ -315,21 +321,13 @@ export default function UsersPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         —
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center space-x-2">
-                          <button className="text-blue-600 hover:text-blue-900">
-                            <EyeIcon className="h-4 w-4" />
-                          </button>
-                          <button className="text-yellow-600 hover:text-yellow-900">
-                            <PencilIcon className="h-4 w-4" />
-                          </button>
-                          <button className="text-red-600 hover:text-red-900">
-                            <TrashIcon className="h-4 w-4" />
-                          </button>
-                          <button className="text-gray-400 hover:text-gray-600">
-                            <EllipsisVerticalIcon className="h-4 w-4" />
-                          </button>
-                        </div>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium" onClick={(e) => e.stopPropagation()}>
+                        <button 
+                          onClick={() => router.push(`/dashboard/users/${user.id}`)}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          <EyeIcon className="h-4 w-4" />
+                        </button>
                       </td>
                     </tr>
                   ))

@@ -9,9 +9,6 @@ import {
   EnvelopeIcon,
   LockClosedIcon,
   AcademicCapIcon,
-  SparklesIcon,
-  ShieldCheckIcon,
-  UsersIcon,
 } from '@heroicons/react/24/outline';
 import { authService } from '@/services/authService';
 import { loginWithGoogleIdToken } from '@/services/auth.new';
@@ -36,7 +33,6 @@ export default function LoginPage() {
       ...prev,
       [name]: value
     }));
-    // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({
         ...prev,
@@ -73,17 +69,15 @@ export default function LoginPage() {
 
     setIsLoading(true);
     setApiError('');
-    setErrors({}); // Clear all errors
+    setErrors({});
 
     try {
-      // Call authService to login
       const response = await authService.login({
         email: formData.email,
         password: formData.password,
         remember: formData.remember
       });
 
-      // Redirect based on user role
       const { user } = response;
       switch (user.role) {
         case 'admin':
@@ -98,7 +92,6 @@ export default function LoginPage() {
     } catch (error: any) {
       console.error('Login error:', error);
       
-      // Check if error has validation errors from backend
       if (error.validationErrors) {
         const newErrors: {[key: string]: string} = {};
         
@@ -106,7 +99,6 @@ export default function LoginPage() {
           if (Array.isArray(messages) && messages.length > 0) {
             let message = messages[0];
             
-            // Translate common messages
             if (message.includes('is required')) {
               message = field === 'email' ? 'Email là bắt buộc' : 'Mật khẩu là bắt buộc';
             } else if (message.includes('must be a valid email')) {
@@ -120,7 +112,6 @@ export default function LoginPage() {
         setErrors(newErrors);
         setApiError(Object.values(newErrors)[0] || error.message);
       } else {
-        // General error message
         const errorMessage = error.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.';
         setApiError(errorMessage);
         setErrors({ general: errorMessage });
@@ -140,14 +131,12 @@ export default function LoginPage() {
       return;
     }
 
-    // Load Google script
     if (typeof window !== 'undefined' && !(window as any).google) {
       const script = document.createElement('script');
       script.src = 'https://accounts.google.com/gsi/client';
       script.async = true;
       script.defer = true;
       script.onload = () => {
-        // Initialize Google Sign-In
         (window as any).google.accounts.id.initialize({
           client_id: clientId,
           callback: async (response: any) => {
@@ -166,7 +155,6 @@ export default function LoginPage() {
           },
         });
 
-        // Render button
         if (googleButtonRef.current) {
           (window as any).google.accounts.id.renderButton(googleButtonRef.current, {
             theme: 'outline',
@@ -178,7 +166,6 @@ export default function LoginPage() {
       };
       document.head.appendChild(script);
     } else if ((window as any).google && googleButtonRef.current) {
-      // Script already loaded, just render button
       (window as any).google.accounts.id.initialize({
         client_id: clientId,
         callback: async (response: any) => {
@@ -206,272 +193,243 @@ export default function LoginPage() {
   }, [mode, router]);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
-      <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-blue-500/30 blur-3xl" />
-      <div className="absolute -bottom-40 -right-24 h-[30rem] w-[30rem] rounded-full bg-purple-600/20 blur-3xl" />
-      <div className="absolute top-1/2 left-1/2 h-[28rem] w-[28rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500/10 blur-3xl" />
-
-      <div className="relative z-10 flex min-h-screen items-center px-6 py-12 sm:px-8 lg:px-20">
-        <div className="grid w-full max-w-6xl items-center gap-12 lg:grid-cols-[1.05fr,0.95fr]">
-          <div className="order-2 space-y-8 lg:order-1">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-white/70">
-              <SparklesIcon className="h-4 w-4 text-emerald-400" />
-              Khởi Trí Số Academy
-            </div>
-            <h1 className="text-4xl font-semibold leading-tight sm:text-5xl">
-              Nền tảng học tập số dành cho giảng viên và học viên hiện đại
-            </h1>
-            <p className="max-w-xl text-base text-white/70">
-              Quản lý khóa học, giảng dạy trực tuyến và theo dõi tiến độ học tập trên một nền tảng duy nhất với trải nghiệm đăng nhập được tối ưu cho từng vai trò.
-            </p>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-blue-500/10">
-                <ShieldCheckIcon className="mb-4 h-8 w-8 text-emerald-400" />
-                <h3 className="text-lg font-semibold text-white">Quyền truy cập bảo mật</h3>
-                <p className="mt-2 text-sm text-white/60">
-                  Admin và giảng viên đăng nhập bằng tài khoản nội bộ để quản trị và thiết kế khóa học.
-                </p>
-              </div>
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-purple-500/10">
-                <UsersIcon className="mb-4 h-8 w-8 text-blue-400" />
-                <h3 className="text-lg font-semibold text-white">Học viên - Google SSO</h3>
-                <p className="mt-2 text-sm text-white/60">
-                  Kết nối tức thì bằng tài khoản Google, đồng bộ tiến độ học tập và lịch học cá nhân.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-3 text-[0.65rem] font-medium uppercase tracking-[0.4em] text-white/50">
-              <span className="rounded-full border border-white/10 px-4 py-2">Cloud LMS</span>
-              <span className="rounded-full border border-white/10 px-4 py-2">Secure Access</span>
-              <span className="rounded-full border border-white/10 px-4 py-2">Realtime Analytics</span>
-              <span className="rounded-full border border-white/10 px-4 py-2">SSO Ready</span>
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        {/* Header */}
+        <div className="text-center">
+          <div className="flex justify-center mb-4">
+            <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+              <AcademicCapIcon className="h-8 w-8 text-white" />
             </div>
           </div>
+          <h2 className="text-3xl font-bold text-gray-900">Đăng nhập</h2>
+          <p className="mt-2 text-sm text-gray-600">
+            Chọn phương thức đăng nhập phù hợp với vai trò của bạn
+          </p>
+        </div>
 
-          <div className="order-1 lg:order-2">
-            <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-slate-900/60 shadow-[0_25px_80px_-20px_rgba(59,130,246,0.45)] backdrop-blur-xl">
-              <div className="absolute inset-x-6 inset-y-0 bg-gradient-to-b from-blue-500/20 via-transparent to-purple-500/10 blur-3xl" />
-              <div className="relative z-10 space-y-8 p-8 sm:p-10">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-indigo-500/30">
-                    <AcademicCapIcon className="h-7 w-7 text-white" />
+        {/* Mode Switcher */}
+        <div className="bg-white rounded-lg shadow-sm p-1 border border-gray-200">
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setMode('student')}
+              className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all ${
+                mode === 'student'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              Học viên
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('staff')}
+              className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all ${
+                mode === 'staff'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              Admin/Giảng viên
+            </button>
+          </div>
+        </div>
+
+        {/* Login Form */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-6">
+          {mode === 'student' ? (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-600 mb-4 text-center">
+                  Đăng nhập bằng tài khoản Google của bạn
+                </p>
+                {apiError && (
+                  <div className="mb-4 rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-800">
+                    {apiError}
                   </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.4em] text-white/60">Access Portal</p>
-                    <h2 className="text-2xl font-semibold text-white">Đăng nhập hệ thống</h2>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-white/80">Chọn phương thức đăng nhập</p>
-                  <div className="flex gap-1 rounded-full border border-white/10 bg-white/5 p-1 text-sm font-medium">
-                    <button
-                      type="button"
-                      onClick={() => setMode('student')}
-                      className={`flex-1 rounded-full px-4 py-2 transition-all duration-200 ${
-                        mode === 'student'
-                          ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-500/40'
-                          : 'text-white/60 hover:text-white'
-                      }`}
-                    >
-                      Học viên · Google
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMode('staff')}
-                      className={`flex-1 rounded-full px-4 py-2 transition-all duration-200 ${
-                        mode === 'staff'
-                          ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/40'
-                          : 'text-white/60 hover:text-white'
-                      }`}
-                    >
-                      Admin/Giảng viên · Email
-                    </button>
-                  </div>
-                  <p className="text-xs text-white/50">
-                    * Hệ thống không hỗ trợ tự đăng ký tài khoản. Liên hệ quản trị viên để được cấp quyền phù hợp.
-                  </p>
-                </div>
-
-                {mode === 'student' ? (
-                  <div className="space-y-5">
-                    {apiError && (
-                      <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-100">
-                        {apiError}
-                      </div>
-                    )}
-                    {isLoading && (
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-center text-sm text-white/70">
-                        <svg
-                          className="mx-auto h-5 w-5 animate-spin text-blue-300"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          ></path>
-                        </svg>
-                        <p className="mt-2 text-xs text-white/60">Đang xác thực với Google...</p>
-                      </div>
-                    )}
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <div ref={googleButtonRef} className="w-full [&>div]:w-full [&>div]:justify-center"></div>
-                    </div>
-                    <p className="text-xs text-white/60 text-center">
-                      Là học viên? Đăng nhập bằng tài khoản Google được liên kết với trung tâm.
-                    </p>
-                  </div>
-                ) : (
-                  <form className="space-y-5" onSubmit={handleSubmit}>
-                    {(errors.general || apiError) && (
-                      <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-100">
-                        {errors.general || apiError}
-                      </div>
-                    )}
-
-                    <div className="space-y-2">
-                      <label htmlFor="email" className="text-xs font-semibold uppercase tracking-[0.3em] text-white/50">
-                        Email nội bộ
-                      </label>
-                      <div className="relative">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                          <EnvelopeIcon className="h-5 w-5 text-white/40" />
-                        </div>
-                        <input
-                          id="email"
-                          name="email"
-                          type="email"
-                          autoComplete="email"
-                          value={formData.email}
-                          onChange={handleInputChange}
-                          className={`block w-full rounded-2xl border border-white/10 bg-white/5 py-3 pl-11 pr-4 text-sm text-white placeholder-white/40 shadow-inner shadow-black/5 focus:border-blue-400/60 focus:bg-slate-900/80 focus:outline-none focus:ring-2 focus:ring-blue-500/60 ${
-                            errors.email ? 'border-rose-400/60 focus:border-rose-400 focus:ring-rose-400/60' : ''
-                          }`}
-                          placeholder="name@khoitriso.com"
-                        />
-                      </div>
-                      {errors.email && (
-                        <p className="text-xs text-rose-200">{errors.email}</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <label htmlFor="password" className="text-xs font-semibold uppercase tracking-[0.3em] text-white/50">
-                        Mật khẩu
-                      </label>
-                      <div className="relative">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                          <LockClosedIcon className="h-5 w-5 text-white/40" />
-                        </div>
-                        <input
-                          id="password"
-                          name="password"
-                          type={showPassword ? 'text' : 'password'}
-                          autoComplete="current-password"
-                          value={formData.password}
-                          onChange={handleInputChange}
-                          className={`block w-full rounded-2xl border border-white/10 bg-white/5 py-3 pl-11 pr-11 text-sm text-white placeholder-white/40 shadow-inner shadow-black/5 focus:border-blue-400/60 focus:bg-slate-900/80 focus:outline-none focus:ring-2 focus:ring-blue-500/60 ${
-                            errors.password ? 'border-rose-400/60 focus:border-rose-400 focus:ring-rose-400/60' : ''
-                          }`}
-                          placeholder="••••••••"
-                        />
-                        <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="rounded-full p-2 text-white/50 transition hover:text-white"
-                          >
-                            {showPassword ? (
-                              <EyeSlashIcon className="h-5 w-5" />
-                            ) : (
-                              <EyeIcon className="h-5 w-5" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                      {errors.password && (
-                        <p className="text-xs text-rose-200">{errors.password}</p>
-                      )}
-                    </div>
-
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <label className="inline-flex items-center gap-2 text-xs text-white/70">
-                        <input
-                          id="remember-me"
-                          name="remember"
-                          type="checkbox"
-                          checked={formData.remember}
-                          onChange={(e) => setFormData(prev => ({ ...prev, remember: e.target.checked }))}
-                          className="h-4 w-4 rounded border-white/10 bg-white/10 text-blue-500 focus:ring-blue-400"
-                        />
-                        Ghi nhớ đăng nhập trên thiết bị này
-                      </label>
-                      <Link
-                        href="/auth/forgot-password"
-                        className="text-xs font-semibold text-blue-300 transition hover:text-blue-200"
-                      >
-                        Quên mật khẩu?
-                      </Link>
-                    </div>
-
-                    <div className="pt-2">
-                      <button
-                        type="submit"
-                        disabled={isLoading}
-                        className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-500/40 transition-all duration-300 hover:from-blue-400 hover:via-indigo-400 hover:to-purple-400 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isLoading ? (
-                          <>
-                            <svg
-                              className="h-5 w-5 animate-spin text-white"
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                            >
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                              ></path>
-                            </svg>
-                            Đang xác thực...
-                          </>
-                        ) : (
-                          'Đăng nhập tài khoản'
-                        )}
-                      </button>
-                    </div>
-                  </form>
                 )}
-
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-xs text-white/60">
-                  <h4 className="text-sm font-semibold text-white">Tài khoản demo kiểm thử</h4>
-                  <div className="mt-3 space-y-2 font-mono text-[0.7rem] text-white/70">
-                    <div className="flex items-center justify-between">
-                      <span>Admin</span>
-                      <span>admin@khoitriso.com · 123456</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Giảng viên</span>
-                      <span>instructor@khoitriso.com · 123456</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Học viên</span>
-                      <span>student@khoitriso.com · 123456</span>
+                {isLoading && (
+                  <div className="mb-4 rounded-md bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800 text-center">
+                    <div className="flex items-center justify-center">
+                      <svg
+                        className="animate-spin h-5 w-5 mr-2"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      Đang xác thực với Google...
                     </div>
                   </div>
+                )}
+                <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  <div ref={googleButtonRef} className="w-full [&>div]:w-full [&>div]:justify-center"></div>
                 </div>
+              </div>
+              <p className="text-xs text-gray-500 text-center">
+                * Hệ thống không hỗ trợ tự đăng ký. Liên hệ quản trị viên để được cấp quyền.
+              </p>
+            </div>
+          ) : (
+            <form className="space-y-5" onSubmit={handleSubmit}>
+              {(errors.general || apiError) && (
+                <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-800">
+                  {errors.general || apiError}
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                  Email
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <EnvelopeIcon className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    className={`block w-full pl-10 pr-3 py-2.5 border rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.email ? 'border-red-300 focus:ring-red-500' : 'border-gray-300'
+                    }`}
+                    placeholder="name@khoitriso.com"
+                  />
+                </div>
+                {errors.email && (
+                  <p className="mt-1 text-xs text-red-600">{errors.email}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+                  Mật khẩu
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <LockClosedIcon className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    className={`block w-full pl-10 pr-10 py-2.5 border rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      errors.password ? 'border-red-300 focus:ring-red-500' : 'border-gray-300'
+                    }`}
+                    placeholder="••••••••"
+                  />
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? (
+                        <EyeSlashIcon className="h-5 w-5" />
+                      ) : (
+                        <EyeIcon className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+                {errors.password && (
+                  <p className="mt-1 text-xs text-red-600">{errors.password}</p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="flex items-center">
+                  <input
+                    id="remember-me"
+                    name="remember"
+                    type="checkbox"
+                    checked={formData.remember}
+                    onChange={(e) => setFormData(prev => ({ ...prev, remember: e.target.checked }))}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <span className="ml-2 text-sm text-gray-600">Ghi nhớ đăng nhập</span>
+                </label>
+                <Link
+                  href="/auth/forgot-password"
+                  className="text-sm text-blue-600 hover:text-blue-700"
+                >
+                  Quên mật khẩu?
+                </Link>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isLoading ? (
+                  <>
+                    <svg
+                      className="animate-spin h-5 w-5 mr-2"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    Đang xác thực...
+                  </>
+                ) : (
+                  'Đăng nhập'
+                )}
+              </button>
+            </form>
+          )}
+
+          {/* Demo Accounts Info */}
+          <div className="pt-4 border-t border-gray-200">
+            <p className="text-xs font-medium text-gray-700 mb-2">Tài khoản demo:</p>
+            <div className="space-y-1 text-xs text-gray-600 font-mono">
+              <div className="flex justify-between">
+                <span>Admin:</span>
+                <span>admin@khoitriso.com / 123456</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Giảng viên:</span>
+                <span>instructor@khoitriso.com / 123456</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Học viên:</span>
+                <span>student@khoitriso.com / 123456</span>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Footer */}
+        <p className="text-center text-xs text-gray-500">
+          Bằng việc đăng nhập, bạn đồng ý với{' '}
+          <Link href="/terms" className="text-blue-600 hover:text-blue-700">
+            Điều khoản sử dụng
+          </Link>{' '}
+          và{' '}
+          <Link href="/privacy" className="text-blue-600 hover:text-blue-700">
+            Chính sách bảo mật
+          </Link>
+        </p>
       </div>
     </div>
   );

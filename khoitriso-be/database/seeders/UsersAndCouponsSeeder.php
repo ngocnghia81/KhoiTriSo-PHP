@@ -11,45 +11,46 @@ class UsersAndCouponsSeeder extends Seeder
     public function run(): void
     {
         $now = now();
-        // Student (main user for testing)
-        $studentId = DB::table('users')->updateOrInsert(
-            ['email' => 'student@khoitriso.edu.vn'],
+        
+        // Admin - Tài khoản quản trị viên
+        DB::table('users')->updateOrInsert(
+            ['email' => 'admin@khoitriso.com'],
             [
-                'name' => 'Trần Thị Học Sinh',
-                'username' => 'student',
-                'password' => Hash::make('student123'),
+                'name' => 'Quản trị viên',
+                'username' => 'admin',
+                'password' => Hash::make('123456'),
                 'email_verified_at' => $now,
-                'is_active' => true,
+                'is_active' => DB::raw('true'),
                 'role' => 'admin',
                 'created_at' => $now,
                 'updated_at' => $now,
             ]
         );
 
-        // Instructor
+        // Instructor - Tài khoản giảng viên
         DB::table('users')->updateOrInsert(
-            ['email' => 'instructor@khoitriso.edu.vn'],
+            ['email' => 'instructor@khoitriso.com'],
             [
-                'name' => 'Nguyễn Văn Giảng',
-                'username' => 'instructor1',
-                'password' => Hash::make('instructor123'),
+                'name' => 'Giảng viên',
+                'username' => 'instructor',
+                'password' => Hash::make('123456'),
                 'email_verified_at' => $now,
-                'is_active' => true,
+                'is_active' => DB::raw('true'),
                 'role' => 'instructor',
                 'created_at' => $now,
                 'updated_at' => $now,
             ]
         );
 
-        // Admin
+        // Student - Tài khoản học viên
         DB::table('users')->updateOrInsert(
-            ['email' => 'admin@khoitriso.edu.vn'],
+            ['email' => 'student@khoitriso.com'],
             [
-                'name' => 'Admin',
-                'username' => 'admin',
-                'password' => Hash::make('admin123'),
+                'name' => 'Học viên',
+                'username' => 'student',
+                'password' => Hash::make('123456'),
                 'email_verified_at' => $now,
-                'is_active' => true,
+                'is_active' => DB::raw('true'),
                 'role' => 'student',
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -69,7 +70,7 @@ class UsersAndCouponsSeeder extends Seeder
                 'valid_from' => $now,
                 'valid_to' => $now->copy()->addYear(),
                 'usage_limit' => 1000,
-                'is_active' => true,
+                'is_active' => DB::raw('true'),
                 'created_at' => $now,
                 'updated_at' => $now,
             ]
@@ -83,7 +84,7 @@ class UsersAndCouponsSeeder extends Seeder
                 'discount_value' => 50000,
                 'valid_from' => $now,
                 'valid_to' => $now->copy()->addMonths(6),
-                'is_active' => true,
+                'is_active' => DB::raw('true'),
                 'created_at' => $now,
                 'updated_at' => $now,
             ]
