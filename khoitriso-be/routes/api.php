@@ -141,6 +141,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('categories/{id}', [\App\Http\Controllers\CategoryController::class, 'destroy']);
 
     // Courses (protected routes)
+    Route::get('my-courses', [\App\Http\Controllers\CourseController::class, 'myLearning']);
     Route::post('courses', [\App\Http\Controllers\CourseController::class, 'store']);
     Route::put('courses/{id}', [\App\Http\Controllers\CourseController::class, 'update']);
     Route::delete('courses/{id}', [\App\Http\Controllers\CourseController::class, 'destroy']);

@@ -42,9 +42,16 @@ class CourseController extends BaseController
 
     public function show(int $id)
     {
-        $course = Course::with(['instructor', 'category', 'lessons' => function ($q) {
-            $q->orderBy('lesson_order');
-        }])->findOrFail($id);
+        $course = Course::with([
+            'instructor', 
+            'category', 
+            'lessons' => function ($q) {
+                $q->orderBy('lesson_order');
+            },
+            'lessons.materials' => function ($q) {
+                $q->orderBy('created_at');
+            }
+        ])->findOrFail($id);
         return response()->json($course);
     }
 
@@ -121,6 +128,49 @@ class CourseController extends BaseController
         $course->is_active = false;
         $course->save();
         return response()->json(['success' => true, 'message' => 'Course deleted successfully']);
+    }
+
+    /**
+     * Get user's enrolled courses (My Learning)
+     */
+    public function myLearning(Request $request)
+    {
+        $user = $request->user();
+        
+        $enrollments = \App\Models\CourseEnrollment::where('user_id', $user->id)
+            ->where('is_active', true)
+            ->with(['course' => function($q) {
+                $q->with(['instructor:id,name,email', 'category:id,name'])
+                  ->where('is_active', true);
+            }])
+            ->orderByDesc('enrolled_at')
+            ->get();
+
+        $courses = $enrollments->map(function($enrollment) {
+            if (!$enrollment->course) return null;
+            
+            return [
+                'id' => $enrollment->course->id,
+                'title' => $enrollment->course->title,
+                'slug' => $enrollment->course->slug,
+                'description' => $enrollment->course->description,
+                'thumbnail_url' => $enrollment->course->thumbnail_url,
+                'video_url' => $enrollment->course->video_url,
+                'price' => $enrollment->course->price,
+                'discount_price' => $enrollment->course->discount_price,
+                'level' => $enrollment->course->level,
+                'duration' => $enrollment->course->duration,
+                'rating' => $enrollment->course->rating,
+                'total_students' => $enrollment->course->total_students,
+                'instructor' => $enrollment->course->instructor,
+                'category' => $enrollment->course->category,
+                'progress_percentage' => $enrollment->progress_percentage ?? 0,
+                'enrolled_at' => $enrollment->enrolled_at,
+                'completed_at' => $enrollment->completed_at,
+            ];
+        })->filter()->values();
+
+        return $this->success($courses);
     }
 }
 

@@ -19,6 +19,8 @@ class DatabaseSeeder extends Seeder
             UsersAndCouponsSeeder::class,
             CoursesSeeder::class,
             BooksSeeder::class,
+            CompleteCourseContentSeeder::class, // Add lessons, materials, assignments
+            TestEnrollmentSeeder::class, // Enroll student in courses
         ]);
     }
 }

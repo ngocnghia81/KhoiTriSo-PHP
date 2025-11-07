@@ -14,6 +14,7 @@ import {
   CreditCardIcon,
   ShieldCheckIcon
 } from '@heroicons/react/24/outline';
+import { requireAuth, handleApiResponse } from '@/utils/authCheck';
 
 interface CartItem {
   id: string;
@@ -74,12 +75,13 @@ export default function CartPage() {
   // Fetch cart items from API
   useEffect(() => {
     const fetchCart = async () => {
+      // Check authentication before fetching
+      if (!requireAuth('Vui lòng đăng nhập để xem giỏ hàng.')) {
+        return;
+      }
+
       try {
         const token = localStorage.getItem('token');
-        if (!token) {
-          setIsLoading(false);
-          return;
-        }
 
         const response = await fetch('http://localhost:8000/api/cart', {
           headers: {
@@ -87,6 +89,11 @@ export default function CartPage() {
             'Accept': 'application/json',
           },
         });
+
+        // Handle 401 and other errors
+        if (!handleApiResponse(response)) {
+          return;
+        }
 
         if (response.ok) {
           const data = await response.json();

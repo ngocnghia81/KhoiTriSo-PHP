@@ -187,12 +187,29 @@ class OrderController extends Controller
         $order->transaction_id = 'TXN-' . time() . '-' . $order->id;
         $order->save();
         
-        // Generate activation codes for books in the order
+        // Process order items
         $orderItems = OrderItem::where('order_id', $order->id)->get();
         $activationCodes = [];
+        $enrolledCourses = [];
         
         foreach ($orderItems as $item) {
-            if ($item->item_type == 2) { // Book
+            if ($item->item_type == 1) { // Course
+                // Enroll user in course
+                $enrollment = \App\Models\CourseEnrollment::firstOrCreate([
+                    'user_id' => $order->user_id,
+                    'course_id' => $item->item_id,
+                ], [
+                    'enrolled_at' => now(),
+                    'progress_percentage' => 0,
+                    'is_active' => true,
+                ]);
+                
+                $enrolledCourses[] = [
+                    'course_id' => $item->item_id,
+                    'course_name' => $item->item_name,
+                ];
+                
+            } elseif ($item->item_type == 2) { // Book
                 // Generate unique activation code
                 $code = 'BOOK-' . strtoupper(substr(md5(uniqid()), 0, 8));
                 
@@ -216,6 +233,7 @@ class OrderController extends Controller
             'success' => true, 
             'message' => 'Thanh toán thành công', 
             'order' => $order,
+            'enrolled_courses' => $enrolledCourses,
             'activation_codes' => $activationCodes
         ]);
     }
@@ -230,6 +248,32 @@ class OrderController extends Controller
             $order->paid_at = now();
             $order->transaction_id = $request->input('transactionId');
             $order->save();
+            
+            // Enroll user in courses after successful payment
+            $orderItems = OrderItem::where('order_id', $order->id)->get();
+            
+            foreach ($orderItems as $item) {
+                if ($item->item_type == 1) { // Course
+                    \App\Models\CourseEnrollment::firstOrCreate([
+                        'user_id' => $order->user_id,
+                        'course_id' => $item->item_id,
+                    ], [
+                        'enrolled_at' => now(),
+                        'progress_percentage' => 0,
+                        'is_active' => true,
+                    ]);
+                } elseif ($item->item_type == 2) { // Book
+                    // Generate activation code for books
+                    $code = 'BOOK-' . strtoupper(substr(md5(uniqid()), 0, 8));
+                    BookActivationCode::create([
+                        'book_id' => $item->item_id,
+                        'activation_code' => $code,
+                        'is_used' => false,
+                        'expires_at' => now()->addYears(5),
+                    ]);
+                }
+            }
+            
             return response()->json(['success' => true, 'order' => $order]);
         }
         return response()->json(['success' => false, 'message' => 'Invalid status'], 400);

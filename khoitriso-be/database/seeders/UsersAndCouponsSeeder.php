@@ -11,13 +11,13 @@ class UsersAndCouponsSeeder extends Seeder
     public function run(): void
     {
         $now = now();
-        // Admin
-        $adminId = DB::table('users')->updateOrInsert(
-            ['email' => 'admin@khoitriso.edu.vn'],
+        // Student (main user for testing)
+        $studentId = DB::table('users')->updateOrInsert(
+            ['email' => 'student@khoitriso.edu.vn'],
             [
-                'name' => 'admin',
-                'username' => 'admin',
-                'password' => Hash::make('admin123'),
+                'name' => 'Trần Thị Học Sinh',
+                'username' => 'student',
+                'password' => Hash::make('student123'),
                 'email_verified_at' => $now,
                 'is_active' => true,
                 'role' => 'admin',
@@ -41,13 +41,13 @@ class UsersAndCouponsSeeder extends Seeder
             ]
         );
 
-        // Student (oauth mimic -> set random password)
+        // Admin
         DB::table('users')->updateOrInsert(
-            ['email' => 'student@gmail.com'],
+            ['email' => 'admin@khoitriso.edu.vn'],
             [
-                'name' => 'Trần Thị Học Sinh',
-                'username' => 'student1',
-                'password' => Hash::make('student123'),
+                'name' => 'Admin',
+                'username' => 'admin',
+                'password' => Hash::make('admin123'),
                 'email_verified_at' => $now,
                 'is_active' => true,
                 'role' => 'student',

@@ -14,5 +14,3 @@ export default function AddToCartButton({ courseId, isFree }: { courseId: number
     </button>
   );
 }
-
-
