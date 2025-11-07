@@ -11,6 +11,7 @@ import {
   ShoppingCartIcon
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
+import { requireAuth, handleApiResponse } from '@/utils/authCheck';
 
 interface Course {
   id: number;
@@ -71,12 +72,12 @@ export default function CourseDetailPage() {
   }, [params.id]);
 
   const addToCart = async () => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      alert('Vui lòng đăng nhập để thêm vào giỏ hàng');
-      router.push('/login');
+    // Check authentication
+    if (!requireAuth('Vui lòng đăng nhập để thêm vào giỏ hàng.')) {
       return;
     }
+
+    const token = localStorage.getItem('token');
 
     try {
       const response = await fetch('http://localhost:8000/api/cart', {
@@ -93,11 +94,18 @@ export default function CourseDetailPage() {
         })
       });
 
+      // Handle 401 and other errors
+      if (!handleApiResponse(response)) {
+        return;
+      }
+
       if (response.ok) {
-        alert('Đã thêm vào giỏ hàng!');
-        router.push('/cart');
+        if (confirm('Đã thêm vào giỏ hàng! Đi đến giỏ hàng?')) {
+          router.push('/cart');
+        }
       } else {
-        alert('Có lỗi xảy ra, vui lòng thử lại');
+        const data = await response.json();
+        alert(data.message || 'Có lỗi xảy ra, vui lòng thử lại');
       }
     } catch (error) {
       console.error('Error adding to cart:', error);

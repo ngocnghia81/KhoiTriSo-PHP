@@ -9,6 +9,7 @@ import {
   XCircleIcon,
   TruckIcon
 } from '@heroicons/react/24/outline';
+import { requireAuth, handleApiResponse } from '@/utils/authCheck';
 
 interface Order {
   id: number;
@@ -36,11 +37,12 @@ export default function OrdersPage() {
 
   useEffect(() => {
     const fetchOrders = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        window.location.href = '/login';
+      // Check authentication before fetching
+      if (!requireAuth('Vui lòng đăng nhập để xem đơn hàng.')) {
         return;
       }
+
+      const token = localStorage.getItem('token');
 
       try {
         const response = await fetch('http://localhost:8000/api/orders', {
@@ -49,6 +51,11 @@ export default function OrdersPage() {
             'Accept': 'application/json',
           },
         });
+
+        // Handle 401 and other errors
+        if (!handleApiResponse(response)) {
+          return;
+        }
 
         if (response.ok) {
           const data = await response.json();

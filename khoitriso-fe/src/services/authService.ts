@@ -1,4 +1,5 @@
 import { api, authUtils } from '@/lib/api';
+import { AxiosError } from 'axios';
 import type { 
   User, 
   LoginRequest, 
@@ -6,6 +7,45 @@ import type {
   AuthResponse, 
   ApiResponse 
 } from '@/types';
+
+/**
+ * Parse error from API response
+ */
+const parseApiError = (error: any): { message: string; errors?: Record<string, string[]> } => {
+  if (error.response) {
+    const { data, status } = error.response;
+    
+    // Handle 422 Validation Error
+    if (status === 422 && data.errors) {
+      const errorMessages: Record<string, string[]> = {};
+      
+      // Backend format: { code: 422, message: "...", errors: [{field, messages}] }
+      if (Array.isArray(data.errors)) {
+        data.errors.forEach((err: any) => {
+          if (err.field && err.messages) {
+            errorMessages[err.field] = err.messages;
+          }
+        });
+      }
+      
+      // Get first error message for general display
+      const firstError = data.errors[0];
+      const message = firstError?.messages?.[0] || data.message || 'Dữ liệu không hợp lệ';
+      
+      return { message, errors: errorMessages };
+    }
+    
+    // Handle other errors
+    return { 
+      message: data.message || `Lỗi ${status}. Vui lòng thử lại.` 
+    };
+  }
+  
+  // Network or other errors
+  return { 
+    message: 'Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.' 
+  };
+};
 
 /**
  * Authentication Service
@@ -17,18 +57,25 @@ export const authService = {
    * POST /api/auth/login
    */
   login: async (credentials: LoginRequest): Promise<AuthResponse> => {
-    const response: any = await api.post('/auth/login', credentials);
-    
-    // Backend returns: { success, user, token, refreshToken }
-    // api.post returns response.data which is the backend response directly
-    if (response.success && response.user && response.token) {
-      const { token, user } = response;
-      authUtils.setToken(token);
-      authUtils.setUser(user);
-      return { token, user, tokenType: 'Bearer' };
+    try {
+      const response: any = await api.post('/auth/login', credentials);
+      
+      // Backend returns: { success: true, message: "...", data: { user, token } }
+      // api.post returns response.data which is the backend response directly
+      if (response.data && response.data.user && response.data.token) {
+        const { token, user } = response.data;
+        authUtils.setToken(token);
+        authUtils.setUser(user);
+        return { token, user, tokenType: 'Bearer' };
+      }
+      
+      throw new Error(response.message || 'Đăng nhập thất bại');
+    } catch (error: any) {
+      const parsedError = parseApiError(error);
+      const errorWithDetails = new Error(parsedError.message) as any;
+      errorWithDetails.validationErrors = parsedError.errors;
+      throw errorWithDetails;
     }
-    
-    throw new Error(response.message || 'Login failed');
   },
 
   /**
@@ -36,18 +83,25 @@ export const authService = {
    * POST /api/auth/register
    */
   register: async (userData: RegisterRequest): Promise<AuthResponse> => {
-    const response: any = await api.post('/auth/register', userData);
-    
-    // Backend returns: { code: 201, message: "...", result: { user, token } }
-    // api.post returns response.data which is the backend response directly
-    if (response.result && response.result.user && response.result.token) {
-      const { token, user } = response.result;
-      authUtils.setToken(token);
-      authUtils.setUser(user);
-      return { token, user, tokenType: 'Bearer' };
+    try {
+      const response: any = await api.post('/auth/register', userData);
+      
+      // Backend returns: { success: true, message: "...", data: { user, token } }
+      // api.post returns response.data which is the backend response directly
+      if (response.data && response.data.user && response.data.token) {
+        const { token, user } = response.data;
+        authUtils.setToken(token);
+        authUtils.setUser(user);
+        return { token, user, tokenType: 'Bearer' };
+      }
+      
+      throw new Error(response.message || 'Đăng ký thất bại');
+    } catch (error: any) {
+      const parsedError = parseApiError(error);
+      const errorWithDetails = new Error(parsedError.message) as any;
+      errorWithDetails.validationErrors = parsedError.errors;
+      throw errorWithDetails;
     }
-    
-    throw new Error(response.message || 'Registration failed');
   },
 
   /**

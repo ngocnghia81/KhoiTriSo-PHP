@@ -58,8 +58,8 @@ export default function RegisterPage() {
 
     if (!formData.password) {
       newErrors.password = 'Vui lòng nhập mật khẩu';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Mật khẩu phải có ít nhất 6 ký tự';
+    } else if (formData.password.length < 8) {
+      newErrors.password = 'Mật khẩu phải có ít nhất 8 ký tự';
     }
 
     if (!formData.password_confirmation) {
@@ -85,6 +85,7 @@ export default function RegisterPage() {
 
     setIsLoading(true);
     setApiError('');
+    setErrors({}); // Clear all errors
 
     try {
       // Call authService to register
@@ -98,10 +99,54 @@ export default function RegisterPage() {
       // Success - redirect to home or show success message
       alert('Đăng ký thành công!');
       router.push('/');
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Đăng ký thất bại. Vui lòng thử lại.';
-      setApiError(errorMessage);
-      setErrors({ general: errorMessage });
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      
+      // Check if error has validation errors from backend
+      if (error.validationErrors) {
+        const newErrors: {[key: string]: string} = {};
+        
+        // Map backend field names to Vietnamese messages
+        const fieldMessages: {[key: string]: string} = {
+          'username': 'Tên đăng nhập',
+          'email': 'Email',
+          'password': 'Mật khẩu',
+          'password_confirmation': 'Xác nhận mật khẩu'
+        };
+        
+        Object.entries(error.validationErrors).forEach(([field, messages]: [string, any]) => {
+          if (Array.isArray(messages) && messages.length > 0) {
+            // Translate common validation messages
+            let message = messages[0];
+            
+            if (message.includes('has already been taken')) {
+              const fieldName = fieldMessages[field] || field;
+              message = `${fieldName} đã được sử dụng`;
+            } else if (message.includes('must be at least')) {
+              message = message.replace('must be at least', 'phải có ít nhất');
+              message = message.replace('characters', 'ký tự');
+            } else if (message.includes('is required')) {
+              const fieldName = fieldMessages[field] || field;
+              message = `${fieldName} là bắt buộc`;
+            } else if (message.includes('must be a valid email')) {
+              message = 'Email không hợp lệ';
+            }
+            
+            newErrors[field] = message;
+          }
+        });
+        
+        setErrors(newErrors);
+        
+        // Show first error as general message
+        const firstError = Object.values(newErrors)[0];
+        setApiError(firstError || error.message);
+      } else {
+        // General error message
+        const errorMessage = error.message || 'Đăng ký thất bại. Vui lòng thử lại.';
+        setApiError(errorMessage);
+        setErrors({ general: errorMessage });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -168,9 +213,23 @@ export default function RegisterPage() {
 
           <div className="mt-8">
             <form className="space-y-6" onSubmit={handleSubmit}>
-              {errors.general && (
-                <div className="rounded-md bg-red-50 p-4">
-                  <div className="text-sm text-red-700">{errors.general}</div>
+              {(errors.general || apiError) && (
+                <div className="rounded-xl bg-red-50 border border-red-200 p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-red-800">
+                        Có lỗi xảy ra
+                      </h3>
+                      <div className="mt-2 text-sm text-red-700">
+                        {errors.general || apiError}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 

@@ -67,6 +67,7 @@ export default function LoginPage() {
 
     setIsLoading(true);
     setApiError('');
+    setErrors({}); // Clear all errors
 
     try {
       // Call authService to login
@@ -88,10 +89,36 @@ export default function LoginPage() {
         default:
           router.push('/');
       }
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.';
-      setApiError(errorMessage);
-      setErrors({ general: errorMessage });
+    } catch (error: any) {
+      console.error('Login error:', error);
+      
+      // Check if error has validation errors from backend
+      if (error.validationErrors) {
+        const newErrors: {[key: string]: string} = {};
+        
+        Object.entries(error.validationErrors).forEach(([field, messages]: [string, any]) => {
+          if (Array.isArray(messages) && messages.length > 0) {
+            let message = messages[0];
+            
+            // Translate common messages
+            if (message.includes('is required')) {
+              message = field === 'email' ? 'Email là bắt buộc' : 'Mật khẩu là bắt buộc';
+            } else if (message.includes('must be a valid email')) {
+              message = 'Email không hợp lệ';
+            }
+            
+            newErrors[field] = message;
+          }
+        });
+        
+        setErrors(newErrors);
+        setApiError(Object.values(newErrors)[0] || error.message);
+      } else {
+        // General error message
+        const errorMessage = error.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.';
+        setApiError(errorMessage);
+        setErrors({ general: errorMessage });
+      }
     } finally {
       setIsLoading(false);
     }

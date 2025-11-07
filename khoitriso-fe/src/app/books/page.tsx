@@ -18,6 +18,7 @@ import {
 } from '@heroicons/react/24/solid';
 import { bookService } from '@/services/bookService';
 import type { Book } from '@/types';
+import { requireAuth, handleApiResponse } from '@/utils/authCheck';
 
 interface BookDisplay extends Book {
   isNew?: boolean;
@@ -159,13 +160,14 @@ export default function BooksPage() {
     e?.stopPropagation();
     e?.preventDefault();
     
+    // Check authentication
+    if (!requireAuth('Vui lòng đăng nhập để thêm vào giỏ hàng.')) {
+      return;
+    }
+    
     try {
       const token = localStorage.getItem('token');
-      if (!token) {
-        alert('Vui lòng đăng nhập để thêm vào giỏ hàng');
-        window.location.href = '/auth/login';
-        return;
-      }
+      console.log('Adding book to cart:', bookId);
 
       // Add to cart via API
       const response = await fetch('http://localhost:8000/api/cart', {
@@ -182,7 +184,15 @@ export default function BooksPage() {
         }),
       });
 
+      console.log('Cart response status:', response.status);
+
+      // Handle 401 and other errors
+      if (!handleApiResponse(response)) {
+        return;
+      }
+
       const data = await response.json();
+      console.log('Cart response data:', data);
       
       if (response.ok && data.success) {
         alert('Đã thêm vào giỏ hàng!');
@@ -191,7 +201,7 @@ export default function BooksPage() {
       }
     } catch (error) {
       console.error('Add to cart error:', error);
-      alert('Không thể thêm vào giỏ hàng');
+      alert('Không thể thêm vào giỏ hàng. Vui lòng thử lại sau.');
     }
   };
 

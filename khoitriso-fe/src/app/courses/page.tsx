@@ -21,6 +21,7 @@ import {
 import { StarIcon as StarIconSolid, HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
 import { courseService } from '@/services/courseService';
 import type { Course } from '@/types';
+import { requireAuth, handleApiResponse } from '@/utils/authCheck';
 
 interface CourseDisplay extends Course {
   isPopular?: boolean;
@@ -159,11 +160,12 @@ export default function CoursesPage() {
     event.stopPropagation();
     event.preventDefault();
     
-    const token = localStorage.getItem('token');
-    if (!token) {
-      alert('Vui lòng đăng nhập để thêm vào giỏ hàng');
+    // Check authentication
+    if (!requireAuth('Vui lòng đăng nhập để thêm vào giỏ hàng.')) {
       return;
     }
+
+    const token = localStorage.getItem('token');
 
     try {
       const response = await fetch('http://localhost:8000/api/cart', {
@@ -180,10 +182,16 @@ export default function CoursesPage() {
         })
       });
 
+      // Handle 401 and other errors
+      if (!handleApiResponse(response)) {
+        return;
+      }
+
       if (response.ok) {
         alert('Đã thêm vào giỏ hàng!');
       } else {
-        alert('Có lỗi xảy ra, vui lòng thử lại');
+        const data = await response.json();
+        alert(data.message || 'Có lỗi xảy ra, vui lòng thử lại');
       }
     } catch (error) {
       console.error('Error adding to cart:', error);

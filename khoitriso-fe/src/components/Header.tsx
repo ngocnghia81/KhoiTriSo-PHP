@@ -27,12 +27,15 @@ const navigation = [
         name: "Khóa học",
         href: "/courses",
         children: [
+            { name: "Tất cả khóa học", href: "/courses" },
             { name: "Khóa học miễn phí", href: "/courses?category=free" },
             { name: "Khóa học trả phí", href: "/courses?category=paid" },
-            { name: "Toán học", href: "/courses?category=math" },
-            { name: "Vật lý", href: "/courses?category=physics" },
-            { name: "Hóa học", href: "/courses?category=chemistry" },
         ],
+    },
+    {
+        name: "Khóa học của tôi",
+        href: "/my-learning",
+        requireAuth: true,
     },
     {
         name: "Sách điện tử",
@@ -45,17 +48,7 @@ const navigation = [
     {
         name: "Đơn hàng",
         href: "/orders",
-    },
-    {
-        name: "Về chúng tôi",
-        href: "/about",
-        children: [
-            { name: "Giới thiệu", href: "/about" },
-        ],
-    },
-    {
-        name: "Liên hệ",
-        href: "/contact",
+        requireAuth: true,
     },
 ];
 
@@ -80,15 +73,25 @@ export default function Header() {
 
     const handleLogout = async () => {
         try {
-            await authService.logout();
+            // Clear local storage first
+            localStorage.removeItem("user");
+            localStorage.removeItem("token");
+            localStorage.removeItem("refreshToken");
+            
+            // Try to call logout API (but don't wait for it)
+            try {
+                await authService.logout();
+            } catch (error) {
+                console.error('Logout API error:', error);
+                // Ignore API errors - we already cleared local storage
+            }
+            
+            // Update state and redirect
             setHasToken(false);
             window.location.href = "/";
         } catch (error) {
             console.error('Logout error:', error);
-            // Force logout even if API fails
-            localStorage.removeItem("user");
-            localStorage.removeItem("token");
-            setHasToken(false);
+            // Force redirect even if something fails
             window.location.href = "/";
         }
     };
