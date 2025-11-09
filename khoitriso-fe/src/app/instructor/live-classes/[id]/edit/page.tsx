@@ -26,8 +26,8 @@ export default function EditLiveClassPage({ params }: { params: { id: string } }
     (async () => {
       const idNum = Number(params.id);
       const res = await getLiveClass(idNum);
-      if (res.ok && res.data) {
-        const lc: any = res.data;
+      if (res) {
+        const lc: any = res;
         setForm({
           title: lc.title ?? '',
           description: lc.description ?? '',
@@ -60,7 +60,7 @@ export default function EditLiveClassPage({ params }: { params: { id: string } }
     };
     const res = await updateLiveClass(Number(params.id), payload);
     setSubmitting(false);
-    if (res.ok) {
+    if (res) {
       router.push('/instructor/live-classes');
     } else {
       alert('Cập nhật thất bại');

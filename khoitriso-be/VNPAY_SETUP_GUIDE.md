@@ -88,18 +88,48 @@ VNPay cung cấp các thẻ test để test thanh toán:
 - Ngày phát hành: `07/15`
 - Mã OTP: `123456`
 
-**Thẻ quốc tế:**
+**Thẻ quốc tế (Visa):**
 - Số thẻ: `4111111111111111`
 - Tên chủ thẻ: `NGUYEN VAN A`
 - Ngày hết hạn: `07/15`
 - CVV: `123`
 
-### Kiểm tra
-1. Tạo order với payment method = `vnpay`
-2. Hệ thống sẽ redirect đến trang thanh toán VNPay
-3. Sử dụng thẻ test để thanh toán
-4. Sau khi thanh toán, VNPay sẽ redirect về `VNPAY_RETURN_URL`
-5. Kiểm tra order đã được cập nhật status = 2 (Paid)
+**Thẻ quốc tế (Mastercard):**
+- Số thẻ: `5555555555554444`
+- Tên chủ thẻ: `NGUYEN VAN A`
+- Ngày hết hạn: `07/15`
+- CVV: `123`
+
+### Quy trình test chi tiết
+
+1. **Thêm sản phẩm vào giỏ hàng**
+   - Đăng nhập với tài khoản student
+   - Chọn khóa học hoặc sách
+   - Click "Thêm vào giỏ hàng"
+
+2. **Vào trang Checkout**
+   - Truy cập: `http://localhost:3000/checkout`
+   - Chọn phương thức thanh toán: **VNPay**
+   - Click "Thanh toán với VNPay"
+
+3. **Thanh toán trên VNPay**
+   - Hệ thống sẽ redirect đến trang VNPay Sandbox
+   - Chọn phương thức thanh toán (ATM, Visa, Mastercard)
+   - Nhập thông tin thẻ test (xem ở trên)
+   - Nhập OTP: `123456`
+   - Click "Xác nhận thanh toán"
+
+4. **Kiểm tra kết quả**
+   - VNPay sẽ redirect về: `http://localhost:3000/orders/{orderId}?status=success`
+   - Kiểm tra order status = 2 (Paid)
+   - Kiểm tra user đã được enroll vào course (nếu mua course)
+   - Kiểm tra mã kích hoạt đã được tạo (nếu mua book)
+
+### Kiểm tra logs
+- Backend: `storage/logs/laravel.log`
+- Frontend: Developer Tools (F12) → Console
+
+**Xem hướng dẫn chi tiết tại**: `VNPAY_TESTING_GUIDE.md`
 
 ## 5. Chuyển sang Production
 

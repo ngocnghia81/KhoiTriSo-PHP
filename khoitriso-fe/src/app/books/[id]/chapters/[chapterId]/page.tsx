@@ -15,6 +15,8 @@ import {
   XCircleIcon,
   LightBulbIcon,
 } from '@heroicons/react/24/outline';
+import 'katex/dist/katex.min.css';
+import { InlineMath, BlockMath } from 'react-katex';
 
 interface Chapter {
   id: number;
@@ -157,6 +159,21 @@ export default function ChapterQuestionsPage() {
     );
   }
 
+  // Calculate statistics
+  const totalQuestions = questions.length;
+  const totalPoints = questions.reduce((sum, q) => {
+    const points = typeof q.points === 'number' ? q.points : parseFloat(q.points) || 0;
+    return sum + points;
+  }, 0);
+  const averageDifficulty = questions.length > 0 
+    ? Math.round(questions.reduce((sum, q) => {
+        const difficulty = typeof q.difficulty === 'number' ? q.difficulty : parseInt(q.difficulty) || 0;
+        return sum + difficulty;
+      }, 0) / questions.length)
+    : 0;
+  const multipleChoiceCount = questions.filter(q => q.type === 1).length;
+  const essayCount = questions.filter(q => q.type === 2).length;
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -165,41 +182,81 @@ export default function ChapterQuestionsPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <Link
-                href={`/books/${bookId}`}
+                href={`/books/${bookId}/read`}
                 className="text-gray-600 hover:text-blue-600 transition-colors"
               >
                 <ArrowLeftIcon className="h-6 w-6" />
               </Link>
               <div>
                 <h1 className="text-xl font-bold text-gray-900">{chapter?.title}</h1>
-                <p className="text-sm text-gray-600">{chapter?.description}</p>
               </div>
             </div>
             <div className="text-sm text-gray-500">
-              {questions.length} câu hỏi
+              {totalQuestions} câu hỏi
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Chapter Content */}
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {chapter?.description && (
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">Nội dung chương</h2>
+            <div className="prose max-w-none">
+              <p className="text-gray-700 whitespace-pre-line">{chapter.description}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Statistics */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Tổng số câu hỏi</p>
+              <p className="text-2xl font-bold text-gray-900">{totalQuestions}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Tổng điểm</p>
+              <p className="text-2xl font-bold text-gray-900">{totalPoints.toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Độ khó</p>
+              <p className="text-2xl font-bold text-gray-900">
+                <span className={`px-2 py-1 rounded text-sm font-medium ${getDifficultyColor(averageDifficulty)}`}>
+                  {getDifficultyText(averageDifficulty)}
+                </span>
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500 mb-1">Loại câu hỏi</p>
+              <p className="text-sm text-gray-900">
+                {multipleChoiceCount > 0 && <span className="mr-2">Trắc nghiệm: {multipleChoiceCount}</span>}
+                {essayCount > 0 && <span>Tự luận: {essayCount}</span>}
+              </p>
             </div>
           </div>
         </div>
       </div>
 
       {/* Questions */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
         <div className="space-y-6">
           {questions.map((question, index) => (
             <div key={question.id} className="bg-white rounded-lg shadow-sm p-6">
               {/* Question Header */}
               <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-3 flex-1">
                   <div className="flex-shrink-0 w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold">
                     {index + 1}
                   </div>
-                  <div>
-                    <div className="flex items-center space-x-2">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2 flex-wrap">
                       <span className={`px-2 py-1 rounded text-xs font-medium ${getDifficultyColor(question.difficulty)}`}>
                         {getDifficultyText(question.difficulty)}
                       </span>
                       <span className="text-sm text-gray-500">
-                        {question.points} điểm
+                        {(typeof question.points === 'number' ? question.points : parseFloat(question.points) || 0).toFixed(2)} điểm
                       </span>
                       {question.type === 1 && (
                         <span className="text-sm text-gray-500">• Trắc nghiệm</span>
@@ -215,7 +272,9 @@ export default function ChapterQuestionsPage() {
               {/* Question Content */}
               <div className="mb-6">
                 <div className="prose max-w-none mb-4">
-                  <p className="text-gray-900 font-medium">{question.content}</p>
+                  <p className="text-gray-900 font-medium text-lg">
+                    <strong>Câu hỏi {index + 1}:</strong> {question.content}
+                  </p>
                 </div>
                 
                 {question.image && (
@@ -268,7 +327,20 @@ export default function ChapterQuestionsPage() {
                             {String.fromCharCode(65 + optIndex)}
                           </div>
                           <div className="flex-1">
-                            <p className="text-gray-900">{option.content}</p>
+                            <p className="text-gray-900">
+                              <strong>{String.fromCharCode(65 + optIndex)}</strong>
+                              {' '}
+                              {option.content}
+                              {showAnswer && (
+                                <>
+                                  {option.is_correct ? (
+                                    <span className="ml-2 text-green-600 font-semibold">Đây là đáp án đúng</span>
+                                  ) : (
+                                    <span className="ml-2 text-gray-500">Không đúng</span>
+                                  )}
+                                </>
+                              )}
+                            </p>
                             {option.image && (
                               <div className="mt-2">
                                 <Image
@@ -360,11 +432,17 @@ export default function ChapterQuestionsPage() {
                             Lời giải (LaTeX)
                           </h4>
                           <div className="bg-white p-4 rounded border">
-                            <code className="text-sm">{question.solution.latex_content}</code>
-                            {/* Note: You'll need to add a LaTeX renderer like KaTeX or MathJax */}
-                            <p className="text-xs text-gray-500 mt-2">
-                              Lưu ý: Cần cài đặt thư viện LaTeX renderer để hiển thị công thức toán học
-                            </p>
+                            <div className="prose max-w-none">
+                              {question.solution.latex_content.includes('\\lim') || 
+                               question.solution.latex_content.includes('\\frac') ||
+                               question.solution.latex_content.includes('\\sum') ||
+                               question.solution.latex_content.includes('\\int') ||
+                               question.solution.latex_content.includes('\\begin') ? (
+                                <BlockMath math={question.solution.latex_content} />
+                              ) : (
+                                <InlineMath math={question.solution.latex_content} />
+                              )}
+                            </div>
                           </div>
                         </div>
                       )}

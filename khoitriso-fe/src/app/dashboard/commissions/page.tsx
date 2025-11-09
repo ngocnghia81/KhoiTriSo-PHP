@@ -1,4 +1,6 @@
-import { Metadata } from 'next';
+'use client';
+
+import { useEffect, useState } from 'react';
 import {
   CurrencyDollarIcon,
   UserIcon,
@@ -11,133 +13,20 @@ import {
   ArrowTrendingUpIcon,
   ArrowDownTrayIcon,
   EyeIcon,
-  DocumentTextIcon
 } from '@heroicons/react/24/outline';
-
-export const metadata: Metadata = {
-  title: 'Quản lý chiết khấu - Admin Dashboard',
-  description: 'Quản lý chiết khấu và thanh toán cho giảng viên',
-};
-
-// Mock data
-const commissionStats = {
-  totalPending: 45600000,
-  totalPaid: 123400000,
-  totalInstructors: 156,
-  avgCommissionRate: 32.5,
-  thisMonthPending: 12300000,
-  nextPayoutDate: '2024-02-15'
-};
-
-const pendingPayouts = [
-  {
-    id: 1,
-    instructor: {
-      name: 'Nguyễn Văn A',
-      email: 'nguyenvana@email.com',
-      avatar: '/images/avatars/instructor-1.jpg'
-    },
-    totalEarnings: 2450000,
-    commissionRate: 30,
-    coursesRevenue: 1800000,
-    booksRevenue: 650000,
-    transactionCount: 156,
-    pendingSince: '2024-01-01',
-    bankInfo: {
-      bankName: 'Vietcombank',
-      accountNumber: '1234567890',
-      accountName: 'NGUYEN VAN A'
-    }
-  },
-  {
-    id: 2,
-    instructor: {
-      name: 'Trần Thị B',
-      email: 'tranthib@email.com',
-      avatar: '/images/avatars/instructor-2.jpg'
-    },
-    totalEarnings: 1890000,
-    commissionRate: 35,
-    coursesRevenue: 1200000,
-    booksRevenue: 690000,
-    transactionCount: 89,
-    pendingSince: '2024-01-01',
-    bankInfo: {
-      bankName: 'Techcombank',
-      accountNumber: '0987654321',
-      accountName: 'TRAN THI B'
-    }
-  }
-];
-
-const recentTransactions = [
-  {
-    id: 1,
-    instructor: 'Nguyễn Văn A',
-    type: 'course_enrollment',
-    originalAmount: 299000,
-    commissionRate: 30,
-    commissionAmount: 89700,
-    status: 'paid',
-    paidAt: '2024-01-20T10:30:00Z',
-    reference: 'TXN-001234'
-  },
-  {
-    id: 2,
-    instructor: 'Trần Thị B',
-    type: 'book_purchase',
-    originalAmount: 150000,
-    commissionRate: 35,
-    commissionAmount: 52500,
-    status: 'pending',
-    paidAt: null,
-    reference: 'TXN-001235'
-  },
-  {
-    id: 3,
-    instructor: 'Lê Văn C',
-    type: 'course_enrollment',
-    originalAmount: 199000,
-    commissionRate: 30,
-    commissionAmount: 59700,
-    status: 'paid',
-    paidAt: '2024-01-19T15:45:00Z',
-    reference: 'TXN-001236'
-  }
-];
-
-const topInstructors = [
-  {
-    name: 'Nguyễn Văn A',
-    totalEarnings: 12450000,
-    coursesCount: 8,
-    booksCount: 5,
-    studentsCount: 1234,
-    commissionRate: 30,
-    avatar: '/images/avatars/instructor-1.jpg'
-  },
-  {
-    name: 'Trần Thị B',
-    totalEarnings: 9890000,
-    coursesCount: 6,
-    booksCount: 4,
-    studentsCount: 987,
-    commissionRate: 35,
-    avatar: '/images/avatars/instructor-2.jpg'
-  },
-  {
-    name: 'Lê Văn C',
-    totalEarnings: 8750000,
-    coursesCount: 5,
-    booksCount: 6,
-    studentsCount: 856,
-    commissionRate: 30,
-    avatar: '/images/avatars/instructor-3.jpg'
-  }
-];
+import {
+  getCommissionStats,
+  getPendingPayouts,
+  getTopInstructors,
+  getRecentTransactions,
+  type CommissionStats,
+  type PendingPayout,
+  type TopInstructor,
+  type CommissionTransaction,
+} from '@/services/reports';
 
 const formatCurrency = (amount: number) => {
-  return `₫${amount.toLocaleString()}`;
+  return `₫${amount.toLocaleString('vi-VN')}`;
 };
 
 const formatDate = (dateString: string | null) => {
@@ -147,7 +36,7 @@ const formatDate = (dateString: string | null) => {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   });
 };
 
@@ -189,6 +78,57 @@ const getTransactionTypeText = (type: string) => {
 };
 
 export default function CommissionsPage() {
+  const [stats, setStats] = useState<CommissionStats | null>(null);
+  const [pendingPayouts, setPendingPayouts] = useState<PendingPayout[]>([]);
+  const [topInstructors, setTopInstructors] = useState<TopInstructor[]>([]);
+  const [recentTransactions, setRecentTransactions] = useState<CommissionTransaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const [statsData, payoutsData, topInstructorsData, transactionsData] = await Promise.all([
+          getCommissionStats(),
+          getPendingPayouts(),
+          getTopInstructors({ limit: 10 }),
+          getRecentTransactions({ limit: 20 }),
+        ]);
+
+        setStats(statsData);
+        setPendingPayouts(payoutsData.payouts);
+        setTopInstructors(topInstructorsData.instructors);
+        setRecentTransactions(transactionsData.transactions);
+      } catch (err: any) {
+        console.error('Error fetching commission data:', err);
+        setError(err.message || 'Có lỗi xảy ra khi tải dữ liệu');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-gray-500">Đang tải dữ liệu...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="text-red-800">{error}</div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Page header */}
@@ -218,86 +158,90 @@ export default function CommissionsPage() {
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 overflow-hidden shadow-sm rounded-lg p-4 border border-yellow-200">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
-                <ClockIcon className="h-5 w-5 text-white" />
+      {stats && (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 overflow-hidden shadow-sm rounded-lg p-4 border border-yellow-200">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
+                    <ClockIcon className="h-5 w-5 text-white" />
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <dl>
+                    <dt className="text-sm font-medium text-yellow-700">Chờ thanh toán</dt>
+                    <dd className="text-2xl font-bold text-yellow-900">{formatCurrency(stats.total_pending)}</dd>
+                    <dd className="text-sm text-yellow-600">Tổng cộng</dd>
+                  </dl>
+                </div>
               </div>
             </div>
-            <div className="ml-4">
-              <dl>
-                <dt className="text-sm font-medium text-yellow-700">Chờ thanh toán</dt>
-                <dd className="text-2xl font-bold text-yellow-900">{formatCurrency(commissionStats.totalPending)}</dd>
-                <dd className="text-sm text-yellow-600">Tổng cộng</dd>
-              </dl>
-            </div>
-          </div>
-        </div>
 
-        <div className="bg-gradient-to-br from-green-50 to-green-100 overflow-hidden shadow-sm rounded-lg p-4 border border-green-200">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
-                <CheckCircleIcon className="h-5 w-5 text-white" />
+            <div className="bg-gradient-to-br from-green-50 to-green-100 overflow-hidden shadow-sm rounded-lg p-4 border border-green-200">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                    <CheckCircleIcon className="h-5 w-5 text-white" />
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <dl>
+                    <dt className="text-sm font-medium text-green-700">Đã thanh toán</dt>
+                    <dd className="text-2xl font-bold text-green-900">{formatCurrency(stats.total_paid)}</dd>
+                    <dd className="text-sm text-green-600">Tổng cộng</dd>
+                  </dl>
+                </div>
               </div>
             </div>
-            <div className="ml-4">
-              <dl>
-                <dt className="text-sm font-medium text-green-700">Đã thanh toán</dt>
-                <dd className="text-2xl font-bold text-green-900">{formatCurrency(commissionStats.totalPaid)}</dd>
-                <dd className="text-sm text-green-600">Tổng cộng</dd>
-              </dl>
-            </div>
-          </div>
-        </div>
 
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 overflow-hidden shadow-sm rounded-lg p-4 border border-blue-200">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
-                <UserIcon className="h-5 w-5 text-white" />
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 overflow-hidden shadow-sm rounded-lg p-4 border border-blue-200">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                    <UserIcon className="h-5 w-5 text-white" />
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <dl>
+                    <dt className="text-sm font-medium text-blue-700">Giảng viên</dt>
+                    <dd className="text-2xl font-bold text-blue-900">{stats.total_instructors}</dd>
+                    <dd className="text-sm text-blue-600">Đang hoạt động</dd>
+                  </dl>
+                </div>
               </div>
             </div>
-            <div className="ml-4">
-              <dl>
-                <dt className="text-sm font-medium text-blue-700">Giảng viên</dt>
-                <dd className="text-2xl font-bold text-blue-900">{commissionStats.totalInstructors}</dd>
-                <dd className="text-sm text-blue-600">Đang hoạt động</dd>
-              </dl>
-            </div>
-          </div>
-        </div>
 
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 overflow-hidden shadow-sm rounded-lg p-4 border border-purple-200">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
-                <ChartBarIcon className="h-5 w-5 text-white" />
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 overflow-hidden shadow-sm rounded-lg p-4 border border-purple-200">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
+                    <ChartBarIcon className="h-5 w-5 text-white" />
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <dl>
+                    <dt className="text-sm font-medium text-purple-700">Tỷ lệ TB</dt>
+                    <dd className="text-2xl font-bold text-purple-900">{stats.avg_commission_rate.toFixed(1)}%</dd>
+                    <dd className="text-sm text-purple-600">Chiết khấu</dd>
+                  </dl>
+                </div>
               </div>
             </div>
-            <div className="ml-4">
-              <dl>
-                <dt className="text-sm font-medium text-purple-700">Tỷ lệ TB</dt>
-                <dd className="text-2xl font-bold text-purple-900">{commissionStats.avgCommissionRate}%</dd>
-                <dd className="text-sm text-purple-600">Chiết khấu</dd>
-              </dl>
+          </div>
+
+          {/* Next payout info */}
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="flex items-center">
+              <CalendarIcon className="h-5 w-5 text-blue-600 mr-2" />
+              <span className="text-sm text-blue-800">
+                <strong>Thanh toán tiếp theo:</strong> {new Date(stats.next_payout_date).toLocaleDateString('vi-VN')} 
+                - Tổng cộng: <strong>{formatCurrency(stats.this_month_pending)}</strong>
+              </span>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Next payout info */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <div className="flex items-center">
-          <CalendarIcon className="h-5 w-5 text-blue-600 mr-2" />
-          <span className="text-sm text-blue-800">
-            <strong>Thanh toán tiếp theo:</strong> {new Date(commissionStats.nextPayoutDate).toLocaleDateString('vi-VN')} 
-            - Tổng cộng: <strong>{formatCurrency(commissionStats.thisMonthPending)}</strong>
-          </span>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* Main content grid */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -311,69 +255,83 @@ export default function CommissionsPage() {
               </div>
             </div>
             <div className="divide-y divide-gray-200">
-              {pendingPayouts.map((payout) => (
-                <div key={payout.id} className="p-6">
-                  <div className="flex items-start space-x-4">
-                    <div className="flex-shrink-0">
-                      <div className="h-12 w-12 rounded-full bg-blue-600 flex items-center justify-center">
-                        <span className="text-sm font-medium text-white">
-                          {payout.instructor.name.charAt(0)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-2">
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-900">{payout.instructor.name}</h4>
-                          <p className="text-sm text-gray-500">{payout.instructor.email}</p>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-lg font-semibold text-green-600">
-                            {formatCurrency(payout.totalEarnings)}
+              {pendingPayouts.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">Không có thanh toán chờ xử lý</div>
+              ) : (
+                pendingPayouts.map((payout) => (
+                  <div key={payout.id} className="p-6">
+                    <div className="flex items-start space-x-4">
+                      <div className="flex-shrink-0">
+                        {payout.instructor.avatar ? (
+                          <img
+                            src={payout.instructor.avatar}
+                            alt={payout.instructor.name}
+                            className="h-12 w-12 rounded-full"
+                          />
+                        ) : (
+                          <div className="h-12 w-12 rounded-full bg-blue-600 flex items-center justify-center">
+                            <span className="text-sm font-medium text-white">
+                              {payout.instructor.name.charAt(0)}
+                            </span>
                           </div>
-                          <div className="text-xs text-gray-500">
-                            {payout.commissionRate}% chiết khấu
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <h4 className="text-sm font-medium text-gray-900">{payout.instructor.name}</h4>
+                            <p className="text-sm text-gray-500">{payout.instructor.email}</p>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-semibold text-green-600">
+                              {formatCurrency(payout.total_earnings)}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {payout.commission_rate.toFixed(1)}% chiết khấu
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-3">
-                        <div>
-                          <span className="font-medium">Khóa học:</span> {formatCurrency(payout.coursesRevenue)}
+                        
+                        <div className="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-3">
+                          <div>
+                            <span className="font-medium">Khóa học:</span> {formatCurrency(payout.courses_revenue)}
+                          </div>
+                          <div>
+                            <span className="font-medium">Sách:</span> {formatCurrency(payout.books_revenue)}
+                          </div>
+                          <div>
+                            <span className="font-medium">Giao dịch:</span> {payout.transaction_count}
+                          </div>
+                          <div>
+                            <span className="font-medium">Chờ từ:</span> {new Date(payout.pending_since).toLocaleDateString('vi-VN')}
+                          </div>
                         </div>
-                        <div>
-                          <span className="font-medium">Sách:</span> {formatCurrency(payout.booksRevenue)}
-                        </div>
-                        <div>
-                          <span className="font-medium">Giao dịch:</span> {payout.transactionCount}
-                        </div>
-                        <div>
-                          <span className="font-medium">Chờ từ:</span> {new Date(payout.pendingSince).toLocaleDateString('vi-VN')}
-                        </div>
-                      </div>
 
-                      <div className="bg-gray-50 p-3 rounded-lg mb-3">
-                        <div className="text-xs text-gray-600">
-                          <div><strong>Ngân hàng:</strong> {payout.bankInfo.bankName}</div>
-                          <div><strong>Số TK:</strong> {payout.bankInfo.accountNumber}</div>
-                          <div><strong>Tên TK:</strong> {payout.bankInfo.accountName}</div>
-                        </div>
-                      </div>
+                        {payout.bank_info.bank_name && (
+                          <div className="bg-gray-50 p-3 rounded-lg mb-3">
+                            <div className="text-xs text-gray-600">
+                              <div><strong>Ngân hàng:</strong> {payout.bank_info.bank_name}</div>
+                              <div><strong>Số TK:</strong> {payout.bank_info.account_number}</div>
+                              <div><strong>Tên TK:</strong> {payout.bank_info.account_name}</div>
+                            </div>
+                          </div>
+                        )}
 
-                      <div className="flex space-x-2">
-                        <button className="flex-1 inline-flex items-center justify-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
-                          <CheckCircleIcon className="h-4 w-4 mr-1" />
-                          Thanh toán
-                        </button>
-                        <button className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                          <EyeIcon className="h-4 w-4 mr-1" />
-                          Chi tiết
-                        </button>
+                        <div className="flex space-x-2">
+                          <button className="flex-1 inline-flex items-center justify-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
+                            <CheckCircleIcon className="h-4 w-4 mr-1" />
+                            Thanh toán
+                          </button>
+                          <button className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                            <EyeIcon className="h-4 w-4 mr-1" />
+                            Chi tiết
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -385,33 +343,45 @@ export default function CommissionsPage() {
               <h3 className="text-lg font-medium text-gray-900">Top giảng viên</h3>
             </div>
             <div className="p-6 space-y-4">
-              {topInstructors.map((instructor, index) => (
-                <div key={index} className="flex items-center space-x-3">
-                  <div className="flex-shrink-0">
-                    <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center">
-                      <span className="text-xs font-medium text-white">
-                        {instructor.name.charAt(0)}
-                      </span>
+              {topInstructors.length === 0 ? (
+                <div className="text-center text-gray-500 text-sm">Không có dữ liệu</div>
+              ) : (
+                topInstructors.map((instructor, index) => (
+                  <div key={index} className="flex items-center space-x-3">
+                    <div className="flex-shrink-0">
+                      {instructor.avatar ? (
+                        <img
+                          src={instructor.avatar}
+                          alt={instructor.name}
+                          className="h-8 w-8 rounded-full"
+                        />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center">
+                          <span className="text-xs font-medium text-white">
+                            {instructor.name.charAt(0)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 truncate">
+                        {instructor.name}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {instructor.courses_count} khóa học • {instructor.books_count} sách
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-semibold text-green-600">
+                        {formatCurrency(instructor.total_earnings)}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {instructor.commission_rate.toFixed(1)}%
+                      </div>
                     </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-900 truncate">
-                      {instructor.name}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {instructor.coursesCount} khóa học • {instructor.booksCount} sách
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-semibold text-green-600">
-                      {formatCurrency(instructor.totalEarnings)}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {instructor.commissionRate}%
-                    </div>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -453,38 +423,46 @@ export default function CommissionsPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {recentTransactions.map((transaction) => (
-                <tr key={transaction.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {transaction.instructor}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {getTransactionTypeText(transaction.type)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatCurrency(transaction.originalAmount)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {transaction.commissionRate}%
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
-                    {formatCurrency(transaction.commissionAmount)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(transaction.status)}`}>
-                      {getStatusText(transaction.status)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatDate(transaction.paidAt)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button className="text-blue-600 hover:text-blue-900">
-                      <EyeIcon className="h-4 w-4" />
-                    </button>
+              {recentTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-4 text-center text-gray-500">
+                    Không có giao dịch
                   </td>
                 </tr>
-              ))}
+              ) : (
+                recentTransactions.map((transaction) => (
+                  <tr key={transaction.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {transaction.instructor}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {getTransactionTypeText(transaction.type)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {formatCurrency(transaction.original_amount)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {transaction.commission_rate.toFixed(1)}%
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
+                      {formatCurrency(transaction.commission_amount)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(transaction.status)}`}>
+                        {getStatusText(transaction.status)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {formatDate(transaction.paid_at)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button className="text-blue-600 hover:text-blue-900">
+                        <EyeIcon className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

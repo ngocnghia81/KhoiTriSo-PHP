@@ -4,6 +4,8 @@ use Illuminate\Support\Facades\Route;
 
 // Public health endpoint
 Route::get('system/health', [\App\Http\Controllers\SystemController::class, 'health']);
+// Public system settings (no auth required)
+Route::get('system/settings/public', [\App\Http\Controllers\SystemController::class, 'publicSettings']);
 
 // Language endpoints (public)
 Route::get('language', [\App\Http\Controllers\LanguageController::class, 'getCurrent']);
@@ -130,6 +132,10 @@ Route::prefix('auth')->group(function () {
     Route::post('admin/reset-password', [\App\Http\Controllers\AuthController::class, 'resetPassword']);
 });
 
+// VNPay Callback (public - no auth required, it's a webhook)
+Route::get('orders/vnpay/callback', [\App\Http\Controllers\OrderController::class, 'vnpayCallback']);
+Route::post('orders/vnpay/callback', [\App\Http\Controllers\OrderController::class, 'vnpayCallback']);
+
 Route::middleware('auth:sanctum')->group(function () {
     // OAuth management & sessions
     Route::get('auth/oauth/providers', [\App\Http\Controllers\OauthController::class, 'providers']);
@@ -193,8 +199,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('orders/{id}/cancel', [\App\Http\Controllers\OrderController::class, 'cancel']);
     Route::post('orders/{id}/pay', [\App\Http\Controllers\OrderController::class, 'pay']);
     Route::post('orders/{id}/payment-callback', [\App\Http\Controllers\OrderController::class, 'paymentCallback']);
-    Route::get('orders/vnpay/callback', [\App\Http\Controllers\OrderController::class, 'vnpayCallback']);
-    Route::post('orders/vnpay/callback', [\App\Http\Controllers\OrderController::class, 'vnpayCallback']);
 
     // Coupons
     Route::post('coupons/validate', [\App\Http\Controllers\CouponController::class, 'validateCode']);
@@ -299,85 +303,123 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('upload/video', [\App\Http\Controllers\UploadController::class, 'video']);
     Route::post('upload/ebook', [\App\Http\Controllers\UploadController::class, 'ebook']);
 
-    // System (health is public, below are protected)
-    Route::get('system/settings', [\App\Http\Controllers\SystemController::class, 'settings']);
-    Route::put('system/settings', [\App\Http\Controllers\SystemController::class, 'updateSettings']);
-    Route::get('system/stats', [\App\Http\Controllers\SystemController::class, 'stats']);
+    // Static Pages (public for viewing, protected for management)
+    Route::get('static-pages/{slug}', [\App\Http\Controllers\StaticPageController::class, 'showBySlug']);
 
-    // Analytics
-    Route::get('analytics/dashboard', [\App\Http\Controllers\AnalyticsController::class, 'dashboard']);
-    Route::get('analytics/courses/{id}', [\App\Http\Controllers\AnalyticsController::class, 'course']);
-    Route::get('analytics/instructor/{id}', [\App\Http\Controllers\AnalyticsController::class, 'instructor']);
+    // Instructor endpoints (require instructor or admin role)
+    Route::middleware('role.instructor')->group(function () {
+        Route::get('instructor/dashboard', [\App\Http\Controllers\InstructorController::class, 'dashboard']);
+        Route::get('instructor/courses', [\App\Http\Controllers\InstructorController::class, 'courses']);
+        Route::get('instructor/books', [\App\Http\Controllers\InstructorController::class, 'books']);
+        Route::get('instructor/students', [\App\Http\Controllers\InstructorController::class, 'students']);
+        Route::get('instructor/orders', [\App\Http\Controllers\InstructorController::class, 'orders']);
+    });
 
-    // Admin
-    Route::get('admin/users', [\App\Http\Controllers\AdminController::class, 'listUsers']);
-    Route::get('admin/users/{id}', [\App\Http\Controllers\AdminController::class, 'getUser']);
-    Route::put('admin/users/{id}', [\App\Http\Controllers\AdminController::class, 'updateUser']);
-    Route::put('admin/users/{id}/toggle-status', [\App\Http\Controllers\AdminController::class, 'toggleUserStatus']);
-    Route::get('admin/users/{id}/courses', [\App\Http\Controllers\AdminController::class, 'getUserCourses']);
-    Route::get('admin/users/{id}/books', [\App\Http\Controllers\AdminController::class, 'getUserBooks']);
-    Route::post('admin/create-instructor', [\App\Http\Controllers\AdminController::class, 'createInstructor']);
-    Route::post('admin/reset-instructor-password', [\App\Http\Controllers\AdminController::class, 'resetInstructorPassword']);
-    Route::get('admin/courses', [\App\Http\Controllers\AdminController::class, 'listCourses']);
+    // Admin endpoints (require admin role)
+    Route::middleware('role.admin')->group(function () {
+        Route::get('admin/users', [\App\Http\Controllers\AdminController::class, 'listUsers']);
+        Route::get('admin/users/{id}', [\App\Http\Controllers\AdminController::class, 'getUser']);
+        Route::put('admin/users/{id}', [\App\Http\Controllers\AdminController::class, 'updateUser']);
+        Route::put('admin/users/{id}/toggle-status', [\App\Http\Controllers\AdminController::class, 'toggleUserStatus']);
+        Route::get('admin/users/{id}/courses', [\App\Http\Controllers\AdminController::class, 'getUserCourses']);
+        Route::get('admin/users/{id}/books', [\App\Http\Controllers\AdminController::class, 'getUserBooks']);
+        Route::post('admin/create-instructor', [\App\Http\Controllers\AdminController::class, 'createInstructor']);
+        Route::post('admin/reset-instructor-password', [\App\Http\Controllers\AdminController::class, 'resetInstructorPassword']);
+        Route::get('admin/courses', [\App\Http\Controllers\AdminController::class, 'listCourses']);
         Route::get('admin/reports/revenue', [\App\Http\Controllers\AdminReportController::class, 'revenueReport']);
-    Route::put('admin/courses/{id}/approve', [\App\Http\Controllers\AdminController::class, 'approveCourse']);
-    Route::put('admin/courses/{id}/reject', [\App\Http\Controllers\AdminController::class, 'rejectCourse']);
-    Route::put('admin/courses/{id}/publish', [\App\Http\Controllers\AdminController::class, 'publishCourse']);
-    Route::put('admin/courses/{id}/unpublish', [\App\Http\Controllers\AdminController::class, 'unpublishCourse']);
-    Route::put('admin/books/{id}/approve', [\App\Http\Controllers\AdminController::class, 'approveBook']);
-    Route::put('admin/books/{id}/reject', [\App\Http\Controllers\AdminController::class, 'rejectBook']);
-    Route::put('admin/books/{id}/publish', [\App\Http\Controllers\AdminController::class, 'publishBook']);
-    Route::put('admin/books/{id}/unpublish', [\App\Http\Controllers\AdminController::class, 'unpublishBook']);
-    Route::get('admin/instructors/{id}', [\App\Http\Controllers\AdminController::class, 'getInstructor']);
-    Route::get('admin/instructors/{id}/courses', [\App\Http\Controllers\AdminController::class, 'getInstructorCourses']);
-    Route::get('admin/instructors/{id}/books', [\App\Http\Controllers\AdminController::class, 'getInstructorBooks']);
-    Route::put('admin/instructors/{id}/toggle-status', [\App\Http\Controllers\AdminController::class, 'toggleInstructorStatus']);
-    Route::get('admin/courses/{id}/enrollments', [\App\Http\Controllers\AdminController::class, 'getCourseEnrollments']);
-    Route::get('admin/courses/{courseId}/revenue', [\App\Http\Controllers\AdminController::class, 'getCourseRevenue']);
-    Route::get('admin/courses/revenue', [\App\Http\Controllers\AdminController::class, 'getAllCoursesRevenue']);
-    Route::get('admin/books/{id}/purchases', [\App\Http\Controllers\AdminController::class, 'getBookPurchases']);
-    Route::get('admin/books/{bookId}/revenue', [\App\Http\Controllers\AdminController::class, 'getBookRevenue']);
-    Route::get('admin/books/revenue', [\App\Http\Controllers\AdminController::class, 'getAllBooksRevenue']);
-    Route::get('admin/revenue/total', [\App\Http\Controllers\AdminController::class, 'getTotalRevenue']);
+        Route::get('admin/reports/total-revenue', [\App\Http\Controllers\AdminReportController::class, 'adminTotalRevenue']);
+        Route::get('admin/reports/instructor-revenue', [\App\Http\Controllers\AdminReportController::class, 'instructorRevenue']);
+        Route::get('admin/commissions/stats', [\App\Http\Controllers\AdminReportController::class, 'commissionStats']);
+        Route::get('admin/commissions/pending-payouts', [\App\Http\Controllers\AdminReportController::class, 'pendingPayouts']);
+        Route::get('admin/commissions/top-instructors', [\App\Http\Controllers\AdminReportController::class, 'topInstructors']);
+        Route::get('admin/commissions/recent-transactions', [\App\Http\Controllers\AdminReportController::class, 'recentTransactions']);
+        Route::get('admin/commissions/payout-history', [\App\Http\Controllers\AdminReportController::class, 'payoutHistory']);
+        Route::get('admin/approvals/courses', [\App\Http\Controllers\AdminController::class, 'pendingCourses']);
+        Route::get('admin/approvals/books', [\App\Http\Controllers\AdminController::class, 'pendingBooks']);
+        Route::put('admin/courses/{id}/approve', [\App\Http\Controllers\AdminController::class, 'approveCourse']);
+        Route::put('admin/courses/{id}/reject', [\App\Http\Controllers\AdminController::class, 'rejectCourse']);
+        Route::put('admin/courses/{id}/publish', [\App\Http\Controllers\AdminController::class, 'publishCourse']);
+        Route::put('admin/courses/{id}/unpublish', [\App\Http\Controllers\AdminController::class, 'unpublishCourse']);
+        Route::put('admin/books/{id}/approve', [\App\Http\Controllers\AdminController::class, 'approveBook']);
+        Route::put('admin/books/{id}/reject', [\App\Http\Controllers\AdminController::class, 'rejectBook']);
+        Route::put('admin/books/{id}/publish', [\App\Http\Controllers\AdminController::class, 'publishBook']);
+        Route::put('admin/books/{id}/unpublish', [\App\Http\Controllers\AdminController::class, 'unpublishBook']);
+        Route::get('admin/instructors/{id}', [\App\Http\Controllers\AdminController::class, 'getInstructor']);
+        Route::get('admin/instructors/{id}/courses', [\App\Http\Controllers\AdminController::class, 'getInstructorCourses']);
+        Route::get('admin/instructors/{id}/books', [\App\Http\Controllers\AdminController::class, 'getInstructorBooks']);
+        Route::put('admin/instructors/{id}/toggle-status', [\App\Http\Controllers\AdminController::class, 'toggleInstructorStatus']);
+        Route::get('admin/courses/{id}/enrollments', [\App\Http\Controllers\AdminController::class, 'getCourseEnrollments']);
+        Route::get('admin/courses/{courseId}/revenue', [\App\Http\Controllers\AdminController::class, 'getCourseRevenue']);
+        Route::get('admin/courses/revenue', [\App\Http\Controllers\AdminController::class, 'getAllCoursesRevenue']);
+        Route::get('admin/books/{id}/purchases', [\App\Http\Controllers\AdminController::class, 'getBookPurchases']);
+        Route::get('admin/books/{bookId}/revenue', [\App\Http\Controllers\AdminController::class, 'getBookRevenue']);
+        Route::get('admin/books/revenue', [\App\Http\Controllers\AdminController::class, 'getAllBooksRevenue']);
+        Route::get('admin/revenue/total', [\App\Http\Controllers\AdminController::class, 'getTotalRevenue']);
+        Route::get('admin/orders', [\App\Http\Controllers\AdminController::class, 'listOrders']);
+        Route::get('admin/orders/{id}', [\App\Http\Controllers\AdminController::class, 'getOrder']);
     
-// Admin Books Management
-Route::get('admin/books', [\App\Http\Controllers\AdminController::class, 'listBooks']);
-Route::get('admin/books/{id}', [\App\Http\Controllers\AdminController::class, 'getBook']);
-Route::post('admin/books', [\App\Http\Controllers\AdminController::class, 'createBook']);
-Route::put('admin/books/{id}', [\App\Http\Controllers\AdminController::class, 'updateBook']);
-Route::delete('admin/books/{id}', [\App\Http\Controllers\AdminController::class, 'deleteBook']);
-Route::post('admin/books/{bookId}/chapters', [\App\Http\Controllers\AdminController::class, 'createChapter']);
-Route::get('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'getChapterQuestions']);
-Route::post('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'createChapterQuestions']);
+        // Admin Coupons
+        Route::get('admin/coupons', [\App\Http\Controllers\AdminCouponController::class, 'index']);
+        Route::get('admin/coupons/{id}', [\App\Http\Controllers\AdminCouponController::class, 'show']);
+        Route::post('admin/coupons', [\App\Http\Controllers\AdminCouponController::class, 'store']);
+        Route::put('admin/coupons/{id}', [\App\Http\Controllers\AdminCouponController::class, 'update']);
+        Route::delete('admin/coupons/{id}', [\App\Http\Controllers\AdminCouponController::class, 'destroy']);
+        
+        // Admin Books Management
+        Route::get('admin/books', [\App\Http\Controllers\AdminController::class, 'listBooks']);
+        Route::get('admin/books/{id}', [\App\Http\Controllers\AdminController::class, 'getBook']);
+        Route::post('admin/books', [\App\Http\Controllers\AdminController::class, 'createBook']);
+        Route::put('admin/books/{id}', [\App\Http\Controllers\AdminController::class, 'updateBook']);
+        Route::delete('admin/books/{id}', [\App\Http\Controllers\AdminController::class, 'deleteBook']);
+        Route::post('admin/books/{bookId}/chapters', [\App\Http\Controllers\AdminController::class, 'createChapter']);
+        Route::get('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'getChapterQuestions']);
+        Route::post('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'createChapterQuestions']);
 
-// Admin Courses Management
-Route::get('admin/courses', [\App\Http\Controllers\AdminController::class, 'listCourses']);
-Route::get('admin/courses/{id}', [\App\Http\Controllers\AdminController::class, 'getCourse']);
-Route::post('admin/courses', [\App\Http\Controllers\AdminController::class, 'createCourse']);
-Route::put('admin/courses/{id}', [\App\Http\Controllers\AdminController::class, 'updateCourse']);
-Route::delete('admin/courses/{id}', [\App\Http\Controllers\AdminController::class, 'deleteCourse']);
+        // Admin Courses Management
+        Route::get('admin/courses/{id}', [\App\Http\Controllers\AdminController::class, 'getCourse']);
+        Route::post('admin/courses', [\App\Http\Controllers\AdminController::class, 'createCourse']);
+        Route::put('admin/courses/{id}', [\App\Http\Controllers\AdminController::class, 'updateCourse']);
+        Route::delete('admin/courses/{id}', [\App\Http\Controllers\AdminController::class, 'deleteCourse']);
 
-// Admin Lessons Management
-Route::get('admin/lessons/{id}', [\App\Http\Controllers\AdminController::class, 'getLesson']);
-Route::post('admin/courses/{courseId}/lessons', [\App\Http\Controllers\AdminController::class, 'createLesson']);
-Route::put('admin/lessons/{id}', [\App\Http\Controllers\AdminController::class, 'updateLesson']);
-Route::delete('admin/lessons/{id}', [\App\Http\Controllers\AdminController::class, 'deleteLesson']);
+        // Admin Lessons Management
+        Route::get('admin/lessons/{id}', [\App\Http\Controllers\AdminController::class, 'getLesson']);
+        Route::post('admin/courses/{courseId}/lessons', [\App\Http\Controllers\AdminController::class, 'createLesson']);
+        Route::put('admin/lessons/{id}', [\App\Http\Controllers\AdminController::class, 'updateLesson']);
+        Route::delete('admin/lessons/{id}', [\App\Http\Controllers\AdminController::class, 'deleteLesson']);
 
-// Admin Lesson Materials
-Route::post('admin/lessons/{lessonId}/materials', [\App\Http\Controllers\AdminController::class, 'uploadLessonMaterial']);
-Route::delete('admin/materials/{id}', [\App\Http\Controllers\AdminController::class, 'deleteLessonMaterial']);
+        // Admin Lesson Materials
+        Route::post('admin/lessons/{lessonId}/materials', [\App\Http\Controllers\AdminController::class, 'uploadLessonMaterial']);
+        Route::delete('admin/materials/{id}', [\App\Http\Controllers\AdminController::class, 'deleteLessonMaterial']);
 
-// Admin Lesson Q&A
-Route::get('admin/lessons/{lessonId}/discussions', [\App\Http\Controllers\AdminController::class, 'getLessonDiscussions']);
-Route::post('admin/lessons/{lessonId}/discussions/{discussionId}/reply', [\App\Http\Controllers\AdminController::class, 'replyToDiscussion']);
+        // Admin Lesson Q&A
+        Route::get('admin/lessons/{lessonId}/discussions', [\App\Http\Controllers\AdminController::class, 'getLessonDiscussions']);
+        Route::post('admin/lessons/{lessonId}/discussions/{discussionId}/reply', [\App\Http\Controllers\AdminController::class, 'replyToDiscussion']);
 
-// Admin Lesson Assignments
-Route::get('admin/lessons/{lessonId}/assignments', [\App\Http\Controllers\AdminController::class, 'getLessonAssignments']);
-Route::post('admin/lessons/{lessonId}/assignments', [\App\Http\Controllers\AdminController::class, 'createLessonAssignment']);
-Route::post('admin/assignments/{assignmentId}/questions', [\App\Http\Controllers\AdminController::class, 'createAssignmentQuestion']);
-Route::get('admin/assignments/{assignmentId}/attempts', [\App\Http\Controllers\AdminController::class, 'getAssignmentAttempts']);
-Route::get('admin/attempts/{attemptId}', [\App\Http\Controllers\AdminController::class, 'getAttemptDetails']);
-Route::post('admin/attempts/{attemptId}/grade', [\App\Http\Controllers\AdminController::class, 'gradeAttempt']);
+        // Admin Lesson Assignments
+        Route::get('admin/lessons/{lessonId}/assignments', [\App\Http\Controllers\AdminController::class, 'getLessonAssignments']);
+        Route::post('admin/lessons/{lessonId}/assignments', [\App\Http\Controllers\AdminController::class, 'createLessonAssignment']);
+        Route::post('admin/assignments/{assignmentId}/questions', [\App\Http\Controllers\AdminController::class, 'createAssignmentQuestion']);
+        Route::get('admin/assignments/{assignmentId}/attempts', [\App\Http\Controllers\AdminController::class, 'getAssignmentAttempts']);
+        Route::get('admin/attempts/{attemptId}', [\App\Http\Controllers\AdminController::class, 'getAttemptDetails']);
+        Route::post('admin/attempts/{attemptId}/grade', [\App\Http\Controllers\AdminController::class, 'gradeAttempt']);
+        
+        // Admin Static Pages Management
+        Route::get('admin/static-pages', [\App\Http\Controllers\StaticPageController::class, 'index']);
+        Route::post('admin/static-pages', [\App\Http\Controllers\StaticPageController::class, 'store']);
+        Route::get('admin/static-pages/{id}', [\App\Http\Controllers\StaticPageController::class, 'show']);
+        Route::put('admin/static-pages/{id}', [\App\Http\Controllers\StaticPageController::class, 'update']);
+        Route::delete('admin/static-pages/{id}', [\App\Http\Controllers\StaticPageController::class, 'destroy']);
+
+        // Admin System Settings
+        Route::get('system/settings', [\App\Http\Controllers\SystemController::class, 'settings']);
+        Route::put('system/settings', [\App\Http\Controllers\SystemController::class, 'updateSettings']);
+        Route::get('system/stats', [\App\Http\Controllers\SystemController::class, 'stats']);
+
+        // Admin Analytics
+        Route::get('analytics/dashboard', [\App\Http\Controllers\AnalyticsController::class, 'dashboard']);
+        Route::get('analytics/courses/{id}', [\App\Http\Controllers\AnalyticsController::class, 'course']);
+        Route::get('analytics/instructor/{id}', [\App\Http\Controllers\AnalyticsController::class, 'instructor']);
+    });
 
     // Forum (MongoDB-backed)
     Route::prefix('forum-api')->group(function () {

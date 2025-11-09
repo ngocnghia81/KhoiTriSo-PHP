@@ -28,6 +28,25 @@ class SystemController extends BaseController
         }
     }
 
+    /**
+     * Get public system settings (no auth required)
+     */
+    public function publicSettings(Request $request): JsonResponse
+    {
+        try {
+            $rows = DB::table('system_settings')
+                ->whereRaw('is_public = true')
+                ->select('setting_key as key','setting_value as value','setting_type as type','is_public as isPublic')
+                ->get();
+            
+            return $this->success(['settings' => $rows]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in publicSettings: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
     public function updateSettings(Request $request): JsonResponse
     {
         try {

@@ -79,8 +79,13 @@ export default function LoginPage() {
       });
 
       const { user } = response;
-      // Redirect to home page after successful login
-      router.push('/');
+      // Redirect based on user role
+      const role = user?.role as string | undefined;
+      if (role === 'admin' || role === 'instructor') {
+        router.push('/dashboard');
+      } else {
+        router.push('/');
+      }
     } catch (error: any) {
       console.error('Login error:', error);
       
@@ -137,7 +142,14 @@ export default function LoginPage() {
               setApiError('');
               try {
                 const authRes = await loginWithGoogleIdToken(response.credential);
-                router.push('/');
+                const user = authRes?.user;
+                // Redirect based on user role
+                const role = user?.role as string | undefined;
+                if (role === 'admin' || role === 'instructor') {
+                  router.push('/dashboard');
+                } else {
+                  router.push('/');
+                }
               } catch (error: any) {
                 setApiError(error?.message || 'Đăng nhập Google thất bại');
               } finally {
@@ -166,7 +178,14 @@ export default function LoginPage() {
             setApiError('');
             try {
               const authRes = await loginWithGoogleIdToken(response.credential);
-              router.push('/');
+              const user = authRes?.user;
+              // Redirect based on user role
+              const role = user?.role as string | undefined;
+              if (role === 'admin' || role === 'instructor') {
+                router.push('/dashboard');
+              } else {
+                router.push('/');
+              }
             } catch (error: any) {
               setApiError(error?.message || 'Đăng nhập Google thất bại');
             } finally {

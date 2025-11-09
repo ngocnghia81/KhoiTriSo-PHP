@@ -104,26 +104,42 @@ class LiveClassController extends BaseController
             
             DB::beginTransaction();
             try {
-                $lc = LiveClass::create([
-                    'course_id' => $data['courseId'],
-                    'instructor_id' => $request->user()->id,
-                    'title' => $data['title'],
-                    'description' => $data['description'],
-                    'scheduled_at' => $data['scheduledAt'],
-                    'duration_minutes' => $data['durationMinutes'],
-                    'max_participants' => $data['maxParticipants'] ?? null,
-                    'meeting_url' => $data['meetingUrl'],
-                    'meeting_id' => $data['meetingId'],
-                    'meeting_password' => $data['meetingPassword'] ?? null,
-                    'status' => 1,
-                    'chat_enabled' => (bool) ($data['chatEnabled'] ?? true),
-                    'recording_enabled' => (bool) ($data['recordingEnabled'] ?? true),
-                ]);
+                // Use raw SQL for PostgreSQL boolean compatibility
+                $chatEnabled = filter_var($data['chatEnabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
+                $recordingEnabled = filter_var($data['recordingEnabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
+                
+                $lcId = DB::selectOne("
+                    INSERT INTO live_classes (
+                        course_id, instructor_id, title, description, scheduled_at,
+                        duration_minutes, max_participants, meeting_url, meeting_id,
+                        meeting_password, status, chat_enabled, recording_enabled,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::boolean, ?::boolean, ?, ?)
+                    RETURNING id
+                ", [
+                    $data['courseId'],
+                    $request->user()->id,
+                    $data['title'],
+                    $data['description'],
+                    $data['scheduledAt'],
+                    $data['durationMinutes'],
+                    $data['maxParticipants'] ?? null,
+                    $data['meetingUrl'],
+                    $data['meetingId'],
+                    $data['meetingPassword'] ?? null,
+                    1,
+                    $chatEnabled,
+                    $recordingEnabled,
+                    now(),
+                    now(),
+                ])->id;
+                
+                $lc = LiveClass::find($lcId);
                 
                 // Get course and enrolled students
                 $course = Course::find($data['courseId']);
                 $enrollments = CourseEnrollment::where('course_id', $data['courseId'])
-                    ->where('is_active', true)
+                    ->whereRaw('is_active = true')
                     ->with('user')
                     ->get();
                 
@@ -136,16 +152,20 @@ class LiveClassController extends BaseController
                     $user = $enrollment->user;
                     if (!$user) continue;
                     
-                    // Create notification
+                    // Create notification using raw SQL for PostgreSQL boolean compatibility
                     try {
-                        Notification::create([
-                            'user_id' => $user->id,
-                            'title' => "Lớp học trực tuyến: {$lc->title}",
-                            'message' => "Lớp học trực tuyến '{$lc->title}' của khóa học '{$course->title}' sẽ diễn ra vào {$formattedDate} lúc {$formattedTime}. Vui lòng chuẩn bị sẵn sàng!",
-                            'type' => 3, // Live class type
-                            'action_url' => "/live-classes/{$lc->id}",
-                            'priority' => 2, // Medium priority
-                            'is_read' => false,
+                        DB::statement("
+                            INSERT INTO notifications (user_id, title, message, type, action_url, priority, is_read, created_at, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, false::boolean, ?, ?)
+                        ", [
+                            $user->id,
+                            "Lớp học trực tuyến: {$lc->title}",
+                            "Lớp học trực tuyến '{$lc->title}' của khóa học '{$course->title}' sẽ diễn ra vào {$formattedDate} lúc {$formattedTime}. Vui lòng chuẩn bị sẵn sàng!",
+                            3, // Live class type
+                            "/live-classes/{$lc->id}",
+                            2, // Medium priority
+                            now(),
+                            now(),
                         ]);
                     } catch (\Exception $e) {
                         Log::error("Failed to create notification for user {$user->id}: " . $e->getMessage());
@@ -219,6 +239,7 @@ class LiveClassController extends BaseController
 
             $data = $validator->validated();
             
+            // Build update data with PostgreSQL boolean compatibility
             $updateData = [
                 'title' => $data['title'] ?? $lc->title,
                 'description' => $data['description'] ?? $lc->description,
@@ -226,9 +247,19 @@ class LiveClassController extends BaseController
                 'duration_minutes' => $data['durationMinutes'] ?? $lc->duration_minutes,
                 'max_participants' => $data['maxParticipants'] ?? $lc->max_participants,
                 'status' => $data['status'] ?? $lc->status,
-                'chat_enabled' => array_key_exists('chatEnabled', $data) ? (bool)$data['chatEnabled'] : $lc->chat_enabled,
-                'recording_enabled' => array_key_exists('recordingEnabled', $data) ? (bool)$data['recordingEnabled'] : $lc->recording_enabled,
+                'updated_at' => now(),
             ];
+            
+            // Handle boolean fields separately for PostgreSQL
+            if (array_key_exists('chatEnabled', $data)) {
+                $chatEnabled = filter_var($data['chatEnabled'], FILTER_VALIDATE_BOOLEAN);
+                DB::statement('UPDATE live_classes SET chat_enabled = ?::boolean WHERE id = ?', [$chatEnabled, $lc->id]);
+            }
+            
+            if (array_key_exists('recordingEnabled', $data)) {
+                $recordingEnabled = filter_var($data['recordingEnabled'], FILTER_VALIDATE_BOOLEAN);
+                DB::statement('UPDATE live_classes SET recording_enabled = ?::boolean WHERE id = ?', [$recordingEnabled, $lc->id]);
+            }
             
             if (isset($data['courseId'])) {
                 $updateData['course_id'] = $data['courseId'];

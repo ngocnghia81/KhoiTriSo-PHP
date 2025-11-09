@@ -17,6 +17,12 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\SetLocale::class,
         ]);
         
+        // Register role-based middleware aliases
+        $middleware->alias([
+            'role.admin' => \App\Http\Middleware\EnsureAdminRole::class,
+            'role.instructor' => \App\Http\Middleware\EnsureInstructorRole::class,
+        ]);
+        
         // Enable CORS for frontend
         $middleware->validateCsrfTokens(except: [
             'api/*',

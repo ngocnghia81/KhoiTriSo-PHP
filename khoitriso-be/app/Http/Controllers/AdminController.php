@@ -7,6 +7,8 @@ use App\Models\User;
 use App\Models\Course;
 use App\Models\Book;
 use App\Models\BookChapter;
+use App\Models\Order;
+use App\Models\Notification;
 use App\Mail\InstructorAccountCreated;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -350,6 +352,116 @@ class AdminController extends BaseController
 
         } catch (\Exception $e) {
             Log::error('Error in admin listCourses: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get pending courses for approval
+     */
+    public function pendingCourses(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || ($user->role ?? '') !== 'admin') {
+                return $this->forbidden();
+            }
+
+            $page = (int) $request->query('page', 1);
+            $pageSize = (int) $request->query('pageSize', 20);
+
+            $q = Course::with(['instructor:id,name,email', 'category:id,name'])
+                ->where('approval_status', 0); // Pending approval
+
+            $total = $q->count();
+            $courses = $q->skip(($page - 1) * $pageSize)
+                ->take($pageSize)
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($course) {
+                    return [
+                        'id' => $course->id,
+                        'title' => $course->title,
+                        'description' => $course->description,
+                        'thumbnail' => $course->thumbnail,
+                        'price' => (float) $course->price,
+                        'isFree' => (bool) $course->is_free,
+                        'approvalStatus' => (int) $course->approval_status,
+                        'isPublished' => (bool) $course->is_published,
+                        'reviewNotes' => $course->review_notes,
+                        'instructor' => $course->instructor ? [
+                            'id' => $course->instructor->id,
+                            'name' => $course->instructor->name,
+                            'email' => $course->instructor->email,
+                        ] : null,
+                        'category' => $course->category ? [
+                            'id' => $course->category->id,
+                            'name' => $course->category->name,
+                        ] : null,
+                        'createdAt' => is_string($course->created_at) ? $course->created_at : $course->created_at->toISOString(),
+                        'updatedAt' => is_string($course->updated_at) ? $course->updated_at : $course->updated_at->toISOString(),
+                    ];
+                });
+
+            return $this->paginated($courses->toArray(), $page, $pageSize, $total);
+
+        } catch (\Exception $e) {
+            Log::error('Error in admin pendingCourses: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get pending books for approval
+     */
+    public function pendingBooks(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || ($user->role ?? '') !== 'admin') {
+                return $this->forbidden();
+            }
+
+            $page = (int) $request->query('page', 1);
+            $pageSize = (int) $request->query('pageSize', 20);
+
+            $q = Book::with(['author:id,name,email', 'category:id,name'])
+                ->where('approval_status', 0); // Pending approval
+
+            $total = $q->count();
+            $books = $q->skip(($page - 1) * $pageSize)
+                ->take($pageSize)
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($book) {
+                    return [
+                        'id' => $book->id,
+                        'title' => $book->title,
+                        'description' => $book->description,
+                        'isbn' => $book->isbn,
+                        'coverImage' => $book->cover_image,
+                        'price' => (float) $book->price,
+                        'approvalStatus' => (int) $book->approval_status,
+                        'isPublished' => (bool) $book->is_published,
+                        'reviewNotes' => $book->review_notes,
+                        'author' => $book->author ? [
+                            'id' => $book->author->id,
+                            'name' => $book->author->name,
+                            'email' => $book->author->email,
+                        ] : null,
+                        'category' => $book->category ? [
+                            'id' => $book->category->id,
+                            'name' => $book->category->name,
+                        ] : null,
+                        'createdAt' => is_string($book->created_at) ? $book->created_at : $book->created_at->toISOString(),
+                        'updatedAt' => is_string($book->updated_at) ? $book->updated_at : $book->updated_at->toISOString(),
+                    ];
+                });
+
+            return $this->paginated($books->toArray(), $page, $pageSize, $total);
+
+        } catch (\Exception $e) {
+            Log::error('Error in admin pendingBooks: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -903,13 +1015,27 @@ class AdminController extends BaseController
                 return $this->notFound('Course');
             }
             
-            $course->approval_status = 1; // Approved
-            $course->save();
+            // Update approval status and publish
+            DB::statement('UPDATE courses SET approval_status = 1, is_published = true::boolean WHERE id = ?', [$id]);
+            $course->refresh();
+            
+            // Send notification to instructor
+            if ($course->instructor_id) {
+                Notification::create([
+                    'user_id' => $course->instructor_id,
+                    'title' => 'Khóa học đã được phê duyệt',
+                    'message' => "Khóa học \"{$course->title}\" của bạn đã được phê duyệt và xuất bản thành công.",
+                    'type' => 1, // Course approval notification
+                    'action_url' => "/courses/{$course->id}",
+                    'priority' => 2,
+                ]);
+            }
             
             return $this->success([
                 'id' => $course->id,
-                'approvalStatus' => $course->approval_status,
-                'message' => 'Khóa học đã được phê duyệt'
+                'approvalStatus' => 1,
+                'isPublished' => true,
+                'message' => 'Khóa học đã được phê duyệt và xuất bản'
             ]);
             
         } catch (\Exception $e) {
@@ -943,19 +1069,28 @@ class AdminController extends BaseController
                 return $this->validationError($errors);
             }
             
-            $course->approval_status = 2; // Rejected
+            $reason = $request->input('reason', 'Nội dung không phù hợp với tiêu chuẩn của hệ thống.');
             
-            // Store rejection reason in review_notes if provided
-            if ($request->filled('reason')) {
-                $course->review_notes = $request->input('reason');
+            // Update approval status and store rejection reason
+            DB::statement('UPDATE courses SET approval_status = 2, review_notes = ? WHERE id = ?', [$reason, $id]);
+            $course->refresh();
+            
+            // Send notification to instructor with rejection reason
+            if ($course->instructor_id) {
+                Notification::create([
+                    'user_id' => $course->instructor_id,
+                    'title' => 'Khóa học bị từ chối',
+                    'message' => "Khóa học \"{$course->title}\" của bạn đã bị từ chối. Lý do: {$reason}. Vui lòng chỉnh sửa và gửi lại để được xem xét.",
+                    'type' => 1, // Course rejection notification
+                    'action_url' => "/dashboard/courses/{$course->id}",
+                    'priority' => 3, // High priority
+                ]);
             }
-            
-            $course->save();
             
             return $this->success([
                 'id' => $course->id,
-                'approvalStatus' => $course->approval_status,
-                'reviewNotes' => $course->review_notes,
+                'approvalStatus' => 2,
+                'reviewNotes' => $reason,
                 'message' => 'Khóa học đã bị từ chối'
             ]);
             
@@ -1033,13 +1168,27 @@ class AdminController extends BaseController
                 return $this->notFound('Book');
             }
 
-            $book->approval_status = 1; // Approved
-            $book->save();
+            // Update approval status and publish
+            DB::statement('UPDATE books SET approval_status = 1, is_published = true::boolean WHERE id = ?', [$id]);
+            $book->refresh();
+
+            // Send notification to author
+            if ($book->author_id) {
+                Notification::create([
+                    'user_id' => $book->author_id,
+                    'title' => 'Sách đã được phê duyệt',
+                    'message' => "Sách \"{$book->title}\" của bạn đã được phê duyệt và xuất bản thành công.",
+                    'type' => 2, // Book approval notification
+                    'action_url' => "/books/{$book->id}",
+                    'priority' => 2,
+                ]);
+            }
 
             return $this->success([
                 'id' => $book->id,
-                'approvalStatus' => $book->approval_status,
-                'message' => 'Sách đã được phê duyệt'
+                'approvalStatus' => 1,
+                'isPublished' => true,
+                'message' => 'Sách đã được phê duyệt và xuất bản'
             ]);
 
         } catch (\Exception $e) {
@@ -1073,18 +1222,28 @@ class AdminController extends BaseController
                 return $this->validationError($errors);
             }
 
-            $book->approval_status = 2; // Rejected
+            $reason = $request->input('reason', 'Nội dung không phù hợp với tiêu chuẩn của hệ thống.');
+            
+            // Update approval status and store rejection reason
+            DB::statement('UPDATE books SET approval_status = 2, review_notes = ? WHERE id = ?', [$reason, $id]);
+            $book->refresh();
 
-            if ($request->filled('reason')) {
-                $book->review_notes = $request->input('reason');
+            // Send notification to author with rejection reason
+            if ($book->author_id) {
+                Notification::create([
+                    'user_id' => $book->author_id,
+                    'title' => 'Sách bị từ chối',
+                    'message' => "Sách \"{$book->title}\" của bạn đã bị từ chối. Lý do: {$reason}. Vui lòng chỉnh sửa và gửi lại để được xem xét.",
+                    'type' => 2, // Book rejection notification
+                    'action_url' => "/dashboard/books/{$book->id}",
+                    'priority' => 3, // High priority
+                ]);
             }
-
-            $book->save();
 
             return $this->success([
                 'id' => $book->id,
-                'approvalStatus' => $book->approval_status,
-                'reviewNotes' => $book->review_notes,
+                'approvalStatus' => 2,
+                'reviewNotes' => $reason,
                 'message' => 'Sách đã bị từ chối'
             ]);
 
@@ -1235,7 +1394,8 @@ class AdminController extends BaseController
                 'ebook_file' => (string) ($data['ebookFile'] ?? ''),
                 'static_page_path' => (string) ($data['staticPagePath'] ?? ''),
                 'author_id' => $authorId,
-                'approval_status' => 3, // Approved by default for admin
+                'approval_status' => 1, // Approved by default for admin
+                'is_published' => true, // Auto-publish for admin
                 'language' => (string) ($data['language'] ?? 'vi'),
                 'is_active' => true, // Will be cast by model
                 'created_by' => (string) ($user->name ?? $user->email),
@@ -1286,7 +1446,7 @@ class AdminController extends BaseController
                     $values = [];
                     
                     foreach ($bookData as $col => $value) {
-                        if ($col === 'is_active') {
+                        if (in_array($col, ['is_active', 'is_published'])) {
                             // PostgreSQL boolean literal
                             $placeholders[] = $value ? 'true' : 'false';
                         } elseif (in_array($col, ['author_id', 'category_id']) && $value !== null) {
@@ -2065,7 +2225,7 @@ class AdminController extends BaseController
                     ?, ?, ?, ?, ?, ?, ?,
                     ?::boolean, ?, ?, ?::json, ?::json,
                     ?, ?, ?, ?,
-                    false::boolean, true::boolean, ?, ?, ?
+                    true::boolean, true::boolean, ?, ?, ?
                 ) RETURNING id
             ", [
                 $data['title'],
@@ -2084,7 +2244,7 @@ class AdminController extends BaseController
                 0,
                 0.0,
                 0,
-                3,
+                1, // Approved by default for admin
                 now(),
                 now(),
             ])->id;
@@ -3538,6 +3698,162 @@ class AdminController extends BaseController
         } catch (\Exception $e) {
             \Log::error('Error in admin getTotalRevenue: ' . $e->getMessage());
             \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * List all orders (Admin only)
+     * GET /api/admin/orders
+     */
+    public function listOrders(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem danh sách đơn hàng');
+            }
+
+            $query = Order::with(['items', 'user:id,name,email']);
+
+            // Search by order code
+            if ($request->filled('search')) {
+                $search = $request->string('search');
+                $query->where('order_code', 'ilike', "%{$search}%");
+            }
+
+            // Filter by status
+            if ($request->filled('status')) {
+                $query->where('status', $request->integer('status'));
+            }
+
+            // Filter by user
+            if ($request->filled('userId')) {
+                $query->where('user_id', $request->integer('userId'));
+            }
+
+            // Filter by date range
+            if ($request->filled('fromDate')) {
+                $query->where('created_at', '>=', $request->string('fromDate') . ' 00:00:00');
+            }
+            if ($request->filled('toDate')) {
+                $query->where('created_at', '<=', $request->string('toDate') . ' 23:59:59');
+            }
+
+            // Sorting
+            $sortBy = $request->string('sortBy', 'created_at')->toString();
+            $sortOrder = $request->string('sortOrder', 'desc')->toString();
+            $allowedSorts = ['created_at', 'updated_at', 'final_amount', 'status'];
+            if (in_array($sortBy, $allowedSorts)) {
+                $query->orderBy($sortBy, $sortOrder === 'asc' ? 'asc' : 'desc');
+            } else {
+                $query->orderBy('created_at', 'desc');
+            }
+
+            // Pagination
+            $perPage = min(max(1, (int) $request->query('perPage', 20)), 100);
+            $page = max(1, (int) $request->query('page', 1));
+            $result = $query->paginate($perPage, ['*'], 'page', $page);
+
+            $orders = $result->map(function ($order) {
+                return [
+                    'id' => $order->id,
+                    'order_code' => $order->order_code,
+                    'user_id' => $order->user_id,
+                    'user_name' => $order->user->name ?? 'N/A',
+                    'user_email' => $order->user->email ?? 'N/A',
+                    'total_amount' => (float) $order->total_amount,
+                    'discount_amount' => (float) $order->discount_amount,
+                    'final_amount' => (float) $order->final_amount,
+                    'status' => $order->status,
+                    'payment_method' => $order->payment_method ?? 'N/A',
+                    'created_at' => $order->created_at->toISOString(),
+                    'paid_at' => $order->paid_at ? $order->paid_at->toISOString() : null,
+                    'items_count' => $order->items->count(),
+                ];
+            });
+
+            return $this->paginated($orders->toArray(), $page, $perPage, $result->total());
+
+        } catch (\Exception $e) {
+            Log::error('Error in admin listOrders: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get order detail (Admin only)
+     * GET /api/admin/orders/{id}
+     */
+    public function getOrder(int $id, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem chi tiết đơn hàng');
+            }
+
+            $order = Order::with(['items', 'user:id,name,email'])->find($id);
+
+            if (!$order) {
+                return $this->notFound('Order');
+            }
+
+            // Load course/book details for items
+            $items = $order->items->map(function ($item) {
+                $itemData = [
+                    'id' => $item->id,
+                    'item_id' => $item->item_id,
+                    'item_type' => $item->item_type,
+                    'item_name' => null,
+                    'price' => (float) $item->price,
+                    'quantity' => $item->quantity,
+                    'subtotal' => (float) ($item->price * $item->quantity),
+                ];
+
+                if ($item->item_type == 1) { // Course
+                    $course = Course::find($item->item_id);
+                    if ($course) {
+                        $itemData['item_name'] = $course->title;
+                        $itemData['thumbnail'] = $course->thumbnail;
+                    }
+                } else if ($item->item_type == 2) { // Book
+                    $book = Book::find($item->item_id);
+                    if ($book) {
+                        $itemData['item_name'] = $book->title;
+                        $itemData['thumbnail'] = $book->cover_image;
+                    }
+                }
+
+                return $itemData;
+            });
+
+            $orderData = [
+                'id' => $order->id,
+                'order_code' => $order->order_code,
+                'user_id' => $order->user_id,
+                'user_name' => $order->user->name ?? 'N/A',
+                'user_email' => $order->user->email ?? 'N/A',
+                'user_phone' => null, // Phone field not available in users table
+                'total_amount' => (float) $order->total_amount,
+                'discount_amount' => (float) $order->discount_amount,
+                'tax_amount' => (float) ($order->tax_amount ?? 0),
+                'final_amount' => (float) $order->final_amount,
+                'status' => $order->status,
+                'payment_method' => $order->payment_method ?? 'N/A',
+                'payment_gateway' => $order->payment_gateway ?? null,
+                'transaction_id' => $order->transaction_id ?? null,
+                'billing_address' => $order->billing_address ?? null,
+                'order_notes' => $order->order_notes ?? null,
+                'created_at' => $order->created_at->toISOString(),
+                'paid_at' => $order->paid_at ? $order->paid_at->toISOString() : null,
+                'items' => $items,
+            ];
+
+            return $this->success($orderData, 'Lấy thông tin đơn hàng thành công', $request);
+
+        } catch (\Exception $e) {
+            Log::error('Error in admin getOrder: ' . $e->getMessage());
             return $this->internalError();
         }
     }

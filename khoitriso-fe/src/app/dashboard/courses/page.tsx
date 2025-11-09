@@ -15,6 +15,8 @@ import {
   CurrencyDollarIcon
 } from '@heroicons/react/24/outline';
 import { courseService, Course } from '@/services/courseService';
+import { getInstructorCourses } from '@/services/instructor';
+import { getCourses } from '@/services/admin';
 import { useToast } from '@/components/ToastProvider';
 import { uploadFile } from '@/services/uploads';
 import { getCategories, Category } from '@/services/categories';
@@ -26,6 +28,8 @@ export default function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [user, setUser] = useState<any>(null);
+  const [isInstructor, setIsInstructor] = useState(false);
   
   // Search & Filter
   const [search, setSearch] = useState('');
@@ -87,6 +91,20 @@ export default function CoursesPage() {
   const [enrollmentsTotal, setEnrollmentsTotal] = useState(0);
   const [selectedCourseForDetails, setSelectedCourseForDetails] = useState<Course | null>(null);
 
+  // Check user role
+  useEffect(() => {
+    try {
+      const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      if (userStr) {
+        const userData = JSON.parse(userStr);
+        setUser(userData);
+        setIsInstructor(userData.role === 'instructor');
+      }
+    } catch (error) {
+      console.error('Error getting user:', error);
+    }
+  }, []);
+
   // Fetch categories
   useEffect(() => {
     fetchCategories();
@@ -103,8 +121,10 @@ export default function CoursesPage() {
 
   // Fetch courses with filters and pagination
   useEffect(() => {
-    fetchCourses();
-  }, [search, categoryFilter, statusFilter, approvalFilter, currentPage, perPage]);
+    if (user) { // Only fetch when user is loaded
+      fetchCourses();
+    }
+  }, [search, categoryFilter, statusFilter, approvalFilter, currentPage, perPage, isInstructor, user]);
 
   const fetchCourses = async () => {
     try {
@@ -118,9 +138,25 @@ export default function CoursesPage() {
       if (categoryFilter) params.categoryId = categoryFilter;
       if (statusFilter) params.status = statusFilter;
       if (approvalFilter) params.approvalStatus = approvalFilter;
-
-      const response = await courseService.listCoursesAdmin(params);
-      setCourses(response.data || []);
+      
+      let response;
+      if (isInstructor) {
+        // Use instructor service
+        const instructorResponse = await getInstructorCourses(params);
+        response = {
+          data: instructorResponse.courses,
+          pagination: instructorResponse.pagination,
+        };
+      } else {
+        // Use admin service
+        const adminResponse = await getCourses(params);
+        response = {
+          data: adminResponse.courses,
+          pagination: adminResponse.pagination,
+        };
+      }
+      console.log('Fetched courses:', (response.data || []).length, 'pagination:', response.pagination);
+      setCourses((response.data || []) as Course[]);
       setTotal(response.pagination?.total || 0);
       setLastPage(response.pagination?.totalPages || 1);
     } catch (error: any) {

@@ -1,470 +1,603 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getDashboard } from '@/services/analytics';
-import { getRevenueReport } from '@/services/admin';
+import { useRouter } from 'next/navigation';
 import {
+  getAdminTotalRevenue,
+  getInstructorRevenue,
+  getRevenueReport,
+  type AdminTotalRevenue,
+  type InstructorRevenue,
+  type RevenueReport,
+} from '@/services/reports';
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
+import {
+  CurrencyDollarIcon,
+  UserGroupIcon,
   ChartBarIcon,
   ArrowTrendingUpIcon,
-  ArrowTrendingDownIcon,
   CalendarIcon,
-  DocumentChartBarIcon,
-  FunnelIcon,
-  ArrowDownTrayIcon,
-  EyeIcon,
-  UserGroupIcon,
   AcademicCapIcon,
   BookOpenIcon,
-  CurrencyDollarIcon,
-  ShoppingCartIcon,
-  ClockIcon
 } from '@heroicons/react/24/outline';
 
-// Note: Client components cannot export metadata
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#8b5cf6'];
 
-// Fallback empty values; will be filled by API if available
-const defaultOverview = { totalRevenue: 0, totalUsers: 0, totalCourses: 0, totalBooks: 0, monthlyGrowth: { revenue: 0, users: 0, courses: 0, books: 0 } } as const;
-
-const monthlyDataDefault: Array<{ month: string; revenue: number; users: number; courses: number; books: number }> = [];
-
-// Remove static mock top lists; data will come from API
-
-const userActivityDefault: Array<{ date: string; newUsers: number; activeUsers: number; coursesCompleted: number }> = [];
-
-const formatCurrency = (amount: number | null | undefined) => {
-  // Guard against null/undefined/NaN
-  if (amount === null || amount === undefined || !isFinite(amount)) return '—';
-  return `₫${(amount / 1000000).toFixed(1)}M`;
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+  }).format(amount);
 };
-
-const formatNumber = (num?: number | null) => {
-  if (num === null || num === undefined || !isFinite(num)) return '0';
-  return num.toLocaleString();
-};
-
-// Safely format growth percentages (handles null/0/Infinity)
-const formatGrowth = (value?: number | null) => {
-  if (value === null || value === undefined || !isFinite(value)) return '—';
-  return `${value}%`;
-};
-
-// Local type for top books shown on dashboard
-type TopBook = {
-  id: number;
-  title: string;
-  rating?: number | null;
-  price?: number;
-  isFree?: boolean;
-  revenue?: number;
-  questions?: number;
-  purchases?: number;
-};
-
-// Local type for top courses shown on dashboard
-type TopCourse = {
-  id: number;
-  title: string;
-  students?: number;
-  rating?: number | null;
-  price?: number;
-  isFree?: boolean;
-  revenue?: number;
-};
-
 
 export default function ReportsPage() {
-  const [overview, setOverview] = useState<any>(defaultOverview);
-  const [monthlyData, setMonthlyData] = useState(monthlyDataDefault);
-  const [topCourses, setTopCourses] = useState<TopCourse[]>([]);
-  const [topBooks, setTopBooks] = useState<TopBook[]>([]);
-  const [courseSort, setCourseSort] = useState<'revenue' | 'students'>('revenue');
-  const [bookSort, setBookSort] = useState<'revenue' | 'purchases'>('revenue');
-  const [userActivity, setUserActivity] = useState(userActivityDefault);
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState<'admin' | 'instructors' | 'detailed'>(() => {
+    // Check role on mount
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('user');
+        const userData = raw ? JSON.parse(raw) : null;
+        if (userData?.role === 'instructor') {
+          return 'instructors';
+        }
+      } catch {}
+    }
+    return 'admin';
+  });
+  const [loading, setLoading] = useState(false);
   
+  // Admin Total Revenue
+  const [adminRevenue, setAdminRevenue] = useState<AdminTotalRevenue | null>(null);
+  const [adminDateRange, setAdminDateRange] = useState({
+    from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    to: new Date().toISOString().split('T')[0],
+  });
+
+  // Instructor Revenue
+  const [instructorRevenue, setInstructorRevenue] = useState<InstructorRevenue[]>([]);
+  const [instructorDateRange, setInstructorDateRange] = useState({
+    from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    to: new Date().toISOString().split('T')[0],
+  });
+
+  // Detailed Report
+  const [detailedReport, setDetailedReport] = useState<RevenueReport | null>(null);
+  const [detailedDateRange, setDetailedDateRange] = useState({
+    from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    to: new Date().toISOString().split('T')[0],
+  });
+  const [itemType, setItemType] = useState<1 | 2 | undefined>(undefined);
+
+  const [user, setUser] = useState<any>(null);
+  const [isInstructor, setIsInstructor] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      try {
-  const d = await getDashboard();
-        if (d) {
-          setOverview({
-            totalRevenue: d.totalRevenue ?? 0,
-            totalUsers: d.totalUsers ?? 0,
-            totalCourses: d.totalCourses ?? 0,
-            totalBooks: d.totalBooks ?? 0,
-            monthlyGrowth: d.monthlyGrowth ?? defaultOverview.monthlyGrowth,
-          });
-          setMonthlyData(d.monthly ?? monthlyDataDefault);
-          setTopCourses(d.topCourses ?? []);
-          setTopBooks(d.topBooks ?? []);
-          setUserActivity(d.userActivity ?? userActivityDefault);
-        }
-
-        await getRevenueReport();
-      } catch {
-        // ignore for now; keep defaults
+    // Check user role
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      const userData = raw ? JSON.parse(raw) : null;
+      if (!userData || (userData.role !== 'admin' && userData.role !== 'instructor')) {
+        router.replace('/');
+        return;
       }
-    })();
-  }, []);
+      setUser(userData);
+      setIsInstructor(userData.role === 'instructor');
+      // Set default tab for instructor
+      if (userData.role === 'instructor') {
+        setActiveTab('instructors');
+      }
+    } catch {
+      router.replace('/');
+      return;
+    }
+  }, [router]);
+
+  useEffect(() => {
+    if (activeTab === 'admin') {
+      fetchAdminRevenue();
+    } else if (activeTab === 'instructors') {
+      fetchInstructorRevenue();
+    } else if (activeTab === 'detailed') {
+      fetchDetailedReport();
+    }
+  }, [activeTab, adminDateRange, instructorDateRange, detailedDateRange, itemType]);
+
+  const fetchAdminRevenue = async () => {
+    setLoading(true);
+    try {
+      const data = await getAdminTotalRevenue({
+        from: adminDateRange.from,
+        to: adminDateRange.to,
+      });
+      setAdminRevenue(data);
+    } catch (error: any) {
+      console.error('Error fetching admin revenue:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchInstructorRevenue = async () => {
+    setLoading(true);
+    try {
+      const data = await getInstructorRevenue({
+        from: instructorDateRange.from,
+        to: instructorDateRange.to,
+        instructor_id: isInstructor ? user?.id : undefined, // If instructor, only show their data
+      });
+      setInstructorRevenue(data.instructors || []);
+    } catch (error: any) {
+      console.error('Error fetching instructor revenue:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchDetailedReport = async () => {
+    setLoading(true);
+    try {
+      const data = await getRevenueReport({
+        from: detailedDateRange.from,
+        to: detailedDateRange.to,
+        item_type: itemType,
+      });
+      setDetailedReport(data);
+    } catch (error: any) {
+      console.error('Error fetching detailed report:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="space-y-4">
-      {/* Page header */}
-      <div className="sm:flex sm:items-center">
-        <div className="sm:flex-auto">
-          <h1 className="text-2xl font-semibold text-gray-900">Báo cáo thống kê</h1>
-          <p className="mt-2 text-sm text-gray-700">
-            Phân tích dữ liệu và xu hướng của hệ thống
-          </p>
-        </div>
-        <div className="mt-4 sm:ml-16 sm:mt-0 sm:flex-none space-x-3">
-          <button
-            type="button"
-            className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
-          >
-            <FunnelIcon className="-ml-0.5 mr-1.5 h-5 w-5" />
-            Lọc
-          </button>
-          <button
-            type="button"
-            className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-all duration-200"
-          >
-            <ArrowDownTrayIcon className="-ml-0.5 mr-1.5 h-5 w-5" />
-            Xuất báo cáo
-          </button>
-        </div>
-      </div>
-
-      {/* Time period selector */}
-      <div className="bg-white shadow-sm rounded-lg border border-gray-200 p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <CalendarIcon className="h-5 w-5 text-gray-400" />
-            <span className="text-sm font-medium text-gray-900">Khoảng thời gian:</span>
-            <select className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-              <option>7 ngày qua</option>
-              <option>30 ngày qua</option>
-              <option>3 tháng qua</option>
-              <option>1 năm qua</option>
-              <option>Tùy chỉnh</option>
-            </select>
-          </div>
-          <div className="text-sm text-gray-500">
-            Cập nhật lần cuối: {new Date().toLocaleString('vi-VN')}
-          </div>
-        </div>
-      </div>
-
-      {/* Overview stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200 p-4">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
-                <CurrencyDollarIcon className="h-5 w-5 text-white" />
-              </div>
-            </div>
-            <div className="ml-4">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500">Tổng doanh thu</dt>
-                <dd className="text-2xl font-bold text-gray-900">{formatCurrency(overview.totalRevenue)}</dd>
-                <dd className="flex items-center text-sm text-green-600">
-                  <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
-                  {formatGrowth(overview.monthlyGrowth.revenue)}
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200 p-4">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
-                <UserGroupIcon className="h-5 w-5 text-white" />
-              </div>
-            </div>
-            <div className="ml-4">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500">Tổng người dùng</dt>
-                <dd className="text-2xl font-bold text-gray-900">{formatNumber(overview.totalUsers)}</dd>
-                <dd className="flex items-center text-sm text-blue-600">
-                  <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
-                  {formatGrowth(overview.monthlyGrowth.users)}
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200 p-4">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
-                <AcademicCapIcon className="h-5 w-5 text-white" />
-              </div>
-            </div>
-            <div className="ml-4">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500">Tổng khóa học</dt>
-                <dd className="text-2xl font-bold text-gray-900">{formatNumber(overview.totalCourses)}</dd>
-                <dd className="flex items-center text-sm text-purple-600">
-                  <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
-                  {formatGrowth(overview.monthlyGrowth.courses)}
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200 p-4">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
-                <BookOpenIcon className="h-5 w-5 text-white" />
-              </div>
-            </div>
-            <div className="ml-4">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500">Tổng sách</dt>
-                <dd className="text-2xl font-bold text-gray-900">{formatNumber(overview.totalBooks)}</dd>
-                <dd className="flex items-center text-sm text-yellow-600">
-                  <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
-                  {formatGrowth(overview.monthlyGrowth.books)}
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Charts and main content */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Revenue chart */}
-        <div className="lg:col-span-2">
-          <div className="bg-white shadow-sm rounded-lg border border-gray-200">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">Doanh thu theo tháng</h3>
-            </div>
-            <div className="p-6">
-              <div className="space-y-4">
-                {monthlyData.map((month, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                    <div>
-                      <h4 className="font-medium text-gray-900">{month.month}</h4>
-                      <div className="flex items-center space-x-4 text-sm text-gray-600 mt-1">
-                        <span>Người dùng: {formatNumber(month.users)}</span>
-                        <span>Khóa học: {month.courses}</span>
-                        <span>Sách: {month.books}</span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-semibold text-gray-900">
-                        {formatCurrency(month.revenue)}
-                      </div>
-                      <div className="text-sm text-green-600">
-                        {(() => {
-                          const prev = monthlyData[index - 1]?.revenue;
-                          const curr = month.revenue;
-                          if (!isFinite(prev as number) || !isFinite(curr as number) || prev === 0) return '—';
-                          const change = ((curr - (prev as number)) / (prev as number)) * 100;
-                          return `+${change.toFixed(1)}%`;
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* User activity */}
+    <div className="space-y-6">
+      <div className="sm:flex sm:items-center sm:justify-between">
         <div>
-          <div className="bg-white shadow-sm rounded-lg border border-gray-200">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">Hoạt động người dùng</h3>
+          <h1 className="text-2xl font-semibold text-gray-900">Báo cáo & Thống kê</h1>
+          <p className="mt-2 text-sm text-gray-700">Xem báo cáo doanh thu và thống kê chi tiết</p>
+        </div>
+        </div>
+
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          {!isInstructor && (
+          <button
+              onClick={() => setActiveTab('admin')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'admin'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center">
+                <CurrencyDollarIcon className="h-5 w-5 mr-2" />
+                Doanh thu Admin
+              </div>
+          </button>
+          )}
+          <button
+            onClick={() => setActiveTab('instructors')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'instructors'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-center">
+              <UserGroupIcon className="h-5 w-5 mr-2" />
+              {isInstructor ? 'Doanh thu của tôi' : 'Doanh thu Giảng viên'}
             </div>
-            <div className="p-6 space-y-4">
-              {userActivity.map((day, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">
-                      {new Date(day.date).toLocaleDateString('vi-VN')}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {day.newUsers} người dùng mới
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-semibold text-gray-900">
-                      {formatNumber(day.activeUsers)}
-                    </div>
-                    <div className="text-xs text-green-600">
-                      {day.coursesCompleted} hoàn thành
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+          </button>
+          {!isInstructor && (
+            <button
+              onClick={() => setActiveTab('detailed')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'detailed'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center">
+                <ChartBarIcon className="h-5 w-5 mr-2" />
+                Báo cáo Chi tiết
+        </div>
+            </button>
+          )}
+        </nav>
+      </div>
+
+      {/* Content */}
+      <div className="mt-6">
+        {loading && (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Đang tải dữ liệu...</p>
+          </div>
+        )}
+
+        {/* Admin Total Revenue Tab */}
+        {!loading && activeTab === 'admin' && (
+          <div className="space-y-6">
+            {/* Date Range Filter */}
+            <div className="bg-white shadow rounded-lg p-4">
+          <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+            <CalendarIcon className="h-5 w-5 text-gray-400" />
+                  <label className="text-sm font-medium text-gray-700">Từ ngày:</label>
+                  <input
+                    type="date"
+                    value={adminDateRange.from}
+                    onChange={(e) => setAdminDateRange({ ...adminDateRange, from: e.target.value })}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  />
+          </div>
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm font-medium text-gray-700">Đến ngày:</label>
+                  <input
+                    type="date"
+                    value={adminDateRange.to}
+                    onChange={(e) => setAdminDateRange({ ...adminDateRange, to: e.target.value })}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  />
           </div>
         </div>
       </div>
 
-      {/* Top courses and instructors */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* Top courses */}
-        <div className="bg-white shadow-sm rounded-lg border border-gray-200">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium text-gray-900">Khóa học hàng đầu</h3>
-              <div className="flex items-center space-x-3">
-                <select
-                  value={courseSort}
-                  onChange={(e) => setCourseSort(e.target.value as 'revenue' | 'students')}
-                  className="text-sm border border-gray-300 rounded-lg px-2 py-1"
-                >
-                  <option value="revenue">Sắp xếp: Doanh thu</option>
-                  <option value="students">Sắp xếp: Học viên</option>
-                </select>
-                <button className="text-sm text-blue-600 hover:text-blue-800">Xem tất cả</button>
+            {adminRevenue && (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="bg-white rounded-lg shadow p-6 border-l-4 border-blue-500">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">Tổng doanh thu Admin</p>
+                        <p className="text-2xl font-bold text-gray-900 mt-2">
+                          {formatCurrency(adminRevenue.total_revenue)}
+                        </p>
+                      </div>
+                      <CurrencyDollarIcon className="h-12 w-12 text-blue-500" />
               </div>
             </div>
-          </div>
-            <div className="p-6 space-y-4">
-            {(() => {
-              const displayCourses = Array.isArray(topCourses) ? [...topCourses] : [];
-              displayCourses.sort((a: TopCourse, b: TopCourse) => {
-                if (courseSort === 'revenue') {
-                  return (b.revenue ?? 0) - (a.revenue ?? 0);
-                }
-                return (b.students ?? 0) - (a.students ?? 0);
-              });
-              return displayCourses.map((course: TopCourse, index: number) => {
-              const isFree = course.isFree === true;
-              return (
-                <div key={course.id} className="flex items-start space-x-3">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <span className="text-sm font-semibold text-blue-600">#{index + 1}</span>
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-medium text-gray-900 truncate">
-                      {course.title}
-                    </h4>
-                    <div className="flex items-center justify-between mt-2">
-                      <div className="flex items-center space-x-3 text-xs text-gray-600">
-                        <span>★ {course.rating}</span>
-                      </div>
-                    </div>
-                    <div className="text-sm font-semibold text-green-600 mt-1">
-                      {isFree ? 'Miễn phí' : formatCurrency(course.revenue ?? 0)}
-                    </div>
-                  </div>
-                </div>
-              );
-              });
-            })()}
+
+                  <div className="bg-white rounded-lg shadow p-6 border-l-4 border-green-500">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">Doanh thu từ Admin</p>
+                        <p className="text-2xl font-bold text-gray-900 mt-2">
+                          {formatCurrency(adminRevenue.admin_items_revenue)}
+                        </p>
+            </div>
+                      <AcademicCapIcon className="h-12 w-12 text-green-500" />
           </div>
         </div>
 
-        {/* Top books (replaced top instructors) */}
-        <div className="bg-white shadow-sm rounded-lg border border-gray-200">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium text-gray-900">Sách hàng đầu</h3>
-              <div className="flex items-center space-x-3">
-                <select
-                  value={bookSort}
-                  onChange={(e) => setBookSort(e.target.value as 'revenue' | 'purchases')}
-                  className="text-sm border border-gray-300 rounded-lg px-2 py-1"
-                >
-                  <option value="revenue">Sắp xếp: Doanh thu</option>
-                  <option value="purchases">Sắp xếp: Lượt mua</option>
-                </select>
-                <button className="text-sm text-blue-600 hover:text-blue-800">Xem tất cả</button>
+                  <div className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">Chiết khấu từ GV</p>
+                        <p className="text-2xl font-bold text-gray-900 mt-2">
+                          {formatCurrency(adminRevenue.commission_from_instructors)}
+                        </p>
               </div>
+                      <UserGroupIcon className="h-12 w-12 text-purple-500" />
+          </div>
+        </div>
+
+                  <div className="bg-white rounded-lg shadow p-6 border-l-4 border-yellow-500">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">Tỷ lệ chiết khấu</p>
+                        <p className="text-2xl font-bold text-gray-900 mt-2">30%</p>
+              </div>
+                      <ChartBarIcon className="h-12 w-12 text-yellow-500" />
             </div>
           </div>
-          <div className="p-6 space-y-4">
-            {(() => {
-              const displayBooks = Array.isArray(topBooks) ? [...topBooks] : [];
-              displayBooks.sort((a: TopBook, b: TopBook) => {
-                if (bookSort === 'revenue') {
-                  return (b.revenue ?? b.price ?? 0) - (a.revenue ?? a.price ?? 0);
-                }
-                return (b.purchases ?? 0) - (a.purchases ?? 0);
-              });
-              return displayBooks.map((book: TopBook, index: number) => {
-              const isFree = book.isFree === true;
-              return (
-                <div key={book.id} className="flex items-start space-x-3">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                      <span className="text-sm font-semibold text-green-600">#{index + 1}</span>
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-medium text-gray-900">
-                      {book.title}
-                    </h4>
-                    <div className="flex items-center justify-between mt-1">
-                      <div className="flex items-center space-x-3 text-xs text-gray-600">
-                        <span>★ {book.rating ?? '—'}</span>
-                      </div>
-                    </div>
-                    <div className="text-sm font-semibold text-green-600 mt-1">
-                      {isFree ? 'Miễn phí' : formatCurrency(book.revenue ?? book.price ?? 0)}
-                    </div>
-                  </div>
-                </div>
-              );
-              });
-            })()}
+        </div>
+
+                {/* Breakdown Chart */}
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Phân tích theo loại</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'Khóa học', value: adminRevenue.breakdown.courses },
+                          { name: 'Sách điện tử', value: adminRevenue.breakdown.books },
+                        ]}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {[adminRevenue.breakdown.courses, adminRevenue.breakdown.books].map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                    </PieChart>
+                  </ResponsiveContainer>
+              </div>
+              </>
+            )}
+            </div>
+        )}
+
+        {/* Instructor Revenue Tab */}
+        {!loading && activeTab === 'instructors' && (
+          <div className="space-y-6">
+            {/* Date Range Filter */}
+            <div className="bg-white shadow rounded-lg p-4">
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <CalendarIcon className="h-5 w-5 text-gray-400" />
+                  <label className="text-sm font-medium text-gray-700">Từ ngày:</label>
+                  <input
+                    type="date"
+                    value={instructorDateRange.from}
+                    onChange={(e) => setInstructorDateRange({ ...instructorDateRange, from: e.target.value })}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  />
+            </div>
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm font-medium text-gray-700">Đến ngày:</label>
+                  <input
+                    type="date"
+                    value={instructorDateRange.to}
+                    onChange={(e) => setInstructorDateRange({ ...instructorDateRange, to: e.target.value })}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  />
           </div>
         </div>
       </div>
 
-      {/* Detailed reports section */}
-      <div className="bg-white shadow-sm rounded-lg border border-gray-200">
+            {instructorRevenue.length > 0 ? (
+              <>
+                {/* Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <p className="text-sm font-medium text-gray-600">Tổng giảng viên</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-2">{instructorRevenue.length}</p>
+            </div>
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <p className="text-sm font-medium text-gray-600">Tổng doanh thu</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-2">
+                      {formatCurrency(instructorRevenue.reduce((sum, inst) => sum + inst.gross_revenue, 0))}
+                    </p>
+                      </div>
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <p className="text-sm font-medium text-gray-600">Tổng thu nhập GV</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-2">
+                      {formatCurrency(instructorRevenue.reduce((sum, inst) => sum + inst.instructor_earning, 0))}
+                    </p>
+          </div>
+        </div>
+
+                {/* Table */}
+                <div className="bg-white shadow rounded-lg overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Giảng viên
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Doanh thu gộp
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Chiết khấu
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Thu nhập GV
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Số đơn hàng
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {instructorRevenue.map((inst) => (
+                          <tr key={inst.instructor_id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap">
+        <div>
+                                <div className="text-sm font-medium text-gray-900">{inst.instructor_name}</div>
+                                <div className="text-sm text-gray-500">{inst.instructor_email}</div>
+            </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {formatCurrency(inst.gross_revenue)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
+                              {formatCurrency(inst.total_commission)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
+                              {formatCurrency(inst.instructor_earning)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {inst.total_orders}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+        </div>
+      </div>
+
+                {/* Chart */}
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Top 10 Giảng viên</h3>
+                  <ResponsiveContainer width="100%" height={400}>
+                    <BarChart data={instructorRevenue.slice(0, 10).sort((a, b) => b.gross_revenue - a.gross_revenue)}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="instructor_name"
+                        angle={-45}
+                        textAnchor="end"
+                        height={100}
+                        interval={0}
+                      />
+                      <YAxis tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`} />
+                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                      <Legend />
+                      <Bar dataKey="gross_revenue" fill="#3b82f6" name="Doanh thu gộp" />
+                      <Bar dataKey="instructor_earning" fill="#10b981" name="Thu nhập GV" />
+                    </BarChart>
+                  </ResponsiveContainer>
+              </div>
+              </>
+            ) : (
+              <div className="bg-white shadow rounded-lg p-12 text-center">
+                <p className="text-gray-500">Chưa có dữ liệu doanh thu giảng viên</p>
+            </div>
+            )}
+          </div>
+        )}
+
+        {/* Detailed Report Tab */}
+        {!loading && activeTab === 'detailed' && (
+          <div className="space-y-6">
+            {/* Filters */}
+            <div className="bg-white shadow rounded-lg p-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="flex items-center space-x-2">
+                  <CalendarIcon className="h-5 w-5 text-gray-400" />
+                  <label className="text-sm font-medium text-gray-700">Từ ngày:</label>
+                  <input
+                    type="date"
+                    value={detailedDateRange.from}
+                    onChange={(e) => setDetailedDateRange({ ...detailedDateRange, from: e.target.value })}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  />
+                    </div>
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm font-medium text-gray-700">Đến ngày:</label>
+                  <input
+                    type="date"
+                    value={detailedDateRange.to}
+                    onChange={(e) => setDetailedDateRange({ ...detailedDateRange, to: e.target.value })}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  />
+                  </div>
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm font-medium text-gray-700">Loại:</label>
+                <select
+                    value={itemType || ''}
+                    onChange={(e) => setItemType(e.target.value ? Number(e.target.value) as 1 | 2 : undefined)}
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  >
+                    <option value="">Tất cả</option>
+                    <option value="1">Khóa học</option>
+                    <option value="2">Sách điện tử</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+            {detailedReport && (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <p className="text-sm font-medium text-gray-600">Tổng doanh thu gộp</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-2">
+                      {formatCurrency(detailedReport.totals.gross)}
+                    </p>
+                    </div>
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <p className="text-sm font-medium text-gray-600">Tổng doanh thu ròng</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-2">
+                      {formatCurrency(detailedReport.totals.net)}
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <p className="text-sm font-medium text-gray-600">Phí nền tảng</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-2">
+                      {formatCurrency(detailedReport.totals.platform_fee)}
+                    </p>
+                      </div>
+                  <div className="bg-white rounded-lg shadow p-6">
+                    <p className="text-sm font-medium text-gray-600">Thu nhập giảng viên</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-2">
+                      {formatCurrency(detailedReport.totals.instructor_earning)}
+                    </p>
+        </div>
+      </div>
+
+                {/* Table */}
+                <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">Báo cáo chi tiết</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Chi tiết theo giảng viên (Tỷ lệ chiết khấu: {detailedReport.commission_percentage}%)
+                    </h3>
         </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <button className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <DocumentChartBarIcon className="h-8 w-8 text-blue-500 mr-3" />
-              <div className="text-left">
-                <div className="text-sm font-medium text-gray-900">Báo cáo doanh thu</div>
-                <div className="text-xs text-gray-500">Chi tiết theo sản phẩm</div>
-              </div>
-            </button>
-
-            <button className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <UserGroupIcon className="h-8 w-8 text-green-500 mr-3" />
-              <div className="text-left">
-                <div className="text-sm font-medium text-gray-900">Báo cáo người dùng</div>
-                <div className="text-xs text-gray-500">Phân tích hành vi</div>
-              </div>
-            </button>
-
-            <button className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <AcademicCapIcon className="h-8 w-8 text-purple-500 mr-3" />
-              <div className="text-left">
-                <div className="text-sm font-medium text-gray-900">Báo cáo khóa học</div>
-                <div className="text-xs text-gray-500">Hiệu suất học tập</div>
-              </div>
-            </button>
-
-            <button className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-              <ChartBarIcon className="h-8 w-8 text-yellow-500 mr-3" />
-              <div className="text-left">
-                <div className="text-sm font-medium text-gray-900">Báo cáo tùy chỉnh</div>
-                <div className="text-xs text-gray-500">Tạo báo cáo riêng</div>
-              </div>
-            </button>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Giảng viên
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Doanh thu gộp
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Doanh thu ròng
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Phí nền tảng
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Thu nhập GV
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {detailedReport.per_instructor.map((inst, index) => (
+                          <tr key={index} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {inst.name || 'Admin (Khóa học/Sách của hệ thống)'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {formatCurrency(inst.gross)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {formatCurrency(inst.net)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
+                              {formatCurrency(inst.platform_fee)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
+                              {formatCurrency(inst.instructor_earning)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
           </div>
         </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

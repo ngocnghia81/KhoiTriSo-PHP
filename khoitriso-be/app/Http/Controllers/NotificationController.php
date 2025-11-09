@@ -7,6 +7,7 @@ use App\Models\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Notification Controller
@@ -23,7 +24,8 @@ class NotificationController extends BaseController
             $q = Notification::where('user_id', $request->user()->id);
             
             if ($request->filled('isRead')) {
-                $q->where('is_read', filter_var($request->query('isRead'), FILTER_VALIDATE_BOOLEAN));
+                $isRead = filter_var($request->query('isRead'), FILTER_VALIDATE_BOOLEAN);
+                $q->whereRaw('is_read = ?', [$isRead ? 'true' : 'false']);
             }
             
             if ($request->filled('type')) {
@@ -43,8 +45,9 @@ class NotificationController extends BaseController
                 ->take($pageSize)
                 ->get();
             
+            // Use whereRaw for PostgreSQL boolean compatibility
             $unreadCount = Notification::where('user_id', $request->user()->id)
-                ->where('is_read', false)
+                ->whereRaw('is_read = false')
                 ->count();
             
             return response()->json([
@@ -83,8 +86,8 @@ class NotificationController extends BaseController
                 return $this->notFound('Notification');
             }
             
-            $n->is_read = true;
-            $n->save();
+            // Use DB::statement for PostgreSQL boolean compatibility
+            DB::statement('UPDATE notifications SET is_read = true::boolean WHERE id = ?', [$id]);
             
             return $this->success(null);
 
@@ -101,7 +104,8 @@ class NotificationController extends BaseController
                 return $this->unauthorized();
             }
 
-            Notification::where('user_id', $request->user()->id)->update(['is_read' => true]);
+            // Use DB::statement for PostgreSQL boolean compatibility
+            DB::statement('UPDATE notifications SET is_read = true::boolean WHERE user_id = ?', [$request->user()->id]);
             
             return $this->success(null);
 

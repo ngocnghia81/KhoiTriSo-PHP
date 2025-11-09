@@ -114,8 +114,8 @@ export default function LiveClassesPage() {
   useEffect(() => {
     (async () => {
       const res = await getLiveClasses();
-      if (res.ok && Array.isArray(res.data)) {
-        const mapped: LiveClass[] = (res.data as any[]).map((lc: any) => ({
+      if (res && Array.isArray(res)) {
+        const mapped: LiveClass[] = (res as any[]).map((lc: any) => ({
           id: String(lc.id),
           title: lc.title ?? 'Lớp học',
           description: lc.description ?? '',

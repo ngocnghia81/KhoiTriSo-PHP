@@ -101,8 +101,26 @@ export default function LiveClassesPage() {
       if (selectedFilter !== 'all') params.status = selectedFilter;
       
       const res = await getLiveClasses(params);
-      if (res.ok && Array.isArray(res.data)) {
-        setLiveClasses(res.data as LiveClass[]);
+      if (res && Array.isArray(res)) {
+        // Map API response (snake_case) to interface (camelCase)
+        const mapped = res.map((lc: any) => ({
+          id: lc.id,
+          title: lc.title,
+          description: lc.description,
+          course: lc.course,
+          courseId: lc.course_id,
+          scheduledAt: lc.scheduled_at,
+          durationMinutes: lc.duration_minutes,
+          maxParticipants: lc.max_participants,
+          currentParticipants: lc.current_participants,
+          meetingUrl: lc.meeting_url,
+          meetingId: lc.meeting_id,
+          meetingPassword: lc.meeting_password,
+          status: lc.status,
+          recordingUrl: lc.recording_url,
+          createdAt: lc.created_at,
+        }));
+        setLiveClasses(mapped as LiveClass[]);
       }
     } catch (error: any) {
       notify(error.message || 'Lỗi tải danh sách lớp học', 'error');
@@ -148,7 +166,7 @@ export default function LiveClassesPage() {
       };
       
       const res = await createLiveClass(payload);
-      if (res.ok) {
+      if (res) {
         notify('Tạo lớp học thành công!', 'success');
         setShowCreateModal(false);
         resetForm();
@@ -181,7 +199,7 @@ export default function LiveClassesPage() {
       };
       
       const res = await updateLiveClass(selectedLiveClass.id, payload);
-      if (res.ok) {
+      if (res) {
         notify('Cập nhật lớp học thành công!', 'success');
         setShowEditModal(false);
         setSelectedLiveClass(null);

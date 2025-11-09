@@ -105,6 +105,11 @@ class CourseController extends BaseController
                 'staticPagePath' => ['required','string'],
             ]);
             
+            $user = $request->user();
+            // If user is admin, auto-approve and publish. If instructor, set to pending.
+            $approvalStatus = ($user->role ?? '') === 'admin' ? 1 : 0; // 0 = pending, 1 = approved
+            $isPublished = ($user->role ?? '') === 'admin' ? true : false;
+            
             $course = Course::create([
                 'title' => $data['title'],
                 'description' => $data['description'],
@@ -114,10 +119,10 @@ class CourseController extends BaseController
                 'is_free' => $data['isFree'],
                 'price' => $data['price'],
                 'static_page_path' => $data['staticPagePath'],
-                'instructor_id' => $request->user()->id,
-                'approval_status' => 1,
+                'instructor_id' => $user->id,
+                'approval_status' => $approvalStatus,
                 'is_active' => true,
-                'is_published' => false,
+                'is_published' => $isPublished,
             ]);
             
             return $this->success($course, null, $request);

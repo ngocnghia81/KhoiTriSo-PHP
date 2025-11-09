@@ -44,25 +44,12 @@ const navigation = [
     icon: UserGroupIcon,
     children: [
       { name: 'Danh sách người dùng', href: '/dashboard/users' },
-      { name: 'Giảng viên', href: '/dashboard/instructors' },
-      { name: 'Học sinh', href: '/dashboard/students' },
-      { name: 'Vai trò & quyền', href: '/dashboard/roles' },
     ],
   },
   {
     name: 'Khóa học',
     icon: AcademicCapIcon,
     children: [], // Will be populated dynamically from database
-  },
-  {
-    name: 'Bài tập & Kiểm tra',
-    icon: ClipboardDocumentListIcon,
-    children: [
-      { name: 'Danh sách bài tập', href: '/dashboard/assignments' },
-      { name: 'Câu hỏi', href: '/dashboard/questions' },
-      { name: 'Kết quả', href: '/dashboard/results' },
-      { name: 'Thống kê điểm', href: '/dashboard/grades' },
-    ],
   },
   {
     name: 'Sách điện tử',
@@ -77,8 +64,6 @@ const navigation = [
     icon: ShoppingCartIcon,
     children: [
       { name: 'Đơn hàng', href: '/dashboard/orders' },
-      { name: 'Thanh toán', href: '/dashboard/payments' },
-      { name: 'Giỏ hàng', href: '/dashboard/carts' },
       { name: 'Mã giảm giá', href: '/dashboard/coupons' },
     ],
   },
@@ -86,10 +71,7 @@ const navigation = [
     name: 'Báo cáo & Thống kê',
     icon: ChartBarIcon,
     children: [
-      { name: 'Doanh thu', href: '/dashboard/revenue' },
-      { name: 'Người dùng', href: '/dashboard/user-analytics' },
-      { name: 'Khóa học', href: '/dashboard/course-analytics' },
-      { name: 'Hoạt động', href: '/dashboard/activity-analytics' },
+      { name: 'Báo cáo tổng hợp', href: '/dashboard/reports' },
     ],
   },
   {
@@ -97,8 +79,6 @@ const navigation = [
     icon: DocumentTextIcon,
     children: [
       { name: 'Danh mục', href: '/dashboard/categories' },
-      { name: 'Tags', href: '/dashboard/tags' },
-      { name: 'Thông báo', href: '/dashboard/announcements' },
       { name: 'Trang tĩnh', href: '/dashboard/static-pages' },
     ],
   },
@@ -106,8 +86,6 @@ const navigation = [
     name: 'Phê duyệt',
     icon: ExclamationTriangleIcon,
     children: [
-      { name: 'Tổng quan', href: '/dashboard/approvals' },
-      { name: 'Đăng ký giảng viên', href: '/dashboard/approvals/instructors' },
       { name: 'Khóa học', href: '/dashboard/approvals/courses' },
       { name: 'Sách điện tử', href: '/dashboard/approvals/books' },
     ],
@@ -119,7 +97,6 @@ const navigation = [
       { name: 'Tổng quan', href: '/dashboard/commissions' },
       { name: 'Thanh toán chờ', href: '/dashboard/commissions/pending' },
       { name: 'Lịch sử thanh toán', href: '/dashboard/commissions/history' },
-      { name: 'Top giảng viên', href: '/dashboard/commissions/top-instructors' },
     ],
   },
   {

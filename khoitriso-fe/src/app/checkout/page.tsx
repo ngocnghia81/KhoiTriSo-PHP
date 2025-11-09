@@ -16,10 +16,20 @@ import { requireAuth } from '@/utils/authCheck';
 interface CartItem {
   id: number;
   item_id: number;
-  item_type: number;
-  item_name: string;
-  price: number;
+  item_type: number | string;
+  item_name?: string;
+  price?: number;
   quantity: number;
+  course?: {
+    id: number;
+    title: string;
+    price: string | number;
+  };
+  book?: {
+    id: number;
+    title: string;
+    price: string | number;
+  };
 }
 
 interface Coupon {
@@ -52,7 +62,39 @@ export default function CheckoutPage() {
       setLoading(true);
       const response = await httpClient.get('cart');
       if (response.ok && response.data) {
-        setCartItems(response.data.items || []);
+        // Backend returns: { data: [...], totalItems: ... }
+        const items = response.data.data || response.data.items || [];
+        
+        // Map items to include item_name and price from course/book
+        const mappedItems: CartItem[] = items.map((item: any) => {
+          const cartItem: CartItem = {
+            id: item.id,
+            item_id: item.item_id,
+            item_type: typeof item.item_type === 'string' 
+              ? (item.item_type === 'course' ? 1 : 2)
+              : item.item_type,
+            quantity: item.quantity || 1,
+          };
+          
+          // Get name and price from course or book
+          if (item.course) {
+            cartItem.item_name = item.course.title;
+            cartItem.price = typeof item.course.price === 'string' 
+              ? parseFloat(item.course.price) 
+              : item.course.price;
+            cartItem.course = item.course;
+          } else if (item.book) {
+            cartItem.item_name = item.book.title;
+            cartItem.price = typeof item.book.price === 'string' 
+              ? parseFloat(item.book.price) 
+              : item.book.price;
+            cartItem.book = item.book;
+          }
+          
+          return cartItem;
+        });
+        
+        setCartItems(mappedItems);
       }
     } catch (error: any) {
       notify(error.message || 'Lỗi tải giỏ hàng', 'error');
@@ -62,7 +104,10 @@ export default function CheckoutPage() {
   };
 
   const calculateSubtotal = () => {
-    return cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    return cartItems.reduce((sum, item) => {
+      const price = item.price || 0;
+      return sum + (price * item.quantity);
+    }, 0);
   };
 
   const calculateDiscount = () => {

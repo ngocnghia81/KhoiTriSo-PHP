@@ -15,6 +15,8 @@ import {
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 import { bookService } from '@/services/bookService';
+import { getInstructorBooks } from '@/services/instructor';
+import { getBooks } from '@/services/admin';
 import { getCategories, Category } from '@/services/categories';
 import { uploadFile } from '@/services/uploads';
 import { useToast } from '@/components/ToastProvider';
@@ -45,6 +47,8 @@ export default function BooksPage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [user, setUser] = useState<any>(null);
+  const [isInstructor, setIsInstructor] = useState(false);
   
   // Search & Filter
   const [search, setSearch] = useState('');
@@ -90,35 +94,90 @@ export default function BooksPage() {
   const [coverPreview, setCoverPreview] = useState<string>('');
   const [uploadingCover, setUploadingCover] = useState(false);
 
+  // Check user role
+  useEffect(() => {
+    try {
+      const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      if (userStr) {
+        const userData = JSON.parse(userStr);
+        setUser(userData);
+        setIsInstructor(userData.role === 'instructor');
+      }
+    } catch (error) {
+      console.error('Error getting user:', error);
+    }
+  }, []);
+
   // Fetch books with filters and pagination
-  const fetchBooks = useCallback(async () => {
+  const fetchBooks = async () => {
     try {
       setLoading(true);
       const params: any = {
         page: currentPage,
-        perPage,
+        pageSize: perPage,
       };
       
       if (search) params.search = search;
       if (categoryFilter) params.categoryId = categoryFilter;
-      if (statusFilter !== '') params.isActive = statusFilter;
+      if (statusFilter !== '') params.status = statusFilter === true ? 'active' : 'inactive';
       if (approvalFilter !== '') params.approvalStatus = approvalFilter;
       
-      const response = await bookService.listBooksAdmin(params);
-      setBooks((response.data || []) as Book[]);
+      let response;
+      if (isInstructor) {
+        // Use instructor service
+        const instructorResponse = await getInstructorBooks(params);
+        response = {
+          data: instructorResponse.books.map(book => ({
+            ...book,
+            cover_image: book.coverImage,
+            is_active: true, // Default for instructor
+          })),
+          pagination: instructorResponse.pagination,
+        };
+      } else {
+        // Use admin service
+        const adminResponse = await getBooks(params);
+        response = {
+          data: adminResponse.books,
+          pagination: adminResponse.pagination,
+        };
+      }
+      
+      const mappedBooks = (response.data || []).map((book: any) => ({
+        id: book.id,
+        title: book.title,
+        description: book.description,
+        isbn: book.isbn,
+        cover_image: book.cover_image || book.coverImage,
+        price: typeof book.price === 'string' ? parseFloat(book.price) : book.price,
+        category_id: book.category_id || book.category?.id,
+        category: book.category,
+        author_id: book.author_id || book.author?.id,
+        author: book.author,
+        is_active: book.is_active !== undefined ? book.is_active : (book.isActive !== undefined ? book.isActive : true),
+        approval_status: book.approval_status !== undefined ? book.approval_status : (book.approvalStatus !== undefined ? book.approvalStatus : 0),
+        language: book.language || 'vi',
+        publication_year: book.publication_year || book.publicationYear,
+        edition: book.edition,
+        chapters: book.chapters || [],
+      })) as Book[];
+      console.log('Fetched books:', mappedBooks.length, 'pagination:', response.pagination);
+      setBooks(mappedBooks);
       setTotal(response.pagination?.total || 0);
-      setLastPage((response.pagination as any)?.lastPage || (response.pagination as any)?.last_page || 1);
+      setLastPage(response.pagination?.totalPages || 1);
     } catch (error) {
       console.error('Error fetching books:', error);
       notify('Lỗi tải danh sách sách', 'error');
     } finally {
       setLoading(false);
     }
-  }, [currentPage, perPage, search, categoryFilter, statusFilter, approvalFilter, notify]);
+  };
 
   useEffect(() => {
-    fetchBooks();
-  }, [fetchBooks]);
+    if (user) { // Only fetch when user is loaded
+      fetchBooks();
+    }
+  }, [currentPage, perPage, search, categoryFilter, statusFilter, approvalFilter, isInstructor, user]);
 
   useEffect(() => {
     fetchCategories();

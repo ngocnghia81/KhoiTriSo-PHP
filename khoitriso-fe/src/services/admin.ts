@@ -137,9 +137,28 @@ export async function getCourses(params?: {
   if (!isSuccess(response)) throw new Error(handleApiError(response));
   
   // Response format: { success: true, data: [...courses...], pagination: {...} }
+  // Or nested: { success: true, data: { data: [...], pagination: {...} } }
   const apiResponse = response.data as any;
-  const data = apiResponse?.data as AdminCourse[] | null;
-  const pagination = apiResponse?.pagination;
+  const nestedData = apiResponse?.data;
+  const data = (Array.isArray(nestedData) ? nestedData : (nestedData?.data || apiResponse?.data)) as AdminCourse[] | null;
+  const rawPagination = (Array.isArray(nestedData) ? apiResponse?.pagination : (nestedData?.pagination || apiResponse?.pagination));
+  
+  // Convert pagination format
+  const pagination = rawPagination ? {
+    page: rawPagination.page || rawPagination.current_page || 1,
+    limit: rawPagination.limit || rawPagination.per_page || 20,
+    total: rawPagination.total || 0,
+    totalPages: rawPagination.totalPages || rawPagination.last_page || 1,
+    hasNextPage: rawPagination.hasNextPage !== undefined ? rawPagination.hasNextPage : ((rawPagination.page || rawPagination.current_page || 1) < (rawPagination.totalPages || rawPagination.last_page || 1)),
+    hasPreviousPage: rawPagination.hasPreviousPage !== undefined ? rawPagination.hasPreviousPage : ((rawPagination.page || rawPagination.current_page || 1) > 1),
+  } : {
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  };
   
   if (!data || !Array.isArray(data)) {
     throw new Error('Invalid response format');
@@ -147,14 +166,7 @@ export async function getCourses(params?: {
   
   return {
     courses: data,
-    pagination: pagination || {
-      page: 1,
-      limit: 20,
-      total: 0,
-      totalPages: 0,
-      hasNextPage: false,
-      hasPreviousPage: false,
-    },
+    pagination,
   };
 }
 
@@ -570,10 +582,39 @@ export async function toggleUserStatus(id: number): Promise<{ id: number; isActi
 }
 
 // Course Management Actions
-export async function approveCourse(id: number): Promise<{ id: number; approvalStatus: number; message: string }> {
+export async function getPendingCourses(params?: { page?: number; pageSize?: number }): Promise<PaginatedCoursesResponse> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.pageSize) query.set('pageSize', String(params.pageSize));
+  const qs = query.toString();
+  const response = await httpClient.get(`admin/approvals/courses${qs ? `?${qs}` : ''}`);
+  if (!isSuccess(response)) throw new Error(handleApiError(response));
+  
+  const apiResponse = response.data as any;
+  const data = apiResponse?.data as AdminCourse[] | null;
+  const pagination = apiResponse?.pagination;
+  
+  if (!data || !Array.isArray(data)) {
+    throw new Error('Invalid response format');
+  }
+  
+  return {
+    courses: data,
+    pagination: pagination || {
+      page: 1,
+      limit: 20,
+      total: 0,
+      totalPages: 0,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+  };
+}
+
+export async function approveCourse(id: number): Promise<{ id: number; approvalStatus: number; isPublished: boolean; message: string }> {
   const response = await httpClient.put(`admin/courses/${id}/approve`, {});
   if (!isSuccess(response)) throw new Error(handleApiError(response));
-  return extractData(response) as { id: number; approvalStatus: number; message: string };
+  return extractData(response) as { id: number; approvalStatus: number; isPublished: boolean; message: string };
 }
 
 export async function rejectCourse(id: number, reason?: string): Promise<{ id: number; approvalStatus: number; reviewNotes?: string; message: string }> {
@@ -595,10 +636,126 @@ export async function unpublishCourse(id: number): Promise<{ id: number; isPubli
 }
 
 // Book Management Actions
-export async function approveBook(id: number): Promise<{ id: number; approvalStatus: number; message: string }> {
+export interface AdminBook {
+  id: number;
+  title: string;
+  description?: string;
+  isbn?: string;
+  coverImage?: string;
+  price: number;
+  approvalStatus: number;
+  isPublished?: boolean;
+  reviewNotes?: string;
+  author?: {
+    id: number;
+    name: string;
+    email: string;
+  };
+  category?: {
+    id: number;
+    name: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaginatedAdminBooksResponse {
+  books: AdminBook[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
+export async function getBooks(params?: {
+  status?: string;
+  approvalStatus?: number;
+  search?: string;
+  categoryId?: number;
+  page?: number;
+  pageSize?: number;
+}): Promise<PaginatedAdminBooksResponse> {
+  const query = new URLSearchParams();
+  if (params?.status) query.set('status', params.status);
+  if (params?.approvalStatus !== undefined) query.set('approvalStatus', String(params.approvalStatus));
+  if (params?.search) query.set('search', params.search);
+  if (params?.categoryId) query.set('categoryId', String(params.categoryId));
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.pageSize) query.set('pageSize', String(params.pageSize));
+  const qs = query.toString();
+  const response = await httpClient.get(`admin/books${qs ? `?${qs}` : ''}`);
+  if (!isSuccess(response)) throw new Error(handleApiError(response));
+  
+  const apiResponse = response.data as any;
+  // Handle nested structure: { success: true, data: { data: [...], pagination: {...} } }
+  const nestedData = apiResponse?.data;
+  const data = (nestedData?.data || apiResponse?.data) as AdminBook[] | null;
+  const rawPagination = nestedData?.pagination || apiResponse?.pagination;
+  
+  // Convert Laravel pagination format to our format
+  const pagination = rawPagination ? {
+    page: rawPagination.current_page || rawPagination.page || 1,
+    limit: rawPagination.per_page || rawPagination.limit || 20,
+    total: rawPagination.total || 0,
+    totalPages: rawPagination.last_page || rawPagination.totalPages || 1,
+    hasNextPage: (rawPagination.current_page || rawPagination.page || 1) < (rawPagination.last_page || rawPagination.totalPages || 1),
+    hasPreviousPage: (rawPagination.current_page || rawPagination.page || 1) > 1,
+  } : {
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  };
+  
+  if (!data || !Array.isArray(data)) {
+    throw new Error('Invalid response format');
+  }
+  
+  return {
+    books: data,
+    pagination,
+  };
+}
+
+export async function getPendingBooks(params?: { page?: number; pageSize?: number }): Promise<PaginatedAdminBooksResponse> {
+  const query = new URLSearchParams();
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.pageSize) query.set('pageSize', String(params.pageSize));
+  const qs = query.toString();
+  const response = await httpClient.get(`admin/approvals/books${qs ? `?${qs}` : ''}`);
+  if (!isSuccess(response)) throw new Error(handleApiError(response));
+  
+  const apiResponse = response.data as any;
+  const data = apiResponse?.data as AdminBook[] | null;
+  const pagination = apiResponse?.pagination;
+  
+  if (!data || !Array.isArray(data)) {
+    throw new Error('Invalid response format');
+  }
+  
+  return {
+    books: data,
+    pagination: pagination || {
+      page: 1,
+      limit: 20,
+      total: 0,
+      totalPages: 0,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+  };
+}
+
+export async function approveBook(id: number): Promise<{ id: number; approvalStatus: number; isPublished: boolean; message: string }> {
   const response = await httpClient.put(`admin/books/${id}/approve`, {});
   if (!isSuccess(response)) throw new Error(handleApiError(response));
-  return extractData(response) as { id: number; approvalStatus: number; message: string };
+  return extractData(response) as { id: number; approvalStatus: number; isPublished: boolean; message: string };
 }
 
 export async function rejectBook(id: number, reason?: string): Promise<{ id: number; approvalStatus: number; reviewNotes?: string; message: string }> {
@@ -617,4 +774,112 @@ export async function unpublishBook(id: number): Promise<{ id: number; isPublish
   const response = await httpClient.put(`admin/books/${id}/unpublish`, {});
   if (!isSuccess(response)) throw new Error(handleApiError(response));
   return extractData(response) as { id: number; isPublished: boolean; message: string };
+}
+
+export interface AdminOrder {
+  id: number;
+  order_code: string;
+  user_id: number;
+  user_name: string;
+  user_email: string;
+  total_amount: number;
+  discount_amount: number;
+  final_amount: number;
+  status: number;
+  payment_method: string;
+  created_at: string;
+  paid_at: string | null;
+  items_count: number;
+}
+
+export interface PaginatedOrdersResponse {
+  orders: AdminOrder[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
+export async function getOrders(params?: {
+  search?: string;
+  status?: number;
+  userId?: number;
+  fromDate?: string;
+  toDate?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  perPage?: number;
+}): Promise<PaginatedOrdersResponse> {
+  const query = new URLSearchParams();
+  if (params?.search) query.set('search', params.search);
+  if (params?.status !== undefined) query.set('status', String(params.status));
+  if (params?.userId) query.set('userId', String(params.userId));
+  if (params?.fromDate) query.set('fromDate', params.fromDate);
+  if (params?.toDate) query.set('toDate', params.toDate);
+  if (params?.sortBy) query.set('sortBy', params.sortBy);
+  if (params?.sortOrder) query.set('sortOrder', params.sortOrder);
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.perPage) query.set('perPage', String(params.perPage));
+  
+  const qs = query.toString();
+  const response = await httpClient.get(`admin/orders${qs ? `?${qs}` : ''}`);
+  
+  if (!isSuccess(response)) {
+    throw new Error(handleApiError(response));
+  }
+  
+  // Response format: { success: true, data: [...orders...], pagination: {...} }
+  const apiResponse = response.data as any;
+  const data = apiResponse?.data as AdminOrder[] | null;
+  const pagination = apiResponse?.pagination;
+  
+  if (!data || !Array.isArray(data)) {
+    throw new Error('Invalid response format');
+  }
+  
+  return {
+    orders: data,
+    pagination: pagination || {
+      page: params?.page || 1,
+      limit: params?.perPage || 20,
+      total: data.length,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+  };
+}
+
+export interface AdminOrderDetail extends AdminOrder {
+  user_phone?: string | null;
+  tax_amount: number;
+  payment_gateway?: string | null;
+  transaction_id?: string | null;
+  billing_address?: any;
+  order_notes?: string | null;
+  items: Array<{
+    id: number;
+    item_id: number;
+    item_type: number;
+    item_name: string | null;
+    thumbnail?: string | null;
+    price: number;
+    quantity: number;
+    subtotal: number;
+  }>;
+}
+
+export async function getOrder(id: number): Promise<AdminOrderDetail> {
+  const response = await httpClient.get(`admin/orders/${id}`);
+  
+  if (!isSuccess(response)) {
+    throw new Error(handleApiError(response));
+  }
+  
+  return extractData(response) as AdminOrderDetail;
 }

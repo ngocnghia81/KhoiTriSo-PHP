@@ -68,7 +68,7 @@ export default function CreateLiveClassPage() {
       };
       const res = await createLiveClass(payload);
       setSubmitting(false);
-      if (res.ok) {
+      if (res) {
         notify('Tạo lớp học thành công!', 'success');
         router.push('/instructor/live-classes');
       } else {

@@ -163,14 +163,52 @@ class OrderController extends Controller
             'order_notes' => $data['orderNotes'] ?? null,
         ]);
 
+        // Get commission rate from system settings (default 30%)
+        $commissionRate = (float) DB::table('system_settings')
+            ->where('setting_key', 'commission_rate_default')
+            ->value('setting_value') ?: 30.0;
+
         foreach ($itemsWithDetails as $item) {
+            $instructorId = null;
+            $itemPrice = $item['price'];
+            $quantity = $item['quantity'];
+            $subtotal = $itemPrice * $quantity;
+            
+            // Calculate discount share for this item
+            $discountShare = $total > 0 ? ($subtotal / $total) * $discount : 0;
+            $netAmount = $subtotal - $discountShare;
+            
+            // Get instructor_id from course or book
+            if ($item['itemType'] == 1) { // Course
+                $course = Course::find($item['itemId']);
+                $instructorId = $course ? $course->instructor_id : null;
+            } elseif ($item['itemType'] == 2) { // Book
+                $book = Book::find($item['itemId']);
+                $instructorId = $book ? $book->author_id : null;
+            }
+            
+            // Calculate commission only if item is created by instructor (not admin)
+            $commissionAmount = 0;
+            $instructorRevenue = $netAmount;
+            
+            if ($instructorId) {
+                // Item created by instructor - calculate commission
+                $commissionAmount = round($netAmount * ($commissionRate / 100), 2);
+                $instructorRevenue = round($netAmount - $commissionAmount, 2);
+            }
+            // If instructor_id is null, it's created by admin, so no commission
+            
             OrderItem::create([
                 'order_id' => $order->id,
                 'item_id' => $item['itemId'],
                 'item_type' => $item['itemType'],
                 'item_name' => $item['itemName'],
-                'price' => $item['price'],
-                'quantity' => $item['quantity'],
+                'price' => $itemPrice,
+                'quantity' => $quantity,
+                'instructor_id' => $instructorId,
+                'commission_rate' => $instructorId ? $commissionRate : 0,
+                'commission_amount' => $commissionAmount,
+                'instructor_revenue' => $instructorRevenue,
             ]);
         }
 
@@ -382,12 +420,15 @@ class OrderController extends Controller
             $vnpayService = new VNPayService();
             $inputData = $request->all();
             
+            // Get frontend URL from config or env, default to localhost:3000
+            $frontendUrl = config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000'));
+            
             // Verify payment
             $verifyResult = $vnpayService->verifyPayment($inputData);
             
             if (!$verifyResult['success']) {
                 \Log::error('VNPay payment verification failed', ['data' => $inputData]);
-                return redirect('/orders?status=error&message=' . urlencode('Xác thực thanh toán thất bại'));
+                return redirect("{$frontendUrl}/orders?status=error&message=" . urlencode('Xác thực thanh toán thất bại'));
             }
             
             // Find order by order code
@@ -395,34 +436,43 @@ class OrderController extends Controller
             
             if (!$order) {
                 \Log::error('Order not found for VNPay callback', ['order_code' => $verifyResult['order_code']]);
-                return redirect('/orders?status=error&message=' . urlencode('Không tìm thấy đơn hàng'));
+                return redirect("{$frontendUrl}/orders?status=error&message=" . urlencode('Không tìm thấy đơn hàng'));
             }
             
             // Check if order is already paid
             if ($order->status == 2) {
-                return redirect("/orders/{$order->id}?status=success");
+                return redirect("{$frontendUrl}/orders/{$order->id}?status=success");
             }
             
             // Check response code
             if ($verifyResult['response_code'] === '00') {
                 // Payment successful
-                $order->status = 2; // Paid
-                $order->paid_at = now();
-                $order->transaction_id = $verifyResult['transaction_id'];
-                $order->payment_method = 'vnpay';
-                $order->payment_gateway = 'vnpay';
-                $order->save();
-                
-                // Process order items (enroll courses, generate book codes)
-                $this->processOrderItems($order);
-                
-                \Log::info('VNPay payment successful', [
-                    'order_id' => $order->id,
-                    'order_code' => $order->order_code,
-                    'transaction_id' => $verifyResult['transaction_id']
-                ]);
-                
-                return redirect("/orders/{$order->id}?status=success");
+                DB::beginTransaction();
+                try {
+                    $order->status = 2; // Paid
+                    $order->paid_at = now();
+                    $order->transaction_id = $verifyResult['transaction_id'];
+                    $order->payment_method = 'vnpay';
+                    $order->payment_gateway = 'vnpay';
+                    $order->save();
+                    
+                    // Process order items (enroll courses, generate book codes)
+                    $this->processOrderItems($order);
+                    
+                    DB::commit();
+                    
+                    \Log::info('VNPay payment successful', [
+                        'order_id' => $order->id,
+                        'order_code' => $order->order_code,
+                        'transaction_id' => $verifyResult['transaction_id']
+                    ]);
+                    
+                    return redirect("{$frontendUrl}/orders/{$order->id}?status=success");
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    \Log::error('Error processing order items after payment: ' . $e->getMessage());
+                    return redirect("{$frontendUrl}/orders/{$order->id}?status=error&message=" . urlencode('Thanh toán thành công nhưng có lỗi khi xử lý đơn hàng'));
+                }
             } else {
                 // Payment failed
                 $order->status = 3; // Failed
@@ -434,14 +484,16 @@ class OrderController extends Controller
                     'message' => $verifyResult['message']
                 ]);
                 
-                return redirect("/orders/{$order->id}?status=error&message=" . urlencode($verifyResult['message']));
+                return redirect("{$frontendUrl}/orders/{$order->id}?status=error&message=" . urlencode($verifyResult['message']));
             }
             
         } catch (\Exception $e) {
             \Log::error('Error processing VNPay callback: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
+                'input_data' => $request->all()
             ]);
-            return redirect('/orders?status=error&message=' . urlencode('Có lỗi xảy ra khi xử lý thanh toán'));
+            $frontendUrl = config('app.frontend_url', env('FRONTEND_URL', 'http://localhost:3000'));
+            return redirect("{$frontendUrl}/orders?status=error&message=" . urlencode('Có lỗi xảy ra khi xử lý thanh toán'));
         }
     }
 

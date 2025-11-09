@@ -136,8 +136,8 @@ export default function BookActivationPage() {
             title: book?.title || 'Sách điện tử',
             expiryDate,
             accessUrl: formData.questionId 
-              ? `/books/${book?.id || ''}?question=${formData.questionId}`
-              : `/books/${book?.id || ''}`
+              ? `/books/${book?.id || ''}/read?question=${formData.questionId}`
+              : `/books/${book?.id || ''}/read`
           };
 
           setActivatedBook(activatedBookData);

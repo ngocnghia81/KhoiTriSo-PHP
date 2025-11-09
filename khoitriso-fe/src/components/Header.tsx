@@ -20,6 +20,7 @@ import {
 import { ChevronDownIcon } from "@heroicons/react/20/solid";
 import Logo from "./Logo";
 import BackdropBlur from "./BackdropBlur";
+import NotificationBell from "./NotificationBell";
 
 const navigation = [
     {
@@ -252,6 +253,7 @@ export default function Header() {
 
                             {/* Auth Buttons */}
                             <div className="flex items-center space-x-3">
+                                {hasToken && <NotificationBell />}
                                 {hasToken ? (
                                     <div className="relative">
                                         <button

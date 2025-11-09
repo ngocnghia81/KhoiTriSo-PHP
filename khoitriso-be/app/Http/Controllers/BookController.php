@@ -101,6 +101,11 @@ class BookController extends Controller
             'publicationYear' => ['nullable','integer'],
             'edition' => ['nullable','string','max:50'],
         ]);
+        $user = $request->user();
+        // If user is admin, auto-approve and publish. If instructor, set to pending.
+        $approvalStatus = ($user->role ?? '') === 'admin' ? 1 : 0; // 0 = pending, 1 = approved
+        $isPublished = ($user->role ?? '') === 'admin' ? true : false;
+        
         $book = Book::create([
             'title' => $data['title'],
             'description' => $data['description'],
@@ -110,8 +115,9 @@ class BookController extends Controller
             'category_id' => $data['categoryId'] ?? null,
             'ebook_file' => $data['ebookFile'],
             'static_page_path' => $data['staticPagePath'],
-            'author_id' => $request->user()->id,
-            'approval_status' => 1,
+            'author_id' => $user->id,
+            'approval_status' => $approvalStatus,
+            'is_published' => $isPublished,
             'language' => $data['language'] ?? 'vi',
             'publication_year' => $data['publicationYear'] ?? null,
             'edition' => $data['edition'] ?? null,

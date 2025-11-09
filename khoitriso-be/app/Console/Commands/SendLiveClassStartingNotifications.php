@@ -10,6 +10,7 @@ use App\Models\Course;
 use App\Mail\LiveClassStarting;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class SendLiveClassStartingNotifications extends Command
@@ -75,7 +76,7 @@ class SendLiveClassStartingNotifications extends Command
             
             // Get all enrolled students
             $enrollments = CourseEnrollment::where('course_id', $liveClass->course_id)
-                ->where('is_active', true)
+                ->whereRaw('is_active = true')
                 ->with('user')
                 ->get();
             
@@ -90,16 +91,20 @@ class SendLiveClassStartingNotifications extends Command
                 $user = $enrollment->user;
                 if (!$user) continue;
                 
-                // Create notification
+                // Create notification using raw SQL for PostgreSQL boolean compatibility
                 try {
-                    Notification::create([
-                        'user_id' => $user->id,
-                        'title' => "🔴 Lớp học đang bắt đầu: {$liveClass->title}",
-                        'message' => "Lớp học trực tuyến '{$liveClass->title}' của khóa học '{$course->title}' đang bắt đầu ngay bây giờ! Hãy tham gia ngay.",
-                        'type' => 4, // Live class starting type
-                        'action_url' => "/live-classes/{$liveClass->id}",
-                        'priority' => 1, // High priority
-                        'is_read' => false,
+                    DB::statement("
+                        INSERT INTO notifications (user_id, title, message, type, action_url, priority, is_read, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, false::boolean, ?, ?)
+                    ", [
+                        $user->id,
+                        "🔴 Lớp học đang bắt đầu: {$liveClass->title}",
+                        "Lớp học trực tuyến '{$liveClass->title}' của khóa học '{$course->title}' đang bắt đầu ngay bây giờ! Hãy tham gia ngay.",
+                        4, // Live class starting type
+                        "/live-classes/{$liveClass->id}",
+                        1, // High priority
+                        now(),
+                        now(),
                     ]);
                 } catch (\Exception $e) {
                     Log::error("Failed to create starting notification for user {$user->id}: " . $e->getMessage());

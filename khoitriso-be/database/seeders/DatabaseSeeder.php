@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
             BookContentSeeder::class, // Create chapters, questions, options, and solutions for books
             CompleteCourseContentSeeder::class, // Add lessons, materials, assignments
             TestEnrollmentSeeder::class, // Enroll student in courses
+            StaticPagesSeeder::class, // Create static pages with SEO
         ]);
     }
 }
