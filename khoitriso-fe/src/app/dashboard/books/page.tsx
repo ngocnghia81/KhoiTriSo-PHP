@@ -1,144 +1,358 @@
-import { Metadata } from 'next';
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   BookOpenIcon,
   PlusIcon,
   MagnifyingGlassIcon,
   FunnelIcon,
-  EllipsisVerticalIcon,
   PencilIcon,
   TrashIcon,
   EyeIcon,
-  CheckCircleIcon,
-  XCircleIcon,
-  StarIcon,
-  UserGroupIcon,
-  ClockIcon,
-  CurrencyDollarIcon,
-  KeyIcon,
-  DocumentTextIcon,
-  PhotoIcon,
-  VideoCameraIcon,
-  QrCodeIcon
+  XMarkIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from '@heroicons/react/24/outline';
-import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
+import { bookService } from '@/services/bookService';
+import { getCategories, Category } from '@/services/categories';
+import { uploadFile } from '@/services/uploads';
+import { useToast } from '@/components/ToastProvider';
 
-export const metadata: Metadata = {
-  title: 'Quản lý sách điện tử - Dashboard',
-  description: 'Quản lý sách điện tử và mã kích hoạt hệ thống Khởi Trí Số',
-};
-
-// Mock data for books
-const books = [
-  {
-    id: 1,
-    title: 'Toán học lớp 12 - Nâng cao',
-    description: 'Sách toán nâng cao với hơn 500 câu hỏi và lời giải chi tiết',
-    coverImage: '/images/books/math-12.jpg',
-    author: {
-      id: 1,
-      name: 'Nguyễn Văn Minh',
-    },
-    category: 'Toán học',
-    isbn: '978-604-0-12345-1',
-    price: 199000,
-    totalQuestions: 534,
-    totalActivations: 1245,
-    activationCodes: 2000,
-    usedCodes: 1245,
-    isActive: true,
-    createdAt: '2024-01-15',
-    updatedAt: '2024-01-20',
-    rating: 4.8,
-    reviewCount: 156,
-    downloadCount: 2341
-  },
-  {
-    id: 2,
-    title: 'Vật lý lớp 11 - Cơ bản',
-    description: 'Sách vật lý cơ bản với video giải thích chi tiết',
-    coverImage: '/images/books/physics-11.jpg',
-    author: {
-      id: 2,
-      name: 'Trần Thị Hoa',
-    },
-    category: 'Vật lý',
-    isbn: '978-604-0-12345-2',
-    price: 159000,
-    totalQuestions: 423,
-    totalActivations: 856,
-    activationCodes: 1500,
-    usedCodes: 856,
-    isActive: true,
-    createdAt: '2024-01-10',
-    updatedAt: '2024-01-18',
-    rating: 4.6,
-    reviewCount: 89,
-    downloadCount: 1567
-  },
-  {
-    id: 3,
-    title: 'Hóa học lớp 10 - Tổng hợp',
-    description: 'Sách hóa học với phương pháp giải nhanh',
-    coverImage: '/images/books/chemistry-10.jpg',
-    author: {
-      id: 3,
-      name: 'Lê Đức Anh',
-    },
-    category: 'Hóa học',
-    isbn: '978-604-0-12345-3',
-    price: 179000,
-    totalQuestions: 367,
-    totalActivations: 634,
-    activationCodes: 1200,
-    usedCodes: 634,
-    isActive: false,
-    createdAt: '2024-01-08',
-    updatedAt: '2024-01-19',
-    rating: 4.5,
-    reviewCount: 67,
-    downloadCount: 1023
-  }
-];
-
-const renderStars = (rating: number) => {
-  const fullStars = Math.floor(rating);
-  
-  return (
-    <div className="flex items-center">
-      {[...Array(5)].map((_, i) => (
-        <StarIconSolid
-          key={i}
-          className={`h-4 w-4 ${
-            i < fullStars ? 'text-yellow-400' : 'text-gray-200'
-          }`}
-        />
-      ))}
-      <span className="ml-1 text-sm text-gray-600">{rating}</span>
-    </div>
-  );
-};
+interface Book {
+  id: number;
+  title: string;
+  description: string;
+  isbn: string;
+  cover_image: string;
+  price: number;
+  category_id?: number;
+  category?: { id: number; name: string };
+  author_id?: number;
+  author?: { id: number; name: string; email: string };
+  is_active: boolean;
+  approval_status: number;
+  language: string;
+  publication_year?: number;
+  edition?: string;
+  chapters?: any[];
+}
 
 export default function BooksPage() {
+  const router = useRouter();
+  const { notify } = useToast();
+  const [books, setBooks] = useState<Book[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<Category[]>([]);
+  
+  // Search & Filter
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<number | ''>('');
+  const [statusFilter, setStatusFilter] = useState<boolean | ''>('');
+  const [approvalFilter, setApprovalFilter] = useState<number | ''>('');
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [perPage, setPerPage] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [lastPage, setLastPage] = useState(1);
+  
+  // Modals
+  const [showCreateBookModal, setShowCreateBookModal] = useState(false);
+  const [showEditBookModal, setShowEditBookModal] = useState(false);
+  const [showViewBookModal, setShowViewBookModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCreateChapterModal, setShowCreateChapterModal] = useState(false);
+  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  const [selectedBookId, setSelectedBookId] = useState<number | null>(null);
+  
+  // Forms
+  const [bookForm, setBookForm] = useState({
+    title: '',
+    description: '',
+    coverImage: '',
+    price: '',
+    categoryId: '',
+    language: 'vi',
+    publicationYear: '',
+    edition: '',
+    isActive: true,
+    approvalStatus: 3,
+  });
+  
+  const [chapterForm, setChapterForm] = useState({
+    title: '',
+    description: '',
+    orderIndex: '',
+  });
+  
+  const [coverPreview, setCoverPreview] = useState<string>('');
+  const [uploadingCover, setUploadingCover] = useState(false);
+
+  // Fetch books with filters and pagination
+  const fetchBooks = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params: any = {
+        page: currentPage,
+        perPage,
+      };
+      
+      if (search) params.search = search;
+      if (categoryFilter) params.categoryId = categoryFilter;
+      if (statusFilter !== '') params.isActive = statusFilter;
+      if (approvalFilter !== '') params.approvalStatus = approvalFilter;
+      
+      const response = await bookService.listBooksAdmin(params);
+      setBooks((response.data || []) as Book[]);
+      setTotal(response.pagination?.total || 0);
+      setLastPage((response.pagination as any)?.lastPage || (response.pagination as any)?.last_page || 1);
+    } catch (error) {
+      console.error('Error fetching books:', error);
+      notify('Lỗi tải danh sách sách', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, perPage, search, categoryFilter, statusFilter, approvalFilter, notify]);
+
+  useEffect(() => {
+    fetchBooks();
+  }, [fetchBooks]);
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const cats = await getCategories();
+      setCategories(cats);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
+  // Search handler with debounce
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCurrentPage(1);
+      fetchBooks();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearch(e.target.value);
+  };
+
+  const handleFilterChange = () => {
+    setCurrentPage(1);
+    fetchBooks();
+  };
+
+  const handleCoverFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      notify('Vui lòng chọn file ảnh', 'error');
+      return;
+    }
+
+    setUploadingCover(true);
+
+    try {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCoverPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+
+      const fileUrl = await uploadFile(file, 'books/covers');
+      setBookForm(prev => ({ ...prev, coverImage: fileUrl }));
+      notify('Upload ảnh bìa thành công', 'success');
+    } catch (error) {
+      console.error('Error uploading cover:', error);
+      notify('Lỗi upload ảnh bìa', 'error');
+    } finally {
+      setUploadingCover(false);
+    }
+  };
+
+  const handleCreateBook = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!bookForm.title || !bookForm.description || !bookForm.coverImage || !bookForm.price) {
+      notify('Vui lòng điền đầy đủ thông tin bắt buộc', 'error');
+      return;
+    }
+
+    try {
+      const newBook = await bookService.createBook({
+        title: bookForm.title,
+        description: bookForm.description,
+        coverImage: bookForm.coverImage,
+        price: parseFloat(bookForm.price),
+        categoryId: bookForm.categoryId ? parseInt(bookForm.categoryId) : undefined,
+        language: bookForm.language,
+        publicationYear: bookForm.publicationYear ? parseInt(bookForm.publicationYear) : undefined,
+        edition: bookForm.edition || undefined,
+      });
+
+      notify('Tạo sách thành công!', 'success');
+      setShowCreateBookModal(false);
+      resetBookForm();
+      fetchBooks();
+      
+      if (newBook.id) {
+        setSelectedBookId(newBook.id);
+        setShowCreateChapterModal(true);
+      }
+    } catch (error: any) {
+      console.error('Error creating book:', error);
+      notify(error.message || 'Lỗi tạo sách', 'error');
+    }
+  };
+
+  const handleEditBook = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBook) return;
+
+    try {
+      await bookService.updateBook(selectedBook.id, {
+        title: bookForm.title,
+        description: bookForm.description,
+        coverImage: bookForm.coverImage,
+        price: parseFloat(bookForm.price),
+        categoryId: bookForm.categoryId ? parseInt(bookForm.categoryId) : null,
+        language: bookForm.language,
+        publicationYear: bookForm.publicationYear ? parseInt(bookForm.publicationYear) : undefined,
+        edition: bookForm.edition || undefined,
+        isActive: bookForm.isActive,
+        approvalStatus: bookForm.approvalStatus,
+      });
+
+      notify('Cập nhật sách thành công', 'success');
+      setShowEditBookModal(false);
+      resetBookForm();
+      fetchBooks();
+    } catch (error: any) {
+      console.error('Error updating book:', error);
+      notify(error.message || 'Lỗi cập nhật sách', 'error');
+    }
+  };
+
+  const handleDeleteBook = async () => {
+    if (!selectedBook) return;
+
+    try {
+      await bookService.deleteBook(selectedBook.id);
+      notify('Xóa sách thành công', 'success');
+      setShowDeleteConfirm(false);
+      setSelectedBook(null);
+      fetchBooks();
+    } catch (error: any) {
+      console.error('Error deleting book:', error);
+      notify(error.message || 'Lỗi xóa sách', 'error');
+    }
+  };
+
+  const handleViewBook = async (id: number) => {
+    router.push(`/dashboard/books/${id}`);
+  };
+
+  const handleEditClick = (book: Book) => {
+    setSelectedBook(book);
+    setBookForm({
+      title: book.title,
+      description: book.description,
+      coverImage: book.cover_image,
+      price: book.price.toString(),
+      categoryId: book.category_id?.toString() || '',
+      language: book.language,
+      publicationYear: book.publication_year?.toString() || '',
+      edition: book.edition || '',
+      isActive: book.is_active,
+      approvalStatus: book.approval_status,
+    });
+    setCoverPreview(book.cover_image);
+    setShowEditBookModal(true);
+  };
+
+  const handleDeleteClick = (book: Book) => {
+    setSelectedBook(book);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleCreateChapter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedBookId || !chapterForm.title || !chapterForm.description) {
+      notify('Vui lòng điền đầy đủ thông tin', 'error');
+      return;
+    }
+
+    try {
+      await bookService.createChapter(selectedBookId, {
+        title: chapterForm.title,
+        description: chapterForm.description,
+        orderIndex: chapterForm.orderIndex ? parseInt(chapterForm.orderIndex) : undefined,
+      });
+
+      notify('Tạo chương thành công', 'success');
+      setShowCreateChapterModal(false);
+      resetChapterForm();
+      fetchBooks();
+    } catch (error: any) {
+      console.error('Error creating chapter:', error);
+      notify(error.message || 'Lỗi tạo chương', 'error');
+    }
+  };
+
+  const resetBookForm = () => {
+    setBookForm({
+      title: '',
+      description: '',
+      coverImage: '',
+      price: '',
+      categoryId: '',
+      language: 'vi',
+      publicationYear: '',
+      edition: '',
+    isActive: true,
+      approvalStatus: 3,
+    });
+    setCoverPreview('');
+    setSelectedBook(null);
+  };
+
+  const resetChapterForm = () => {
+    setChapterForm({
+      title: '',
+      description: '',
+      orderIndex: '',
+    });
+    setSelectedBookId(null);
+  };
+
+  const openCreateChapterModal = (bookId: number) => {
+    router.push(`/dashboard/books/${bookId}/chapters/create`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div className="sm:flex sm:items-center">
-        <div className="sm:flex-auto">
+      <div className="sm:flex sm:items-center sm:justify-between">
+        <div>
           <h1 className="text-2xl font-semibold text-gray-900">Quản lý sách điện tử</h1>
           <p className="mt-2 text-sm text-gray-700">
             Quản lý sách điện tử, mã kích hoạt và nội dung số
           </p>
         </div>
-        <div className="mt-4 sm:ml-16 sm:mt-0 sm:flex-none space-x-3">
+        <div className="mt-4 sm:mt-0">
           <button
             type="button"
-            className="inline-flex items-center justify-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500"
-          >
-            <KeyIcon className="-ml-0.5 mr-1.5 h-5 w-5" />
-            Tạo mã kích hoạt
-          </button>
-          <button
-            type="button"
+            onClick={() => setShowCreateBookModal(true)}
             className="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
           >
             <PlusIcon className="-ml-0.5 mr-1.5 h-5 w-5" />
@@ -147,9 +361,61 @@ export default function BooksPage() {
         </div>
       </div>
 
-      {/* Stats cards */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-white overflow-hidden shadow-lg rounded-xl p-6">
+      {/* Search and Filters */}
+      <div className="bg-white shadow rounded-lg p-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          {/* Search */}
+          <div className="md:col-span-2">
+            <div className="relative">
+              <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm theo tên, mô tả, ISBN..."
+                value={search}
+                onChange={handleSearch}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Category Filter */}
+          <div>
+            <select
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value ? parseInt(e.target.value) : '');
+                handleFilterChange();
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Tất cả danh mục</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Status Filter */}
+          <div>
+            <select
+              value={statusFilter === '' ? '' : statusFilter ? 'true' : 'false'}
+              onChange={(e) => {
+                setStatusFilter(e.target.value === '' ? '' : e.target.value === 'true');
+                handleFilterChange();
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Tất cả trạng thái</option>
+              <option value="true">Đang bán</option>
+              <option value="false">Tạm dừng</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-4">
+        <div className="bg-white overflow-hidden shadow rounded-lg p-6">
           <div className="flex items-center">
             <div className="flex-shrink-0">
               <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
@@ -157,175 +423,50 @@ export default function BooksPage() {
               </div>
             </div>
             <div className="ml-4">
-              <dl>
                 <dt className="text-sm font-medium text-gray-500">Tổng sách</dt>
-                <dd className="text-2xl font-bold text-gray-900">89</dd>
-                <dd className="text-sm text-green-600">+3 tháng này</dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow-lg rounded-xl p-6">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                <KeyIcon className="h-6 w-6 text-green-600" />
-              </div>
-            </div>
-            <div className="ml-4">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500">Mã đã kích hoạt</dt>
-                <dd className="text-2xl font-bold text-gray-900">2,735</dd>
-                <dd className="text-sm text-green-600">+156 tuần này</dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow-lg rounded-xl p-6">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                <DocumentTextIcon className="h-6 w-6 text-purple-600" />
-              </div>
-            </div>
-            <div className="ml-4">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500">Tổng câu hỏi</dt>
-                <dd className="text-2xl font-bold text-gray-900">1,324</dd>
-                <dd className="text-sm text-blue-600">Có lời giải</dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow-lg rounded-xl p-6">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
-                <CurrencyDollarIcon className="h-6 w-6 text-yellow-600" />
-              </div>
-            </div>
-            <div className="ml-4">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500">Doanh thu</dt>
-                <dd className="text-2xl font-bold text-gray-900">₫87M</dd>
-                <dd className="text-sm text-green-600">+12% tháng này</dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters and search */}
-      <div className="bg-white shadow-lg rounded-xl">
-        <div className="p-6">
-          <div className="sm:flex sm:items-center sm:justify-between">
-            <div className="sm:flex sm:items-center sm:space-x-4">
-              {/* Search */}
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="text"
-                  className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-xl leading-5 bg-gray-50 placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-all"
-                  placeholder="Tìm kiếm sách..."
-                />
-              </div>
-
-              {/* Category filter */}
-              <select className="mt-2 sm:mt-0 block w-full sm:w-auto pl-3 pr-10 py-2.5 text-base border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-xl bg-gray-50">
-                <option>Tất cả danh mục</option>
-                <option>Toán học</option>
-                <option>Vật lý</option>
-                <option>Hóa học</option>
-                <option>Sinh học</option>
-              </select>
-
-              {/* Status filter */}
-              <select className="mt-2 sm:mt-0 block w-full sm:w-auto pl-3 pr-10 py-2.5 text-base border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 rounded-xl bg-gray-50">
-                <option>Tất cả trạng thái</option>
-                <option>Đang bán</option>
-                <option>Tạm dừng</option>
-                <option>Hết mã</option>
-              </select>
-            </div>
-
-            <div className="mt-4 sm:mt-0">
-              <button
-                type="button"
-                className="inline-flex items-center px-4 py-2.5 border border-gray-300 rounded-xl shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <FunnelIcon className="-ml-1 mr-2 h-5 w-5 text-gray-500" />
-                Lọc nâng cao
-              </button>
+              <dd className="text-2xl font-bold text-gray-900">{total}</dd>
             </div>
           </div>
         </div>
       </div>
 
       {/* Books grid */}
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="text-gray-500">Đang tải...</div>
+        </div>
+      ) : books.length === 0 ? (
+        <div className="text-center py-12">
+          <div className="text-gray-500">Không tìm thấy sách nào</div>
+        </div>
+      ) : (
+        <>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {books.map((book) => (
           <div key={book.id} className="bg-white overflow-hidden shadow-lg rounded-xl hover:shadow-xl transition-all duration-300">
-            {/* Book cover */}
             <div className="aspect-[3/4] bg-gradient-to-br from-blue-500 to-purple-600 relative">
+                  {book.cover_image ? (
+                    <img src={book.cover_image} alt={book.title} className="w-full h-full object-cover" />
+                  ) : (
               <div className="absolute inset-0 flex items-center justify-center">
                 <BookOpenIcon className="h-20 w-20 text-white opacity-80" />
               </div>
+                  )}
               
-              {/* Status badges */}
-              <div className="absolute top-3 left-3 flex flex-col space-y-2">
+                  <div className="absolute top-3 left-3">
                 <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                  book.isActive
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-red-100 text-red-800'
+                      book.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                 }`}>
-                  {book.isActive ? 'Đang bán' : 'Tạm dừng'}
+                      {book.is_active ? 'Đang bán' : 'Tạm dừng'}
                 </span>
-                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  {book.totalQuestions} câu hỏi
-                </span>
-              </div>
-
-              {/* Actions */}
-              <div className="absolute top-3 right-3">
-                <div className="flex flex-col space-y-1">
-                  <button className="p-2 bg-white/90 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-white transition-all">
-                    <EyeIcon className="h-4 w-4" />
-                  </button>
-                  <button className="p-2 bg-white/90 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-white transition-all">
-                    <PencilIcon className="h-4 w-4" />
-                  </button>
-                  <button className="p-2 bg-white/90 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-white transition-all">
-                    <KeyIcon className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Activation progress */}
-              <div className="absolute bottom-3 left-3 right-3">
-                <div className="bg-white/90 rounded-lg p-2">
-                  <div className="flex justify-between text-xs text-gray-600 mb-1">
-                    <span>Đã kích hoạt</span>
-                    <span>{book.usedCodes}/{book.activationCodes}</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${(book.usedCodes / book.activationCodes) * 100}%` }}
-                    ></div>
-                  </div>
-                </div>
               </div>
             </div>
 
-            {/* Book content */}
             <div className="p-6">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-blue-600 font-medium">{book.category}</span>
+                    <span className="text-sm text-blue-600 font-medium">
+                      {book.category?.name || 'Chưa phân loại'}
+                    </span>
                 <span className="text-sm text-gray-500">ISBN: {book.isbn}</span>
               </div>
 
@@ -337,87 +478,52 @@ export default function BooksPage() {
                 {book.description}
               </p>
 
-              {/* Author */}
+                  {book.author && (
               <div className="flex items-center mb-4">
                 <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center mr-3">
                   <span className="text-sm font-medium text-white">
-                    {book.author.name.charAt(0)}
+                          {book.author.name?.charAt(0) || 'A'}
                   </span>
                 </div>
                 <span className="text-sm text-gray-700">{book.author.name}</span>
               </div>
+                  )}
 
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-4 mb-4 text-center">
-                <div className="bg-gray-50 rounded-lg p-2">
-                  <div className="flex items-center justify-center mb-1">
-                    <KeyIcon className="h-4 w-4 text-blue-600 mr-1" />
-                  </div>
-                  <div className="text-sm font-medium text-gray-900">{book.totalActivations}</div>
-                  <div className="text-xs text-gray-500">Kích hoạt</div>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-2">
-                  <div className="flex items-center justify-center mb-1">
-                    <DocumentTextIcon className="h-4 w-4 text-green-600 mr-1" />
-                  </div>
-                  <div className="text-sm font-medium text-gray-900">{book.downloadCount}</div>
-                  <div className="text-xs text-gray-500">Tải xuống</div>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-2">
-                  <div className="flex items-center justify-center mb-1">
-                    <StarIcon className="h-4 w-4 text-yellow-600 mr-1" />
-                  </div>
-                  <div className="text-sm font-medium text-gray-900">{book.rating}</div>
-                  <div className="text-xs text-gray-500">Đánh giá</div>
-                </div>
-              </div>
-
-              {/* Rating and price */}
               <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center">
-                  {renderStars(book.rating)}
-                  <span className="ml-2 text-sm text-gray-500">({book.reviewCount})</span>
-                </div>
-                <div className="text-right">
                   <span className="text-lg font-bold text-gray-900">
-                    {book.price.toLocaleString()}₫
+                      {parseFloat(book.price?.toString() || '0').toLocaleString()}₫
                   </span>
                 </div>
               </div>
 
-              {/* Content types */}
-              <div className="flex items-center justify-center space-x-4 mb-4 p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center text-xs text-gray-600">
-                  <DocumentTextIcon className="h-4 w-4 mr-1 text-blue-500" />
-                  Văn bản
-                </div>
-                <div className="flex items-center text-xs text-gray-600">
-                  <PhotoIcon className="h-4 w-4 mr-1 text-green-500" />
-                  Hình ảnh
-                </div>
-                <div className="flex items-center text-xs text-gray-600">
-                  <VideoCameraIcon className="h-4 w-4 mr-1 text-red-500" />
-                  Video
-                </div>
-              </div>
-            </div>
-
-            {/* Actions footer */}
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
               <div className="flex justify-between items-center">
-                <div className="flex space-x-2">
-                  <button className="px-3 py-1.5 text-xs bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors">
-                    Xem chi tiết
+                    <button
+                      onClick={() => openCreateChapterModal(book.id)}
+                      className="px-3 py-1.5 text-xs bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                    >
+                      Thêm chương
                   </button>
-                  <button className="px-3 py-1.5 text-xs bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors">
-                    Quản lý mã
+                    <div className="flex space-x-1">
+                      <button
+                        onClick={() => handleViewBook(book.id)}
+                        className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors"
+                        title="Xem chi tiết"
+                      >
+                        <EyeIcon className="h-4 w-4" />
                   </button>
-                </div>
-                <div className="flex space-x-1">
-                  <button className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors">
+                      <button
+                        onClick={() => handleEditClick(book)}
+                        className="p-1.5 text-gray-400 hover:text-blue-600 transition-colors"
+                        title="Sửa"
+                      >
                     <PencilIcon className="h-4 w-4" />
                   </button>
-                  <button className="p-1.5 text-gray-400 hover:text-red-600 transition-colors">
+                      <button
+                        onClick={() => handleDeleteClick(book)}
+                        className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"
+                        title="Xóa"
+                      >
                     <TrashIcon className="h-4 w-4" />
                   </button>
                 </div>
@@ -428,44 +534,466 @@ export default function BooksPage() {
       </div>
 
       {/* Pagination */}
-      <div className="bg-white px-6 py-4 flex items-center justify-between border-t border-gray-200 sm:px-6 rounded-xl shadow-lg">
+          {lastPage > 1 && (
+            <div className="flex items-center justify-between bg-white px-4 py-3 border-t border-gray-200 sm:px-6 rounded-lg">
         <div className="flex-1 flex justify-between sm:hidden">
-          <button className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                >
             Trước
           </button>
-          <button className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50">
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(lastPage, p + 1))}
+                  disabled={currentPage === lastPage}
+                  className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                >
             Sau
           </button>
         </div>
         <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
           <div>
             <p className="text-sm text-gray-700">
-              Hiển thị <span className="font-medium">1</span> đến{' '}
-              <span className="font-medium">3</span> trong{' '}
-              <span className="font-medium">89</span> kết quả
+                    Hiển thị <span className="font-medium">{(currentPage - 1) * perPage + 1}</span> đến{' '}
+                    <span className="font-medium">{Math.min(currentPage * perPage, total)}</span> trong tổng{' '}
+                    <span className="font-medium">{total}</span> kết quả
             </p>
           </div>
           <div>
-            <nav className="relative z-0 inline-flex rounded-lg shadow-sm -space-x-px">
-              <button className="relative inline-flex items-center px-2 py-2 rounded-l-lg border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                Trước
+                  <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      <ChevronLeftIcon className="h-5 w-5" />
               </button>
-              <button className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-blue-50 text-sm font-medium text-blue-600">
-                1
+                    {[...Array(Math.min(5, lastPage))].map((_, i) => {
+                      let pageNum: number;
+                      if (lastPage <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= lastPage - 2) {
+                        pageNum = lastPage - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
+                            currentPage === pageNum
+                              ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                              : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                          }`}
+                        >
+                          {pageNum}
               </button>
-              <button className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">
-                2
-              </button>
-              <button className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">
-                3
-              </button>
-              <button className="relative inline-flex items-center px-2 py-2 rounded-r-lg border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                Sau
+                      );
+                    })}
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(lastPage, p + 1))}
+                      disabled={currentPage === lastPage}
+                      className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      <ChevronRightIcon className="h-5 w-5" />
               </button>
             </nav>
           </div>
         </div>
       </div>
+          )}
+        </>
+      )}
+
+      {/* Create Book Modal */}
+      {showCreateBookModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 py-4">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => {
+              setShowCreateBookModal(false);
+              resetBookForm();
+            }}></div>
+            <div className="relative bg-white rounded-lg shadow-xl w-full max-w-3xl z-10">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">Tạo sách mới</h3>
+                  <button onClick={() => {
+                    setShowCreateBookModal(false);
+                    resetBookForm();
+                  }} className="text-gray-400 hover:text-gray-500">
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
+                <form onSubmit={handleCreateBook} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700">Tiêu đề *</label>
+                      <input type="text" required value={bookForm.title}
+                        onChange={(e) => setBookForm(prev => ({ ...prev, title: e.target.value }))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700">Mô tả *</label>
+                      <textarea required rows={3} value={bookForm.description}
+                        onChange={(e) => setBookForm(prev => ({ ...prev, description: e.target.value }))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Giá (₫) *</label>
+                      <input type="number" required min="0" step="1000" value={bookForm.price}
+                        onChange={(e) => setBookForm(prev => ({ ...prev, price: e.target.value }))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Danh mục</label>
+                      <select value={bookForm.categoryId}
+                        onChange={(e) => setBookForm(prev => ({ ...prev, categoryId: e.target.value }))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="">Chọn danh mục</option>
+                        {categories.map((cat) => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Ngôn ngữ</label>
+                      <select value={bookForm.language}
+                        onChange={(e) => setBookForm(prev => ({ ...prev, language: e.target.value }))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="vi">Tiếng Việt</option>
+                        <option value="en">English</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Năm xuất bản</label>
+                      <input type="number" min="1900" max={new Date().getFullYear()} value={bookForm.publicationYear}
+                        onChange={(e) => setBookForm(prev => ({ ...prev, publicationYear: e.target.value }))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Phiên bản</label>
+                      <input type="text" value={bookForm.edition}
+                        onChange={(e) => setBookForm(prev => ({ ...prev, edition: e.target.value }))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700">Ảnh bìa *</label>
+                      {coverPreview && (
+                        <div className="mt-2 mb-2">
+                          <img src={coverPreview} alt="Preview" className="h-32 w-auto rounded-md" />
+                        </div>
+                      )}
+                      <input type="file" accept="image/*" onChange={handleCoverFileChange} disabled={uploadingCover}
+                        className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                      {uploadingCover && <p className="mt-1 text-sm text-gray-500">Đang upload...</p>}
+                    </div>
+                  </div>
+                  <div className="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                    <button type="submit"
+                      className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:col-start-2 sm:text-sm">
+                      Tạo sách
+                    </button>
+                    <button type="button" onClick={() => {
+                      setShowCreateBookModal(false);
+                      resetBookForm();
+                    }}
+                      className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:col-start-1 sm:text-sm">
+                      Hủy
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Book Modal */}
+      {showEditBookModal && selectedBook && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 py-4">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => {
+              setShowEditBookModal(false);
+              resetBookForm();
+            }}></div>
+            <div className="relative bg-white rounded-lg shadow-xl w-full max-w-3xl z-10">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">Sửa sách</h3>
+                  <button onClick={() => {
+                    setShowEditBookModal(false);
+                    resetBookForm();
+                  }} className="text-gray-400 hover:text-gray-500">
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
+                <form onSubmit={handleEditBook} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700">Tiêu đề *</label>
+                      <input type="text" required value={bookForm.title}
+                        onChange={(e) => setBookForm(prev => ({ ...prev, title: e.target.value }))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700">Mô tả *</label>
+                      <textarea required rows={3} value={bookForm.description}
+                        onChange={(e) => setBookForm(prev => ({ ...prev, description: e.target.value }))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Giá (₫) *</label>
+                      <input type="number" required min="0" step="1000" value={bookForm.price}
+                        onChange={(e) => setBookForm(prev => ({ ...prev, price: e.target.value }))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Danh mục</label>
+                      <select value={bookForm.categoryId}
+                        onChange={(e) => setBookForm(prev => ({ ...prev, categoryId: e.target.value }))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="">Chọn danh mục</option>
+                        {categories.map((cat) => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Trạng thái</label>
+                      <select value={bookForm.isActive ? 'true' : 'false'}
+                        onChange={(e) => setBookForm(prev => ({ ...prev, isActive: e.target.value === 'true' }))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="true">Đang bán</option>
+                        <option value="false">Tạm dừng</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Trạng thái duyệt</label>
+                      <select value={bookForm.approvalStatus}
+                        onChange={(e) => setBookForm(prev => ({ ...prev, approvalStatus: parseInt(e.target.value) }))}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                        <option value="1">Chờ duyệt</option>
+                        <option value="2">Từ chối</option>
+                        <option value="3">Đã duyệt</option>
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700">Ảnh bìa *</label>
+                      {coverPreview && (
+                        <div className="mt-2 mb-2">
+                          <img src={coverPreview} alt="Preview" className="h-32 w-auto rounded-md" />
+                        </div>
+                      )}
+                      <input type="file" accept="image/*" onChange={handleCoverFileChange} disabled={uploadingCover}
+                        className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                      {uploadingCover && <p className="mt-1 text-sm text-gray-500">Đang upload...</p>}
+                    </div>
+                  </div>
+                  <div className="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                    <button type="submit"
+                      className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:col-start-2 sm:text-sm">
+                      Cập nhật
+                    </button>
+                    <button type="button" onClick={() => {
+                      setShowEditBookModal(false);
+                      resetBookForm();
+                    }}
+                      className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:col-start-1 sm:text-sm">
+                      Hủy
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Book Modal */}
+      {showViewBookModal && selectedBook && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 py-4">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => {
+              setShowViewBookModal(false);
+              setSelectedBook(null);
+            }}></div>
+            <div className="relative bg-white rounded-lg shadow-xl w-full max-w-4xl z-10 max-h-[90vh] overflow-y-auto">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">Chi tiết sách</h3>
+                  <button onClick={() => {
+                    setShowViewBookModal(false);
+                    setSelectedBook(null);
+                  }} className="text-gray-400 hover:text-gray-500">
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {selectedBook.cover_image && (
+                      <div>
+                        <img src={selectedBook.cover_image} alt={selectedBook.title} className="w-full rounded-lg" />
+                      </div>
+                    )}
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-sm font-medium text-gray-500">Tiêu đề</label>
+                        <p className="text-lg font-semibold text-gray-900">{selectedBook.title}</p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-500">ISBN</label>
+                        <p className="text-gray-900">{selectedBook.isbn}</p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-500">Giá</label>
+                        <p className="text-gray-900">{parseFloat(selectedBook.price?.toString() || '0').toLocaleString()}₫</p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-500">Danh mục</label>
+                        <p className="text-gray-900">{selectedBook.category?.name || 'Chưa phân loại'}</p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-500">Tác giả</label>
+                        <p className="text-gray-900">{selectedBook.author?.name || 'Chưa có'}</p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-500">Trạng thái</label>
+                        <p className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                          selectedBook.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {selectedBook.is_active ? 'Đang bán' : 'Tạm dừng'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Mô tả</label>
+                    <p className="text-gray-900 whitespace-pre-wrap">{selectedBook.description}</p>
+                  </div>
+                  {selectedBook.chapters && selectedBook.chapters.length > 0 && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">Chương ({selectedBook.chapters.length})</label>
+                      <div className="mt-2 space-y-2">
+                        {selectedBook.chapters.map((chapter: any) => (
+                          <div key={chapter.id} className="p-3 bg-gray-50 rounded-lg">
+                            <p className="font-medium text-gray-900">Chương {chapter.order_index}: {chapter.title}</p>
+                            <p className="text-sm text-gray-600 mt-1">{chapter.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirm Modal */}
+      {showDeleteConfirm && selectedBook && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 py-4">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => {
+              setShowDeleteConfirm(false);
+              setSelectedBook(null);
+            }}></div>
+            <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md z-10">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="sm:flex sm:items-start">
+                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                    <TrashIcon className="h-6 w-6 text-red-600" />
+                  </div>
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900">Xóa sách</h3>
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-500">
+                        Bạn có chắc chắn muốn xóa sách "{selectedBook.title}"? Hành động này không thể hoàn tác.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+                  <button type="button" onClick={handleDeleteBook}
+                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm">
+                    Xóa
+                  </button>
+                  <button type="button" onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setSelectedBook(null);
+                  }}
+                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:w-auto sm:text-sm">
+                    Hủy
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Chapter Modal */}
+      {showCreateChapterModal && selectedBookId && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 py-4">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={() => {
+              setShowCreateChapterModal(false);
+              resetChapterForm();
+            }}></div>
+            <div className="relative bg-white rounded-lg shadow-xl w-full max-w-lg z-10">
+              <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-gray-900">Tạo chương mới</h3>
+                  <button onClick={() => {
+                    setShowCreateChapterModal(false);
+                    resetChapterForm();
+                  }} className="text-gray-400 hover:text-gray-500">
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
+                <form onSubmit={handleCreateChapter} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Tiêu đề chương *</label>
+                    <input type="text" required value={chapterForm.title}
+                      onChange={(e) => setChapterForm(prev => ({ ...prev, title: e.target.value }))}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Mô tả *</label>
+                    <textarea required rows={4} value={chapterForm.description}
+                      onChange={(e) => setChapterForm(prev => ({ ...prev, description: e.target.value }))}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Thứ tự chương</label>
+                    <input type="number" min="1" value={chapterForm.orderIndex}
+                      onChange={(e) => setChapterForm(prev => ({ ...prev, orderIndex: e.target.value }))}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="Để trống để tự động tăng" />
+                  </div>
+                  <div className="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                    <button type="submit"
+                      className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:col-start-2 sm:text-sm">
+                      Tạo chương
+                    </button>
+                    <button type="button" onClick={() => {
+                      setShowCreateChapterModal(false);
+                      resetChapterForm();
+                    }}
+                      className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:col-start-1 sm:text-sm">
+                      Hủy
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

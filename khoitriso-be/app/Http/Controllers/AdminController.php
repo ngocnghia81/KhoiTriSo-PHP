@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Constants\MessageCode;
 use App\Models\User;
 use App\Models\Course;
+use App\Models\Book;
+use App\Models\BookChapter;
 use App\Mail\InstructorAccountCreated;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -882,6 +884,818 @@ class AdminController extends BaseController
             
         } catch (\Exception $e) {
             \Log::error('Error in admin toggleUserStatus: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Create book (Admin only)
+     */
+    public function createBook(Request $request): JsonResponse
+    {
+        try {
+            // Check if user is admin
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền tạo sách');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'title' => ['required', 'string', 'max:200'],
+                'description' => ['required', 'string'],
+                'isbn' => ['nullable', 'string', 'max:20', 'unique:books,isbn'],
+                'coverImage' => ['required', 'string', 'max:255'],
+                'price' => ['required', 'numeric', 'min:0'],
+                'categoryId' => ['nullable', 'integer', function ($attribute, $value, $fail) {
+                    if ($value !== null && !\App\Models\Category::where('id', $value)->exists()) {
+                        $fail('The selected category does not exist.');
+                    }
+                }],
+                'ebookFile' => ['nullable', 'string', 'max:255'],
+                'staticPagePath' => ['nullable', 'string'],
+                'language' => ['nullable', 'string', 'max:10'],
+                'publicationYear' => ['nullable', 'integer', 'min:1900', 'max:' . date('Y')],
+                'edition' => ['nullable', 'string', 'max:50'],
+                'authorId' => ['nullable', 'integer', 'exists:users,id'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+
+               // Generate unique ISBN if not provided
+               // Format must be <= 20 characters (database constraint: varchar(20))
+               $isbn = $data['isbn'] ?? null;
+               if (!$isbn) {
+                   do {
+                       // Format: {timestamp}{random} (max 20 chars)
+                       // timestamp = 10 digits, random = 6 chars = 16 total
+                       $timestamp = time();
+                       $random = strtoupper(substr(md5(uniqid(rand(), true)), 0, 6));
+                       $isbn = "{$timestamp}{$random}"; // 16 characters
+                   } while (Book::where('isbn', $isbn)->exists());
+               }
+
+               // Determine author_id and verify user exists
+               $authorId = isset($data['authorId']) ? (int) $data['authorId'] : (int) $user->id;
+               
+               // Verify author exists (for foreign key constraint)
+               // Use DB::table() with explicit type casting for PostgreSQL compatibility
+               $authorExists = \DB::table('users')
+                   ->whereRaw('id = CAST(? AS BIGINT)', [$authorId])
+                   ->exists();
+               
+               if (!$authorExists) {
+                   return $this->error(
+                       \App\Constants\MessageCode::VALIDATION_ERROR,
+                       "Author with ID {$authorId} does not exist",
+                       null,
+                       400
+                   );
+               }
+            
+            // Prepare data for create, ensuring proper types for PostgreSQL
+            // Note: is_active must be boolean, not integer for PostgreSQL
+            $bookData = [
+                'title' => (string) $data['title'],
+                'description' => (string) $data['description'],
+                'isbn' => (string) $isbn,
+                'cover_image' => (string) $data['coverImage'],
+                'price' => (float) $data['price'],
+                'ebook_file' => (string) ($data['ebookFile'] ?? ''),
+                'static_page_path' => (string) ($data['staticPagePath'] ?? ''),
+                'author_id' => $authorId,
+                'approval_status' => 3, // Approved by default for admin
+                'language' => (string) ($data['language'] ?? 'vi'),
+                'is_active' => true, // Will be cast by model
+                'created_by' => (string) ($user->name ?? $user->email),
+            ];
+            
+            // Only set nullable fields if provided
+            if (isset($data['publicationYear']) && $data['publicationYear'] !== null) {
+                $bookData['publication_year'] = (int) $data['publicationYear'];
+            }
+            
+            if (isset($data['edition']) && $data['edition'] !== null && $data['edition'] !== '') {
+                $bookData['edition'] = (string) $data['edition'];
+            }
+            
+            // Only set category_id if provided (avoid null binding issues)
+            if (isset($data['categoryId']) && $data['categoryId'] !== null) {
+                $categoryId = (int) $data['categoryId'];
+                // Verify category exists (for foreign key constraint)
+                // Use DB::table() with explicit type casting for PostgreSQL compatibility
+                $categoryExists = \DB::table('categories')
+                    ->whereRaw('id = CAST(? AS BIGINT)', [$categoryId])
+                    ->exists();
+                
+                if (!$categoryExists) {
+                    return $this->error(
+                        \App\Constants\MessageCode::VALIDATION_ERROR,
+                        "Category with ID {$categoryId} does not exist",
+                        null,
+                        400
+                    );
+                }
+                $bookData['category_id'] = $categoryId;
+            }
+            
+            \Log::debug('Creating book with data', [
+                'bookData' => $bookData,
+                'authorId' => $authorId,
+                'authorExists' => \App\Models\User::where('id', $authorId)->exists(),
+            ]);
+            
+            // Use DB transaction for PostgreSQL compatibility
+            // PostgreSQL requires explicit boolean casting, so use DB::table() with raw SQL
+            try {
+                $book = \DB::transaction(function () use ($bookData) {
+                    // Build columns and values with explicit boolean casting for PostgreSQL
+                    $columns = array_keys($bookData);
+                    $placeholders = [];
+                    $values = [];
+                    
+                    foreach ($bookData as $col => $value) {
+                        if ($col === 'is_active') {
+                            // PostgreSQL boolean literal
+                            $placeholders[] = $value ? 'true' : 'false';
+                        } elseif (in_array($col, ['author_id', 'category_id']) && $value !== null) {
+                            // Cast foreign keys to BIGINT
+                            $placeholders[] = "CAST(? AS BIGINT)";
+                            $values[] = $value;
+                        } else {
+                            $placeholders[] = '?';
+                            $values[] = $value;
+                        }
+                    }
+                    
+                    // Add timestamps
+                    $columns[] = 'created_at';
+                    $columns[] = 'updated_at';
+                    $now = now()->format('Y-m-d H:i:s');
+                    $placeholders[] = '?';
+                    $placeholders[] = '?';
+                    $values[] = $now;
+                    $values[] = $now;
+                    
+                    $sql = "INSERT INTO books (" . implode(', ', array_map(fn($c) => "\"{$c}\"", $columns)) . ") VALUES (" . implode(', ', $placeholders) . ") RETURNING id";
+                    
+                    $result = \DB::selectOne($sql, $values);
+                    return Book::find($result->id);
+                });
+            } catch (\Illuminate\Database\QueryException $e) {
+                \Log::error('Database error creating book', [
+                    'error' => $e->getMessage(),
+                    'sql' => $e->getSql(),
+                    'bindings' => $e->getBindings(),
+                    'bookData' => $bookData,
+                ]);
+                throw $e;
+            }
+
+            $book->load(['category:id,name', 'author:id,name,email']);
+
+            return $this->success([
+                'id' => $book->id,
+                'title' => $book->title,
+                'description' => $book->description,
+                'isbn' => $book->isbn,
+                'coverImage' => $book->cover_image,
+                'price' => $book->price,
+                'category' => $book->category ? [
+                    'id' => $book->category->id,
+                    'name' => $book->category->name,
+                ] : null,
+                'author' => $book->author ? [
+                    'id' => $book->author->id,
+                    'name' => $book->author->name,
+                    'email' => $book->author->email,
+                ] : null,
+                'ebookFile' => $book->ebook_file,
+                'staticPagePath' => $book->static_page_path,
+                'language' => $book->language,
+                'publicationYear' => $book->publication_year,
+                'edition' => $book->edition,
+                'approvalStatus' => $book->approval_status,
+                'isActive' => $book->is_active,
+                'createdAt' => is_string($book->created_at) ? $book->created_at : $book->created_at->toISOString(),
+            ], 'Tạo sách thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin createBook: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Create chapter for book (Admin only)
+     */
+    public function createChapter(int $bookId, Request $request): JsonResponse
+    {
+        try {
+            // Check if user is admin
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền tạo chương');
+            }
+
+            // Check if book exists
+            $book = Book::find($bookId);
+            if (!$book) {
+                return $this->notFound('Book');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'title' => ['required', 'string', 'max:200'],
+                'description' => ['required', 'string'],
+                'orderIndex' => ['nullable', 'integer', 'min:1'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+
+            // If orderIndex not provided, get the next order index
+            $orderIndex = $data['orderIndex'] ?? null;
+            if ($orderIndex === null) {
+                $maxOrder = BookChapter::where('book_id', $bookId)->max('order_index');
+                $orderIndex = ($maxOrder ?? 0) + 1;
+            } else {
+                // Check if order index already exists
+                $existingChapter = BookChapter::where('book_id', $bookId)
+                    ->where('order_index', $orderIndex)
+                    ->first();
+                if ($existingChapter) {
+                    return $this->error(
+                        MessageCode::VALIDATION_ERROR,
+                        "Thứ tự chương {$orderIndex} đã tồn tại. Vui lòng chọn thứ tự khác.",
+                        null,
+                        400,
+                        $request
+                    );
+                }
+            }
+
+            $chapter = BookChapter::create([
+                'book_id' => $bookId,
+                'title' => $data['title'],
+                'description' => $data['description'],
+                'order_index' => $orderIndex,
+                'created_by' => $user->name ?? $user->email,
+            ]);
+
+            return $this->success([
+                'id' => $chapter->id,
+                'bookId' => $chapter->book_id,
+                'title' => $chapter->title,
+                'description' => $chapter->description,
+                'orderIndex' => $chapter->order_index,
+                'createdAt' => is_string($chapter->created_at) ? $chapter->created_at : $chapter->created_at->toISOString(),
+            ], 'Tạo chương thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin createChapter: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * List books for admin with filters, search, and pagination
+     * GET /api/admin/books
+     */
+    public function listBooks(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem danh sách sách');
+            }
+
+            $query = Book::query()->with(['category:id,name', 'author:id,name,email']);
+
+            // Search
+            if ($request->filled('search')) {
+                $search = $request->string('search');
+                $query->where(function ($q) use ($search) {
+                    $q->where('title', 'ilike', "%{$search}%")
+                      ->orWhere('description', 'ilike', "%{$search}%")
+                      ->orWhere('isbn', 'ilike', "%{$search}%");
+                });
+            }
+
+            // Filters
+            if ($request->filled('categoryId')) {
+                $query->where('category_id', $request->integer('categoryId'));
+            }
+
+            if ($request->filled('isActive')) {
+                $query->whereRaw('is_active = ?', [$request->boolean('isActive')]);
+            }
+
+            if ($request->filled('approvalStatus')) {
+                $query->where('approval_status', $request->integer('approvalStatus'));
+            }
+
+            if ($request->filled('authorId')) {
+                $query->where('author_id', $request->integer('authorId'));
+            }
+
+            // Sorting
+            $sortBy = $request->string('sortBy', 'created_at')->toString();
+            $sortOrder = $request->string('sortOrder', 'desc')->toString();
+            $allowedSorts = ['created_at', 'updated_at', 'title', 'price', 'publication_year'];
+            if (in_array($sortBy, $allowedSorts)) {
+                $query->orderBy($sortBy, $sortOrder === 'asc' ? 'asc' : 'desc');
+            } else {
+                $query->orderBy('created_at', 'desc');
+            }
+
+            // Pagination
+            $perPage = min(max(1, (int) $request->query('perPage', 20)), 100);
+            $page = max(1, (int) $request->query('page', 1));
+            $result = $query->paginate($perPage, ['*'], 'page', $page);
+
+            return $this->success([
+                'data' => $result->items(),
+                'pagination' => [
+                    'current_page' => $result->currentPage(),
+                    'last_page' => $result->lastPage(),
+                    'per_page' => $result->perPage(),
+                    'total' => $result->total(),
+                    'from' => $result->firstItem(),
+                    'to' => $result->lastItem(),
+                ],
+            ], 'Lấy danh sách sách thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin listBooks: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get book detail for admin
+     * GET /api/admin/books/{id}
+     */
+    public function getBook(int $id, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem chi tiết sách');
+            }
+
+            $book = Book::with(['category:id,name', 'author:id,name,email', 'chapters' => function ($q) {
+                $q->orderBy('order_index');
+            }])->find($id);
+
+            if (!$book) {
+                return $this->notFound('Book');
+            }
+
+            return $this->success($book, 'Lấy thông tin sách thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin getBook: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Update book for admin
+     * PUT /api/admin/books/{id}
+     */
+    public function updateBook(int $id, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền cập nhật sách');
+            }
+
+            $book = Book::find($id);
+            if (!$book) {
+                return $this->notFound('Book');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'title' => ['sometimes', 'required', 'string', 'max:200'],
+                'description' => ['sometimes', 'required', 'string'],
+                'isbn' => ['nullable', 'string', 'max:20', 'unique:books,isbn,' . $id],
+                'coverImage' => ['sometimes', 'string', 'max:255'],
+                'price' => ['sometimes', 'required', 'numeric', 'min:0'],
+                'categoryId' => ['nullable', 'integer', function ($attribute, $value, $fail) {
+                    if ($value !== null && !\App\Models\Category::where('id', $value)->exists()) {
+                        $fail('The selected category does not exist.');
+                    }
+                }],
+                'language' => ['nullable', 'string', 'max:10'],
+                'publicationYear' => ['nullable', 'integer', 'min:1900', 'max:' . date('Y')],
+                'edition' => ['nullable', 'string', 'max:50'],
+                'authorId' => ['nullable', 'integer', 'exists:users,id'],
+                'isActive' => ['nullable', 'boolean'],
+                'approvalStatus' => ['nullable', 'integer', 'in:1,2,3'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+
+            // Prepare update data
+            $updateData = [];
+            if (isset($data['title'])) $updateData['title'] = (string) $data['title'];
+            if (isset($data['description'])) $updateData['description'] = (string) $data['description'];
+            if (isset($data['isbn'])) $updateData['isbn'] = (string) $data['isbn'];
+            if (isset($data['coverImage'])) $updateData['cover_image'] = (string) $data['coverImage'];
+            if (isset($data['price'])) $updateData['price'] = (float) $data['price'];
+            if (isset($data['categoryId'])) {
+                if ($data['categoryId'] === null) {
+                    $updateData['category_id'] = null;
+                } else {
+                    $categoryId = (int) $data['categoryId'];
+                    if (!\App\Models\Category::where('id', $categoryId)->exists()) {
+                        return $this->error(
+                            MessageCode::VALIDATION_ERROR,
+                            "Category with ID {$categoryId} does not exist",
+                            null,
+                            400
+                        );
+                    }
+                    $updateData['category_id'] = $categoryId;
+                }
+            }
+            if (isset($data['language'])) $updateData['language'] = (string) $data['language'];
+            if (isset($data['publicationYear'])) $updateData['publication_year'] = (int) $data['publicationYear'];
+            if (isset($data['edition'])) $updateData['edition'] = (string) $data['edition'];
+            if (isset($data['authorId'])) {
+                $authorId = (int) $data['authorId'];
+                if (!\App\Models\User::where('id', $authorId)->exists()) {
+                    return $this->error(
+                        MessageCode::VALIDATION_ERROR,
+                        "Author with ID {$authorId} does not exist",
+                        null,
+                        400
+                    );
+                }
+                $updateData['author_id'] = $authorId;
+            }
+            if (isset($data['isActive'])) {
+                // Use raw SQL for boolean in PostgreSQL
+                $updateData['is_active'] = \DB::raw($data['isActive'] ? 'true' : 'false');
+            }
+            if (isset($data['approvalStatus'])) $updateData['approval_status'] = (int) $data['approvalStatus'];
+
+            $updateData['updated_by'] = $user->name ?? $user->email;
+
+            // Update book
+            $book->update($updateData);
+            $book->refresh();
+            $book->load(['category:id,name', 'author:id,name,email']);
+
+            return $this->success($book, 'Cập nhật sách thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin updateBook: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Delete book for admin
+     * DELETE /api/admin/books/{id}
+     */
+    public function deleteBook(int $id, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xóa sách');
+            }
+
+            $book = Book::find($id);
+            if (!$book) {
+                return $this->notFound('Book');
+            }
+
+            // Check if book has chapters or other related data
+            $chapterCount = BookChapter::where('book_id', $id)->count();
+            if ($chapterCount > 0) {
+                return $this->error(
+                    MessageCode::VALIDATION_ERROR,
+                    "Không thể xóa sách vì sách có {$chapterCount} chương. Vui lòng xóa các chương trước.",
+                    null,
+                    400
+                );
+            }
+
+            $book->delete();
+
+            return $this->success(null, 'Xóa sách thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin deleteBook: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get chapter questions (Admin only - no ownership check)
+     * GET /api/admin/books/{bookId}/chapters/{chapterId}/questions
+     */
+    public function getChapterQuestions(int $bookId, int $chapterId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem câu hỏi');
+            }
+
+            // Verify chapter exists and belongs to book
+            $chapter = BookChapter::where('id', $chapterId)
+                ->where('book_id', $bookId)
+                ->first();
+            
+            if (!$chapter) {
+                return $this->notFound('Chapter');
+            }
+
+            // Get questions for this chapter (context_type = 2 for book_chapter)
+            // Debug: Log query parameters
+            \Log::info('Admin getChapterQuestions - bookId: ' . $bookId . ', chapterId: ' . $chapterId);
+            
+            // Check total questions for this chapter (without is_active filter)
+            $totalQuestions = \App\Models\Question::where('context_type', 2)
+                ->where('context_id', $chapterId)
+                ->count();
+            \Log::info('Total questions for chapter ' . $chapterId . ': ' . $totalQuestions);
+            
+            // Get questions with is_active filter (PostgreSQL compatible)
+            // For admin, we can show all questions (active and inactive) for debugging
+            $questions = \App\Models\Question::where('context_type', 2)
+                ->where('context_id', $chapterId)
+                ->where('is_active', true) // Use direct boolean comparison instead of whereRaw
+                ->with(['options', 'bookSolutions'])
+                ->orderBy('order_index')
+                ->get();
+            
+            \Log::info('Active questions found: ' . $questions->count());
+            
+            // If no active questions found, check for inactive ones (for debugging)
+            if ($questions->count() === 0) {
+                $inactiveQuestions = \App\Models\Question::where('context_type', 2)
+                    ->where('context_id', $chapterId)
+                    ->where('is_active', false)
+                    ->count();
+                \Log::info('Inactive questions for chapter ' . $chapterId . ': ' . $inactiveQuestions);
+                
+                // Also check if there are any questions at all (regardless of is_active)
+                $allQuestions = \App\Models\Question::where('context_type', 2)
+                    ->where('context_id', $chapterId)
+                    ->count();
+                \Log::info('All questions (active + inactive) for chapter ' . $chapterId . ': ' . $allQuestions);
+            }
+
+            // Format questions with solutions (same format as BookController)
+            $formattedQuestions = $questions->map(function($question) {
+                $solution = $question->bookSolutions->first();
+                
+                return [
+                    'id' => $question->id,
+                    'content' => $question->question_content,
+                    'type' => $question->question_type, // 1 = multiple choice, 2 = essay
+                    'difficulty' => $question->difficulty_level,
+                    'points' => $question->default_points,
+                    'explanation' => $question->explanation_content,
+                    'image' => $question->question_image,
+                    'video_url' => $question->video_url,
+                    'order_index' => $question->order_index,
+                    'options' => $question->options->map(function($option) {
+                        return [
+                            'id' => $option->id,
+                            'content' => $option->option_content,
+                            'image' => $option->option_image,
+                            'is_correct' => $option->is_correct,
+                            'points' => $option->points_value,
+                            'explanation' => $option->explanation_text,
+                            'order_index' => $option->order_index,
+                        ];
+                    })->sortBy('order_index')->values(),
+                    'solution' => $solution ? [
+                        'id' => $solution->id,
+                        'type' => $solution->solution_type, // 1 = video, 2 = text, 3 = latex, 4 = image
+                        'content' => $solution->content,
+                        'video_url' => $solution->video_url,
+                        'image_url' => $solution->image_url,
+                        'latex_content' => $solution->latex_content,
+                    ] : null,
+                ];
+            });
+
+            return $this->success([
+                'chapter' => [
+                    'id' => $chapter->id,
+                    'title' => $chapter->title,
+                    'description' => $chapter->description,
+                    'order_index' => $chapter->order_index,
+                ],
+                'questions' => $formattedQuestions,
+            ], 'Lấy danh sách câu hỏi thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin getChapterQuestions: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Create questions for chapter (Admin only)
+     * POST /api/admin/books/{bookId}/chapters/{chapterId}/questions
+     */
+    public function createChapterQuestions(int $bookId, int $chapterId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền tạo câu hỏi');
+            }
+
+            // Verify chapter exists and belongs to book
+            $chapter = BookChapter::where('id', $chapterId)
+                ->where('book_id', $bookId)
+                ->first();
+            
+            if (!$chapter) {
+                return $this->notFound('Chapter');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'questions' => ['required', 'array', 'min:1'],
+                'questions.*.content' => ['required', 'string'],
+                'questions.*.type' => ['required', 'string', 'in:multiple_choice,essay'],
+                'questions.*.options' => ['required_if:questions.*.type,multiple_choice', 'array', 'min:2'],
+                'questions.*.options.*.text' => ['required_with:questions.*.options', 'string'],
+                'questions.*.options.*.isCorrect' => ['required_with:questions.*.options', 'boolean'],
+                'questions.*.explanation' => ['nullable', 'string'],
+                'questions.*.correctAnswer' => ['nullable', 'string'],
+                'questions.*.solutionVideo' => ['nullable', 'string', 'url'],
+                'questions.*.solutionType' => ['nullable', 'string', 'in:text,video,latex'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+            $createdQuestions = [];
+
+            \DB::beginTransaction();
+
+            try {
+                foreach ($data['questions'] as $index => $questionData) {
+                    // Get next order index
+                    $maxOrder = \App\Models\Question::where('context_type', 2)
+                        ->where('context_id', $chapterId)
+                        ->max('order_index');
+                    $orderIndex = ($maxOrder ?? 0) + 1;
+
+                    // Create question
+                    $question = \App\Models\Question::create([
+                        'context_type' => 2, // book_chapter
+                        'context_id' => $chapterId,
+                        'question_content' => (string) $questionData['content'],
+                        'question_type' => $questionData['type'] === 'multiple_choice' ? 1 : 2,
+                        'difficulty_level' => 2, // Default medium
+                        'points' => json_encode([]),
+                        'default_points' => 1.0,
+                        'explanation_content' => $questionData['explanation'] ?? null,
+                        'order_index' => $orderIndex,
+                        'is_active' => \DB::raw('true'),
+                        'created_by' => $user->name ?? $user->email,
+                    ]);
+
+                    // Create options for multiple choice
+                    if ($questionData['type'] === 'multiple_choice' && isset($questionData['options'])) {
+                        foreach ($questionData['options'] as $optIndex => $optionData) {
+                            \App\Models\QuestionOption::create([
+                                'question_id' => $question->id,
+                                'option_content' => (string) $optionData['text'],
+                                'is_correct' => \DB::raw($optionData['isCorrect'] ? 'true' : 'false'),
+                                'order_index' => $optIndex + 1,
+                                'points_value' => $optionData['isCorrect'] ? 1.0 : 0.0,
+                                'created_by' => $user->name ?? $user->email,
+                            ]);
+                        }
+                    }
+
+                    // Create solution if provided
+                    $solutionType = $questionData['solutionType'] ?? 'text';
+                    $hasSolution = false;
+                    
+                    if ($solutionType === 'video' && !empty($questionData['solutionVideo'])) {
+                        // Video solution
+                        \App\Models\BookQuestionSolution::create([
+                            'question_id' => $question->id,
+                            'solution_type' => 1, // Video
+                            'content' => 'Video giải thích',
+                            'video_url' => (string) $questionData['solutionVideo'],
+                            'latex_content' => null,
+                            'image_url' => null,
+                            'order_index' => 1,
+                            'is_active' => \DB::raw('true'),
+                            'created_by' => $user->name ?? $user->email,
+                        ]);
+                        $hasSolution = true;
+                    } elseif ($solutionType === 'latex' && !empty($questionData['explanation'])) {
+                        // LaTeX solution
+                        \App\Models\BookQuestionSolution::create([
+                            'question_id' => $question->id,
+                            'solution_type' => 3, // LaTeX
+                            'content' => (string) $questionData['explanation'],
+                            'latex_content' => (string) $questionData['explanation'],
+                            'video_url' => null,
+                            'image_url' => null,
+                            'order_index' => 1,
+                            'is_active' => \DB::raw('true'),
+                            'created_by' => $user->name ?? $user->email,
+                        ]);
+                        $hasSolution = true;
+                    } elseif ($solutionType === 'text' && !empty($questionData['explanation'])) {
+                        // Text solution
+                        \App\Models\BookQuestionSolution::create([
+                            'question_id' => $question->id,
+                            'solution_type' => 2, // Text
+                            'content' => (string) $questionData['explanation'],
+                            'latex_content' => null,
+                            'video_url' => null,
+                            'image_url' => null,
+                            'order_index' => 1,
+                            'is_active' => \DB::raw('true'),
+                            'created_by' => $user->name ?? $user->email,
+                        ]);
+                        $hasSolution = true;
+                    }
+                    
+                    // Also set explanation_content in question if provided
+                    if (!empty($questionData['explanation']) && $solutionType !== 'video') {
+                        $question->explanation_content = (string) $questionData['explanation'];
+                        $question->save();
+                    }
+
+                    $createdQuestions[] = [
+                        'id' => $question->id,
+                        'content' => $question->question_content,
+                        'type' => $question->question_type === 1 ? 'multiple_choice' : 'essay',
+                    ];
+                }
+
+                // Update book total_questions
+                $totalQuestions = \App\Models\Question::where('context_type', 2)
+                    ->whereIn('context_id', BookChapter::where('book_id', $bookId)->pluck('id'))
+                    ->count();
+                
+                Book::where('id', $bookId)->update(['total_questions' => $totalQuestions]);
+
+                \DB::commit();
+
+                return $this->success([
+                    'questions' => $createdQuestions,
+                    'count' => count($createdQuestions),
+                ], 'Tạo câu hỏi thành công', $request);
+
+            } catch (\Exception $e) {
+                \DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin createChapterQuestions: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
             return $this->internalError();
         }
     }

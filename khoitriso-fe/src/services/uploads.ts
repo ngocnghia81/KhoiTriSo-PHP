@@ -38,21 +38,39 @@ export async function getPresignUrl(data: {
 
 /**
  * Upload file using presigned URL
- * The presignedUrl already contains the token in query string
+ * The presignedUrl contains the token in query string
  * Worker expects FormData with 'file' field
+ * Returns the key and fileUrl from Worker response
  */
-export async function uploadFileToPresignedUrl(presignedUrl: string, file: File): Promise<void> {
+export async function uploadFileToPresignedUrl(presignedUrl: string, file: File): Promise<{ key: string; fileUrl: string | null }> {
   try {
-    // Worker expects FormData, not raw file body
+    // Extract token from URL to get contentType from JWT payload
+    const urlObj = new URL(presignedUrl);
+    const token = urlObj.searchParams.get('token');
+    
+    // Get contentType from JWT payload or file.type
+    let contentType = file.type || 'application/octet-stream';
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.contentType || payload.ContentType) {
+          contentType = payload.contentType || payload.ContentType;
+        }
+      } catch {
+        // Use file.type if JWT decode fails
+      }
+    }
+    
+    // Worker expects FormData with 'file' field
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('contentType', file.type || 'application/octet-stream');
-    formData.append('filename', file.name);
+    formData.append('contentType', contentType);
     
+    // Send FormData, keep token in query string
+    // Don't set Content-Type header - browser will set it with boundary for FormData
     const response = await fetch(presignedUrl, {
       method: 'PUT',
       body: formData,
-      // Don't set Content-Type header - browser will set it with boundary for FormData
     });
 
     if (!response.ok) {
@@ -70,10 +88,25 @@ export async function uploadFileToPresignedUrl(presignedUrl: string, file: File)
         errorText,
         errorJson,
         url: presignedUrl,
+        tokenPresent: !!token,
       });
       
       throw new Error(`Upload failed (${response.status}): ${errorJson?.message || errorJson?.error || errorText || response.statusText}`);
     }
+
+    // Worker returns key and fileUrl in response: { Key: "...", FileUrl: "...", ... }
+    const responseData = await response.json();
+    const actualKey = responseData.Key || responseData.key || responseData.fileKey || responseData.FileKey;
+    const fileUrl = responseData.FileUrl || responseData.fileUrl;
+    
+    if (!actualKey) {
+      console.error('Worker response:', responseData);
+      throw new Error('Worker did not return file key in response. Response: ' + JSON.stringify(responseData));
+    }
+    
+    console.log('Worker returned key:', actualKey, 'fileUrl:', fileUrl);
+    // Return both key and fileUrl
+    return { key: actualKey, fileUrl: fileUrl || null };
   } catch (error) {
     if (error instanceof Error) {
       throw error;
@@ -104,18 +137,25 @@ export async function uploadFile(file: File, folder: string = 'courses'): Promis
       folder: folder,
     });
 
-    // Step 2: Upload file to presigned URL
-    await uploadFileToPresignedUrl(presignData.uploadUrl, file);
+    // Step 2: Upload file to presigned URL and get actual key from Worker response
+    const uploadResult = await uploadFileToPresignedUrl(presignData.uploadUrl, file);
+    const actualKey = uploadResult.key;
+    const workerFileUrl = uploadResult.fileUrl;
 
-    // Step 3: Confirm upload
-    await confirmFileUpload(presignData.key);
+    // Step 3: Confirm upload using actual key from Worker
+    await confirmFileUpload(actualKey);
 
-    // Construct file access URL from uploadUrl
-    // uploadUrl format: {baseUrl}/upload/{key}?token=...
-    // file URL format: {baseUrl}/files/{key}
+    // Use FileUrl from Worker response if available, otherwise construct it
+    if (workerFileUrl) {
+      return workerFileUrl;
+    }
+    
+    // Fallback: construct file access URL
+    // Worker routes: /files/public/:key or /files/private/:key
+    // Since accessRole is 'GUEST', use public route
     const uploadUrlObj = new URL(presignData.uploadUrl);
     const baseUrl = `${uploadUrlObj.protocol}//${uploadUrlObj.host}`;
-    const fileUrl = `${baseUrl}/files/${presignData.key}`;
+    const fileUrl = `${baseUrl}/files/public/${actualKey}`;
     
     return fileUrl;
   } catch (error) {

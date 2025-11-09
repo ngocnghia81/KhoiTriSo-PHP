@@ -30,13 +30,26 @@ Route::get('test/config', function () {
         $jwtKey = config('services.upload_worker.jwt_key');
         $backendJwtKey = config('services.upload_worker.backend_jwt_key');
         
+        // Test JWT generation
+        $testPayload = ['test' => 'value', 'iat' => time(), 'exp' => time() + 3600];
+        $testToken = null;
+        $jwtError = null;
+        try {
+            $testToken = \Firebase\JWT\JWT::encode($testPayload, $jwtKey, 'HS256');
+        } catch (\Exception $e) {
+            $jwtError = $e->getMessage();
+        }
+        
         return response()->json([
             'success' => true,
             'upload_worker' => [
                 'base_url' => $uploadWorkerBaseUrl ? 'SET' : 'NOT SET',
                 'base_url_value' => $uploadWorkerBaseUrl,
                 'jwt_key' => $jwtKey ? 'SET' : 'NOT SET',
+                'jwt_key_length' => $jwtKey ? strlen($jwtKey) : 0,
                 'backend_jwt_key' => $backendJwtKey ? 'SET' : 'NOT SET',
+                'jwt_test' => $testToken ? 'SUCCESS' : 'FAILED',
+                'jwt_error' => $jwtError,
             ],
             'env' => [
                 'UPLOAD_WORKER_BASE_URL' => env('UPLOAD_WORKER_BASE_URL') ? 'SET' : 'NOT SET',
@@ -275,9 +288,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Uploads
     Route::post('upload/presign', [\App\Http\Controllers\UploadController::class, 'presign']);
-    Route::post('upload/confirm/{fileKey}', [\App\Http\Controllers\UploadController::class, 'confirm']);
-    Route::get('upload/info/{fileKey}', [\App\Http\Controllers\UploadController::class, 'info']);
-    Route::delete('upload/{fileKey}', [\App\Http\Controllers\UploadController::class, 'delete']);
+    Route::post('upload/confirm/{fileKey}', [\App\Http\Controllers\UploadController::class, 'confirm'])->where('fileKey', '.*');
+    Route::get('upload/info/{fileKey}', [\App\Http\Controllers\UploadController::class, 'info'])->where('fileKey', '.*');
+    Route::delete('upload/{fileKey}', [\App\Http\Controllers\UploadController::class, 'delete'])->where('fileKey', '.*');
     Route::post('upload/batch-delete', [\App\Http\Controllers\UploadController::class, 'batchDelete']);
     
     // Legacy upload endpoints (direct upload)
@@ -311,6 +324,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('admin/instructors/{id}/toggle-status', [\App\Http\Controllers\AdminController::class, 'toggleInstructorStatus']);
     Route::get('admin/courses/{id}/enrollments', [\App\Http\Controllers\AdminController::class, 'getCourseEnrollments']);
     Route::get('admin/books/{id}/purchases', [\App\Http\Controllers\AdminController::class, 'getBookPurchases']);
+    
+// Admin Books Management
+Route::get('admin/books', [\App\Http\Controllers\AdminController::class, 'listBooks']);
+Route::get('admin/books/{id}', [\App\Http\Controllers\AdminController::class, 'getBook']);
+Route::post('admin/books', [\App\Http\Controllers\AdminController::class, 'createBook']);
+Route::put('admin/books/{id}', [\App\Http\Controllers\AdminController::class, 'updateBook']);
+Route::delete('admin/books/{id}', [\App\Http\Controllers\AdminController::class, 'deleteBook']);
+Route::post('admin/books/{bookId}/chapters', [\App\Http\Controllers\AdminController::class, 'createChapter']);
+Route::get('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'getChapterQuestions']);
+Route::post('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'createChapterQuestions']);
 
     // Forum (MongoDB-backed)
     Route::prefix('forum-api')->group(function () {

@@ -24,12 +24,16 @@ class UploadService
             ?: env('UPLOAD_WORKER_BASE_URL') 
             ?: 'https://khoitriso-upload-worker.quang159258.workers.dev'; // Default fallback
         
+        // Try UPLOAD_WORKER_JWT_KEY first, fallback to JWT_KEY
         $this->jwtKey = config('services.upload_worker.jwt_key') 
-            ?: env('UPLOAD_WORKER_JWT_KEY') 
+            ?: env('UPLOAD_WORKER_JWT_KEY')
+            ?: env('JWT_KEY')
             ?: 'your-local-jwt-secret-key-min-32-chars'; // Default fallback - hardcoded
         
-        $this->backendJwtKey = config('services.upload_worker.backend_jwt_key') 
-            ?: env('UPLOAD_WORKER_BACKEND_JWT_KEY') 
+        // Try UPLOAD_WORKER_BACKEND_JWT_KEY first, fallback to JWT_BACKEND_KEY
+        $this->backendJwtKey = config('services.upload_worker.backend_jwt_key')
+            ?: env('UPLOAD_WORKER_BACKEND_JWT_KEY')
+            ?: env('JWT_BACKEND_KEY')
             ?: 'default-backend-jwt-secret-key-change-in-production'; // Default fallback
         
         // Log warning if using defaults
@@ -46,26 +50,29 @@ class UploadService
         $isPublic = ($data['accessRole'] ?? null) === 'GUEST' || !isset($data['accessRole']);
         $folder = $data['folder'] ?? 'uploads';
         
-        $uploadId = Str::uuid()->toString();
-        $slugFileName = $this->generateSlug($data['fileName'] ?? 'file');
-        $fileKey = $slugFileName;
+        // Use original filename (no slug, no uploadId prefix)
+        // Worker will use this key as-is and return it in response
+        $originalFileName = $data['fileName'] ?? 'file';
+        $fileKey = $originalFileName; // Worker saves with this exact key
         $accessRole = $data['accessRole'] ?? 'GUEST';
         
         $payload = [
             'fileKey' => $fileKey,
-            'contentType' => $data['contentType'] ?? 'application/octet-stream',
-            'uploadId' => $uploadId,
+            'ContentType' => $data['contentType'] ?? 'application/octet-stream', // Worker expects PascalCase
+            'uploadId' => Str::uuid()->toString(),
             'accessRole' => $accessRole,
         ];
 
         $uploadToken = $this->generateJwt($payload, 15); // 15 minutes
 
+        // Worker route: PUT /upload/:key where key is a single segment
+        // Worker will save with this key and return it in response
         $uploadUrl = "{$this->uploadWorkerBaseUrl}/upload/{$fileKey}?token={$uploadToken}";
 
         return [
             'uploadUrl' => $uploadUrl,
-            'key' => $fileKey,
-            'uploadId' => $uploadId,
+            'key' => $fileKey, // Return key as-is (Worker will return actual key in response)
+            'uploadId' => $payload['uploadId'],
             'accessRole' => $accessRole,
             'expiresIn' => 900, // 15 minutes in seconds
         ];
@@ -88,7 +95,21 @@ class UploadService
             'exp' => $expires,
         ]);
 
-        return JWT::encode($tokenPayload, $this->jwtKey, 'HS256');
+        try {
+            $token = JWT::encode($tokenPayload, $this->jwtKey, 'HS256');
+            
+            // Log for debugging (remove in production)
+            Log::debug('Generated JWT for upload', [
+                'payload' => $tokenPayload,
+                'key_length' => strlen($this->jwtKey),
+                'key_set' => !empty($this->jwtKey),
+            ]);
+            
+            return $token;
+        } catch (\Exception $e) {
+            Log::error('Error generating JWT: ' . $e->getMessage());
+            throw $e;
+        }
     }
 
     /**
@@ -103,12 +124,42 @@ class UploadService
         $now = time();
         $expires = $now + ($expiresInMinutes * 60);
 
+        // Worker verifyBackend middleware requires role === 'backend'
         $tokenPayload = array_merge($payload, [
+            'role' => 'backend', // Required by Worker verifyBackend middleware
             'iat' => $now,
             'exp' => $expires,
         ]);
 
-        return JWT::encode($tokenPayload, $this->backendJwtKey, 'HS256');
+        $token = JWT::encode($tokenPayload, $this->backendJwtKey, 'HS256');
+        
+        // Log for debugging (remove in production)
+        Log::debug('Generated backend JWT', [
+            'payload' => $tokenPayload,
+            'key_length' => strlen($this->backendJwtKey),
+            'key_set' => !empty($this->backendJwtKey),
+            'key_source' => $this->getBackendJwtKeySource(),
+            'key_preview' => substr($this->backendJwtKey, 0, 10) . '...' . substr($this->backendJwtKey, -10),
+        ]);
+        
+        return $token;
+    }
+
+    /**
+     * Get backend JWT key source for debugging
+     */
+    private function getBackendJwtKeySource(): string
+    {
+        if (config('services.upload_worker.backend_jwt_key')) {
+            return 'config';
+        }
+        if (env('UPLOAD_WORKER_BACKEND_JWT_KEY')) {
+            return 'UPLOAD_WORKER_BACKEND_JWT_KEY';
+        }
+        if (env('JWT_BACKEND_KEY')) {
+            return 'JWT_BACKEND_KEY';
+        }
+        return 'default';
     }
 
     /**
@@ -125,6 +176,7 @@ class UploadService
             $deleteUrl = "{$this->uploadWorkerBaseUrl}/files/{$fileKey}";
             
             $response = Http::withToken($backendToken)
+                ->withoutVerifying() // Disable SSL verification for development
                 ->delete($deleteUrl);
 
             return $response->successful();
@@ -148,6 +200,7 @@ class UploadService
             $deleteUrl = "{$this->uploadWorkerBaseUrl}/files/batch-delete";
             
             $response = Http::withToken($backendToken)
+                ->withoutVerifying() // Disable SSL verification for development
                 ->post($deleteUrl, ['keys' => $fileKeys]);
 
             if ($response->successful()) {
@@ -176,6 +229,7 @@ class UploadService
             $infoUrl = "{$this->uploadWorkerBaseUrl}/files/info/{$fileKey}";
             
             $response = Http::withToken($backendToken)
+                ->withoutVerifying() // Disable SSL verification for development
                 ->get($infoUrl);
 
             if ($response->successful()) {
@@ -238,6 +292,7 @@ class UploadService
             $createUrl = "{$this->uploadWorkerBaseUrl}/files";
             
             $response = Http::withToken($backendToken)
+                ->withoutVerifying() // Disable SSL verification for development
                 ->asMultipart()
                 ->attach('file', $fileContent, $fileName)
                 ->attach('key', $fileKey)
@@ -278,7 +333,8 @@ class UploadService
 
             $updateUrl = "{$this->uploadWorkerBaseUrl}/files/{$fileKey}";
             
-            $request = Http::withToken($backendToken);
+            $request = Http::withToken($backendToken)
+                ->withoutVerifying(); // Disable SSL verification for development
             
             if ($newContent) {
                 $request = $request->asMultipart()
@@ -332,6 +388,7 @@ class UploadService
             $copyUrl = "{$this->uploadWorkerBaseUrl}/files/copy";
             
             $response = Http::withToken($backendToken)
+                ->withoutVerifying() // Disable SSL verification for development
                 ->post($copyUrl, [
                     'sourceKey' => $sourceFileKey,
                     'targetKey' => $targetKey,
@@ -356,14 +413,68 @@ class UploadService
                 'key' => $fileKey,
             ], 5);
 
-            $confirmUrl = "{$this->uploadWorkerBaseUrl}/files/{$fileKey}/confirm";
+            // Encode key for URL (handle special characters and spaces)
+            $encodedKey = rawurlencode($fileKey);
+            $confirmUrl = "{$this->uploadWorkerBaseUrl}/files/{$encodedKey}/confirm";
             
-            $response = Http::withToken($backendToken)
+            Log::debug('Confirming file', [
+                'key' => $fileKey,
+                'encoded_key' => $encodedKey,
+                'url' => $confirmUrl,
+            ]);
+            
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $backendToken,
+                'Accept' => 'application/json',
+                'Accept-Language' => 'vi',
+                'Content-Type' => 'application/json',
+            ])
+                ->withoutVerifying() // Disable SSL verification for development
+                ->timeout(30) // Thêm timeout để tránh lỗi timeout
                 ->post($confirmUrl);
 
-            return $response->successful();
+            // Log chi tiết response để debug
+            Log::debug('Confirm file response', [
+                'status_code' => $response->status(),
+                'successful' => $response->successful(),
+                'headers' => $response->headers(),
+            ]);
+
+            if ($response->successful()) {
+                Log::info('File confirmed successfully', ['key' => $fileKey]);
+                return true;
+            }
+
+            // Log chi tiết lỗi
+            $errorBody = $response->body();
+            Log::error('Confirm file failed', [
+                'key' => $fileKey,
+                'status_code' => $response->status(),
+                'error_body' => $errorBody,
+                'url' => $confirmUrl,
+            ]);
+
+            return false;
+            
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('Connection error confirming file: ' . $e->getMessage(), [
+                'key' => $fileKey,
+                'error_type' => 'ConnectionException',
+            ]);
+            return false;
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            Log::error('Request error confirming file: ' . $e->getMessage(), [
+                'key' => $fileKey,
+                'status_code' => $e->response ? $e->response->status() : 'N/A',
+                'error_type' => 'RequestException',
+            ]);
+            return false;
         } catch (\Exception $e) {
-            Log::error('Error confirming file: ' . $e->getMessage());
+            Log::error('Unexpected error confirming file: ' . $e->getMessage(), [
+                'key' => $fileKey,
+                'error_type' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return false;
         }
     }
@@ -430,6 +541,7 @@ class UploadService
             $orphansUrl = "{$this->uploadWorkerBaseUrl}/files/orphans?maxAge={$maxAgeDays}";
             
             $response = Http::withToken($backendToken)
+                ->withoutVerifying() // Disable SSL verification for development
                 ->get($orphansUrl);
 
             if ($response->successful()) {
@@ -467,6 +579,7 @@ class UploadService
             $cleanupUrl = "{$this->uploadWorkerBaseUrl}/files/cleanup-orphans?maxAge={$maxAgeDays}";
             
             $response = Http::withToken($backendToken)
+                ->withoutVerifying() // Disable SSL verification for development
                 ->delete($cleanupUrl);
 
             if ($response->successful()) {

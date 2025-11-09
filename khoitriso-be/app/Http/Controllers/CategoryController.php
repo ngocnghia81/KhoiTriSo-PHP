@@ -23,15 +23,16 @@ class CategoryController extends BaseController
             }
             
             if (!filter_var($request->query('includeInactive', 'false'), FILTER_VALIDATE_BOOLEAN)) {
-                $query->where('is_active', true);
+                $query->whereRaw('is_active = true');
             }
             
-            $categories = $query->orderBy('order_index')->with('children')->get();
+            $categories = $query->orderBy('order_index', 'asc')->orderBy('id', 'asc')->with('children')->get();
             
             return $this->success(['categories' => $categories]);
 
         } catch (\Exception $e) {
             \Log::error('Error in categories index: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
             return $this->internalError();
         }
     }

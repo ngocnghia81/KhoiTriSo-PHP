@@ -100,7 +100,14 @@ export const api = {
     try {
       const response = await apiClient.get<T>(url, config);
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
+      // Preserve error response for better error handling
+      if (error.response) {
+        const enhancedError = new Error(error.response?.data?.message || error.message || 'Request failed');
+        (enhancedError as any).response = error.response;
+        (enhancedError as any).status = error.response?.status;
+        throw enhancedError;
+      }
       throw error;
     }
   },
