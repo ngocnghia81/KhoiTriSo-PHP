@@ -7,6 +7,7 @@ use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Category Controller
@@ -62,7 +63,7 @@ class CategoryController extends BaseController
                 'description' => $data['description'],
                 'parent_id' => $data['parentId'] ?? null,
                 'icon' => $data['icon'],
-                'is_active' => true,
+                'is_active' => DB::raw('true'),
             ]);
             
             return $this->success($category);

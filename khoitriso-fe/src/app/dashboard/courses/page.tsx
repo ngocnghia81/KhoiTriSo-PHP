@@ -23,7 +23,8 @@ import { getCourses, AdminCourse } from '@/services/admin';
 import { useToast } from '@/components/ToastProvider';
 
 const renderStars = (rating: number = 0) => {
-  const fullStars = Math.floor(rating);
+  const safeRating = typeof rating === 'number' && !isNaN(rating) ? rating : 0;
+  const fullStars = Math.floor(safeRating);
   
   return (
     <div className="flex items-center">
@@ -35,7 +36,7 @@ const renderStars = (rating: number = 0) => {
           }`}
         />
       ))}
-      <span className="ml-1 text-sm text-gray-600">{rating.toFixed(1)}</span>
+      <span className="ml-1 text-sm text-gray-600">{safeRating.toFixed(1)}</span>
     </div>
   );
 };
@@ -106,7 +107,9 @@ export default function CoursesPage() {
   }, [page, search, status, approvalStatus]);
 
   const activeCourses = courses.filter(c => c.isActive).length;
-  const publishedCourses = courses.filter(c => c.approvalStatus === 1).length;
+  const publishedCourses = courses.filter(c => c.isPublished).length;
+  const approvedCourses = courses.filter(c => c.approvalStatus === 1).length;
+  const pendingCourses = courses.filter(c => c.approvalStatus === 0).length;
   const totalStudents = courses.reduce((sum, c) => sum + (c.totalStudents || 0), 0);
 
   return (
@@ -131,7 +134,7 @@ export default function CoursesPage() {
       </div>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <div className="bg-white overflow-hidden shadow rounded-lg">
           <div className="p-5">
             <div className="flex items-center">
@@ -184,12 +187,28 @@ export default function CoursesPage() {
           <div className="p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <CheckCircleIcon className="h-6 w-6 text-green-400" />
+                <CheckCircleIcon className="h-6 w-6 text-blue-400" />
               </div>
               <div className="ml-5 w-0 flex-1">
                 <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Đang hoạt động</dt>
-                  <dd className="text-lg font-medium text-gray-900">{activeCourses}</dd>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Đã phê duyệt</dt>
+                  <dd className="text-lg font-medium text-gray-900">{approvedCourses}</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white overflow-hidden shadow rounded-lg">
+          <div className="p-5">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <XCircleIcon className="h-6 w-6 text-yellow-400" />
+              </div>
+              <div className="ml-5 w-0 flex-1">
+                <dl>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Chờ phê duyệt</dt>
+                  <dd className="text-lg font-medium text-gray-900">{pendingCourses}</dd>
                 </dl>
               </div>
             </div>
@@ -288,9 +307,24 @@ export default function CoursesPage() {
                       Miễn phí
                     </span>
                   )}
-                  {course.approvalStatus !== 1 && (
+                  {course.approvalStatus === 0 && (
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                      Chờ phê duyệt
+                    </span>
+                  )}
+                  {course.approvalStatus === 2 && (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                      Đã từ chối
+                    </span>
+                  )}
+                  {course.approvalStatus === 1 && !course.isPublished && (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                       Chưa xuất bản
+                    </span>
+                  )}
+                  {course.approvalStatus === 1 && course.isPublished && (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                      Đã xuất bản
                     </span>
                   )}
                 </div>

@@ -86,6 +86,7 @@ export interface AdminCourse {
   price: number;
   isFree: boolean;
   isActive: boolean;
+  isPublished?: boolean;
   approvalStatus: number;
   rating?: number;
   totalStudents?: number;
@@ -534,4 +535,54 @@ export async function toggleUserStatus(id: number): Promise<{ id: number; isActi
   const response = await httpClient.put(`admin/users/${id}/toggle-status`, {});
   if (!isSuccess(response)) throw new Error(handleApiError(response));
   return extractData(response) as { id: number; isActive: boolean };
+}
+
+// Course Management Actions
+export async function approveCourse(id: number): Promise<{ id: number; approvalStatus: number; message: string }> {
+  const response = await httpClient.put(`admin/courses/${id}/approve`, {});
+  if (!isSuccess(response)) throw new Error(handleApiError(response));
+  return extractData(response) as { id: number; approvalStatus: number; message: string };
+}
+
+export async function rejectCourse(id: number, reason?: string): Promise<{ id: number; approvalStatus: number; reviewNotes?: string; message: string }> {
+  const response = await httpClient.put(`admin/courses/${id}/reject`, { reason });
+  if (!isSuccess(response)) throw new Error(handleApiError(response));
+  return extractData(response) as { id: number; approvalStatus: number; reviewNotes?: string; message: string };
+}
+
+export async function publishCourse(id: number): Promise<{ id: number; isPublished: boolean; message: string }> {
+  const response = await httpClient.put(`admin/courses/${id}/publish`, {});
+  if (!isSuccess(response)) throw new Error(handleApiError(response));
+  return extractData(response) as { id: number; isPublished: boolean; message: string };
+}
+
+export async function unpublishCourse(id: number): Promise<{ id: number; isPublished: boolean; message: string }> {
+  const response = await httpClient.put(`admin/courses/${id}/unpublish`, {});
+  if (!isSuccess(response)) throw new Error(handleApiError(response));
+  return extractData(response) as { id: number; isPublished: boolean; message: string };
+}
+
+// Book Management Actions
+export async function approveBook(id: number): Promise<{ id: number; approvalStatus: number; message: string }> {
+  const response = await httpClient.put(`admin/books/${id}/approve`, {});
+  if (!isSuccess(response)) throw new Error(handleApiError(response));
+  return extractData(response) as { id: number; approvalStatus: number; message: string };
+}
+
+export async function rejectBook(id: number, reason?: string): Promise<{ id: number; approvalStatus: number; reviewNotes?: string; message: string }> {
+  const response = await httpClient.put(`admin/books/${id}/reject`, { reason });
+  if (!isSuccess(response)) throw new Error(handleApiError(response));
+  return extractData(response) as { id: number; approvalStatus: number; reviewNotes?: string; message: string };
+}
+
+export async function publishBook(id: number): Promise<{ id: number; isPublished: boolean; message: string }> {
+  const response = await httpClient.put(`admin/books/${id}/publish`, {});
+  if (!isSuccess(response)) throw new Error(handleApiError(response));
+  return extractData(response) as { id: number; isPublished: boolean; message: string };
+}
+
+export async function unpublishBook(id: number): Promise<{ id: number; isPublished: boolean; message: string }> {
+  const response = await httpClient.put(`admin/books/${id}/unpublish`, {});
+  if (!isSuccess(response)) throw new Error(handleApiError(response));
+  return extractData(response) as { id: number; isPublished: boolean; message: string };
 }

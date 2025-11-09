@@ -34,8 +34,8 @@ class SearchController extends Controller
                 'instructor_id'
             )
                 ->where('title', 'like', "%$q%")
-                ->where('is_published', true)
-                ->where('is_active', true)
+                ->whereRaw('is_published = true')
+                ->whereRaw('is_active = true')
                 ->limit($pageSize)
                 ->get()
                 ->map(function($course) {
@@ -62,7 +62,7 @@ class SearchController extends Controller
                 'author_id'
             )
                 ->where('title', 'like', "%$q%")
-                ->where('is_active', true)
+                ->whereRaw('is_active = true')
                 ->limit($pageSize)
                 ->get()
                 ->map(function($book) {

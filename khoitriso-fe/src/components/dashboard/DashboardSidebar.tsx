@@ -168,12 +168,6 @@ export default function DashboardSidebar() {
   const coursesMenuItems = [
     { name: 'Danh sách khóa học', href: '/dashboard/courses' },
     { name: 'Tạo khóa học mới', href: '/dashboard/courses/create' },
-    ...(courses.length > 0 ? [
-      ...courses.slice(0, 5).map(course => ({
-        name: course.title,
-        href: `/dashboard/courses/${course.id}`,
-      }))
-    ] : []),
     { name: 'Bài giảng', href: '/dashboard/lessons' },
     { name: 'Tài liệu', href: '/dashboard/materials' },
     { name: 'Lớp học trực tuyến', href: '/dashboard/live-classes' },

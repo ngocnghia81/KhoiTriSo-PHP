@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use App\Models\RefreshToken;
 use Illuminate\Support\Str;
@@ -58,6 +59,7 @@ class AuthController extends BaseController
                 'user_id' => $user->id,
                 'token' => Str::random(64),
                 'expires_at' => now()->addDays(30),
+                'revoked' => DB::raw('false'),
             ]);
 
             $responseData = [
@@ -119,6 +121,7 @@ class AuthController extends BaseController
                 'user_id' => $user->id,
                 'token' => Str::random(64),
                 'expires_at' => now()->addDays(30),
+                'revoked' => DB::raw('false'),
             ]);
 
             $responseData = [
@@ -180,7 +183,7 @@ class AuthController extends BaseController
             }
 
             $rt = RefreshToken::where('token', $request->input('refresh_token'))
-                ->where('revoked', false)
+                ->whereRaw('revoked = false')
                 ->first();
 
             if (!$rt || $rt->expires_at->isPast()) {
@@ -193,12 +196,14 @@ class AuthController extends BaseController
             }
 
             // rotate
-            $rt->revoked = true;
-            $rt->save();
+            DB::table('refresh_tokens')
+                ->where('id', $rt->id)
+                ->update(['revoked' => DB::raw('true')]);
             $newRt = RefreshToken::create([
                 'user_id' => $user->id,
                 'token' => Str::random(64),
                 'expires_at' => now()->addDays(30),
+                'revoked' => DB::raw('false'),
             ]);
 
             $token = $user->createToken('auth')->plainTextToken;

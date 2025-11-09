@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Admin Controller
@@ -85,7 +86,7 @@ class AdminController extends BaseController
             return $this->paginated($users->toArray(), $page, $pageSize, $total);
 
         } catch (\Exception $e) {
-            \Log::error('Error in admin listUsers: ' . $e->getMessage());
+            Log::error('Error in admin listUsers: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -129,7 +130,7 @@ class AdminController extends BaseController
             return $this->success($u);
 
         } catch (\Exception $e) {
-            \Log::error('Error in admin updateUser: ' . $e->getMessage());
+            Log::error('Error in admin updateUser: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -193,9 +194,9 @@ class AdminController extends BaseController
                     if ($hasPhoneColumn && !empty($data['phone'])) {
                         $userData['phone'] = $data['phone'];
                     }
-                } catch (\Exception $e) {
+                    } catch (\Exception $e) {
                     // Column doesn't exist, skip phone
-                    \Log::info('Phone column does not exist in users table, skipping phone field');
+                    Log::info('Phone column does not exist in users table, skipping phone field');
                 }
                 
                 $userId = DB::table('users')->insertGetId($userData);
@@ -211,7 +212,7 @@ class AdminController extends BaseController
                 
                 DB::commit();
                 
-                \Log::info('Instructor account created and email sent', [
+                Log::info('Instructor account created and email sent', [
                     'email' => $data['email'],
                     'user_id' => $u->id
                 ]);
@@ -231,8 +232,8 @@ class AdminController extends BaseController
             }
 
         } catch (\Exception $e) {
-            \Log::error('Error in admin createInstructor: ' . $e->getMessage());
-            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            Log::error('Error in admin createInstructor: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
             return $this->internalError();
         }
     }
@@ -266,7 +267,7 @@ class AdminController extends BaseController
             return $this->success(null);
 
         } catch (\Exception $e) {
-            \Log::error('Error in admin resetInstructorPassword: ' . $e->getMessage());
+            Log::error('Error in admin resetInstructorPassword: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -326,6 +327,7 @@ class AdminController extends BaseController
                         'price' => $course->price,
                         'isFree' => $course->is_free,
                         'isActive' => $course->is_active,
+                        'isPublished' => $course->is_published,
                         'approvalStatus' => $course->approval_status,
                         'rating' => $course->rating,
                         'totalStudents' => $course->total_students,
@@ -346,7 +348,7 @@ class AdminController extends BaseController
             return $this->paginated($courses->toArray(), $page, $pageSize, $total);
 
         } catch (\Exception $e) {
-            \Log::error('Error in admin listCourses: ' . $e->getMessage());
+            Log::error('Error in admin listCourses: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -395,9 +397,9 @@ class AdminController extends BaseController
                     ->whereRaw('is_active = true')
                     ->whereNotNull('rating')
                     ->avg('rating');
-            } catch (\Exception $e) {
+                } catch (\Exception $e) {
                 // Rating column doesn't exist in books table
-                \Log::info('Books table does not have rating column, skipping book rating calculation');
+                Log::info('Books table does not have rating column, skipping book rating calculation');
             }
             
             // Calculate overall rating
@@ -436,7 +438,7 @@ class AdminController extends BaseController
             return $this->success($data);
             
         } catch (\Exception $e) {
-            \Log::error('Error in admin getInstructor: ' . $e->getMessage());
+            Log::error('Error in admin getInstructor: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -491,7 +493,7 @@ class AdminController extends BaseController
             return $this->paginated($courses->toArray(), $page, $pageSize, $total);
             
         } catch (\Exception $e) {
-            \Log::error('Error in admin getInstructorCourses: ' . $e->getMessage());
+            Log::error('Error in admin getInstructorCourses: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -549,7 +551,7 @@ class AdminController extends BaseController
             return $this->paginated($books->toArray(), $page, $pageSize, $total);
             
         } catch (\Exception $e) {
-            \Log::error('Error in admin getInstructorBooks: ' . $e->getMessage());
+            Log::error('Error in admin getInstructorBooks: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -596,7 +598,7 @@ class AdminController extends BaseController
             return $this->paginated($enrollments->toArray(), $page, $pageSize, $total);
             
         } catch (\Exception $e) {
-            \Log::error('Error in admin getCourseEnrollments: ' . $e->getMessage());
+            Log::error('Error in admin getCourseEnrollments: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -645,7 +647,7 @@ class AdminController extends BaseController
             return $this->paginated($purchases->toArray(), $page, $pageSize, $total);
             
         } catch (\Exception $e) {
-            \Log::error('Error in admin getBookPurchases: ' . $e->getMessage());
+            Log::error('Error in admin getBookPurchases: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -671,7 +673,7 @@ class AdminController extends BaseController
             ]);
             
         } catch (\Exception $e) {
-            \Log::error('Error in admin toggleInstructorStatus: ' . $e->getMessage());
+            Log::error('Error in admin toggleInstructorStatus: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -731,7 +733,7 @@ class AdminController extends BaseController
             return $this->success($data);
             
         } catch (\Exception $e) {
-            \Log::error('Error in admin getUser: ' . $e->getMessage());
+            Log::error('Error in admin getUser: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -794,7 +796,7 @@ class AdminController extends BaseController
             return $this->paginated($enrollments->toArray(), $page, $pageSize, $total);
             
         } catch (\Exception $e) {
-            \Log::error('Error in admin getUserCourses: ' . $e->getMessage());
+            Log::error('Error in admin getUserCourses: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -857,7 +859,7 @@ class AdminController extends BaseController
             return $this->paginated($userBooks->toArray(), $page, $pageSize, $total);
             
         } catch (\Exception $e) {
-            \Log::error('Error in admin getUserBooks: ' . $e->getMessage());
+            Log::error('Error in admin getUserBooks: ' . $e->getMessage());
             return $this->internalError();
         }
     }
@@ -883,7 +885,268 @@ class AdminController extends BaseController
             ]);
             
         } catch (\Exception $e) {
-            \Log::error('Error in admin toggleUserStatus: ' . $e->getMessage());
+            Log::error('Error in admin toggleUserStatus: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Approve course
+     */
+    public function approveCourse(int $id, Request $request): JsonResponse
+    {
+        try {
+            $course = Course::find($id);
+            
+            if (!$course) {
+                return $this->notFound('Course');
+            }
+            
+            $course->approval_status = 1; // Approved
+            $course->save();
+            
+            return $this->success([
+                'id' => $course->id,
+                'approvalStatus' => $course->approval_status,
+                'message' => 'Khóa học đã được phê duyệt'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error in admin approveCourse: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Reject course
+     */
+    public function rejectCourse(int $id, Request $request): JsonResponse
+    {
+        try {
+            $course = Course::find($id);
+            
+            if (!$course) {
+                return $this->notFound('Course');
+            }
+            
+            // Validate rejection reason
+            $validator = Validator::make($request->all(), [
+                'reason' => ['nullable', 'string', 'max:1000']
+            ]);
+            
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+            
+            $course->approval_status = 2; // Rejected
+            
+            // Store rejection reason in review_notes if provided
+            if ($request->filled('reason')) {
+                $course->review_notes = $request->input('reason');
+            }
+            
+            $course->save();
+            
+            return $this->success([
+                'id' => $course->id,
+                'approvalStatus' => $course->approval_status,
+                'reviewNotes' => $course->review_notes,
+                'message' => 'Khóa học đã bị từ chối'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error in admin rejectCourse: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Publish course
+     */
+    public function publishCourse(int $id, Request $request): JsonResponse
+    {
+        try {
+            $course = Course::find($id);
+            
+            if (!$course) {
+                return $this->notFound('Course');
+            }
+            
+            // Check if course is approved first
+            if ($course->approval_status !== 1) {
+                return $this->error('COURSE_NOT_APPROVED', null, 'Khóa học phải được phê duyệt trước khi xuất bản', 400);
+            }
+            
+            $course->is_published = DB::raw('true');
+            $course->save();
+            
+            return $this->success([
+                'id' => $course->id,
+                'isPublished' => true,
+                'message' => 'Khóa học đã được xuất bản'
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error in admin publishCourse: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Unpublish course
+     */
+    public function unpublishCourse(int $id, Request $request): JsonResponse
+    {
+        try {
+            $course = Course::find($id);
+            if (!$course) {
+                return $this->notFound('Course');
+            }
+            // Update trực tiếp kiểu boolean cho PostgreSQL
+            Course::where('id', $id)->update(['is_published' => DB::raw('false')]);
+            return $this->success([
+                'id' => $course->id,
+                'isPublished' => false,
+                'message' => 'Khóa học đã được gỡ xuất bản'
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error in admin unpublishCourse: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Approve book
+     */
+    public function approveBook(int $id, Request $request): JsonResponse
+    {
+        try {
+            $book = \App\Models\Book::find($id);
+
+            if (!$book) {
+                return $this->notFound('Book');
+            }
+
+            $book->approval_status = 1; // Approved
+            $book->save();
+
+            return $this->success([
+                'id' => $book->id,
+                'approvalStatus' => $book->approval_status,
+                'message' => 'Sách đã được phê duyệt'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin approveBook: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Reject book
+     */
+    public function rejectBook(int $id, Request $request): JsonResponse
+    {
+        try {
+            $book = \App\Models\Book::find($id);
+
+            if (!$book) {
+                return $this->notFound('Book');
+            }
+
+            // Validate rejection reason
+            $validator = Validator::make($request->all(), [
+                'reason' => ['nullable', 'string', 'max:1000']
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $book->approval_status = 2; // Rejected
+
+            if ($request->filled('reason')) {
+                $book->review_notes = $request->input('reason');
+            }
+
+            $book->save();
+
+            return $this->success([
+                'id' => $book->id,
+                'approvalStatus' => $book->approval_status,
+                'reviewNotes' => $book->review_notes,
+                'message' => 'Sách đã bị từ chối'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin rejectBook: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Publish book
+     */
+    public function publishBook(int $id, Request $request): JsonResponse
+    {
+        try {
+            $book = \App\Models\Book::find($id);
+
+            if (!$book) {
+                return $this->notFound('Book');
+            }
+
+            if ($book->approval_status !== 1) {
+                return $this->error('BOOK_NOT_APPROVED', null, 'Sách phải được phê duyệt trước khi xuất bản', 400);
+            }
+
+            $book->is_published = DB::raw('true');
+            $book->save();
+
+            return $this->success([
+                'id' => $book->id,
+                'isPublished' => true,
+                'message' => 'Sách đã được xuất bản'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin publishBook: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Unpublish book
+     */
+    public function unpublishBook(int $id, Request $request): JsonResponse
+    {
+        try {
+            $book = \App\Models\Book::find($id);
+
+            if (!$book) {
+                return $this->notFound('Book');
+            }
+
+            $book->is_published = DB::raw('false');
+            $book->save();
+
+            return $this->success([
+                'id' => $book->id,
+                'isPublished' => false,
+                'message' => 'Sách đã được gỡ xuất bản'
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin unpublishBook: ' . $e->getMessage());
             return $this->internalError();
         }
     }

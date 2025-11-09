@@ -318,6 +318,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('admin/create-instructor', [\App\Http\Controllers\AdminController::class, 'createInstructor']);
     Route::post('admin/reset-instructor-password', [\App\Http\Controllers\AdminController::class, 'resetInstructorPassword']);
     Route::get('admin/courses', [\App\Http\Controllers\AdminController::class, 'listCourses']);
+    Route::put('admin/courses/{id}/approve', [\App\Http\Controllers\AdminController::class, 'approveCourse']);
+    Route::put('admin/courses/{id}/reject', [\App\Http\Controllers\AdminController::class, 'rejectCourse']);
+    Route::put('admin/courses/{id}/publish', [\App\Http\Controllers\AdminController::class, 'publishCourse']);
+    Route::put('admin/courses/{id}/unpublish', [\App\Http\Controllers\AdminController::class, 'unpublishCourse']);
+    Route::put('admin/books/{id}/approve', [\App\Http\Controllers\AdminController::class, 'approveBook']);
+    Route::put('admin/books/{id}/reject', [\App\Http\Controllers\AdminController::class, 'rejectBook']);
+    Route::put('admin/books/{id}/publish', [\App\Http\Controllers\AdminController::class, 'publishBook']);
+    Route::put('admin/books/{id}/unpublish', [\App\Http\Controllers\AdminController::class, 'unpublishBook']);
     Route::get('admin/instructors/{id}', [\App\Http\Controllers\AdminController::class, 'getInstructor']);
     Route::get('admin/instructors/{id}/courses', [\App\Http\Controllers\AdminController::class, 'getInstructorCourses']);
     Route::get('admin/instructors/{id}/books', [\App\Http\Controllers\AdminController::class, 'getInstructorBooks']);
