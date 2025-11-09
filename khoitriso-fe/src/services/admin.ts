@@ -407,6 +407,38 @@ export async function getUser(id: number): Promise<UserDetail> {
   return extractData(response) as UserDetail;
 }
 
+export interface RevenueTotals {
+  gross: number;
+  net: number;
+  platform_fee: number;
+  instructor_earning: number;
+}
+
+export interface PerInstructorRecord {
+  id: number | null;
+  name: string;
+  gross: number;
+  net: number;
+  platform_fee: number;
+  instructor_earning: number;
+}
+
+/**
+ * Fetch admin revenue report.
+ * Returns the raw HTTP response so callers can inspect ok/status/data.
+ * Params: from (YYYY-MM-DD), to (YYYY-MM-DD), item_type (1=course,2=book)
+ */
+export async function getRevenueReport(params?: { from?: string; to?: string; item_type?: number }) {
+  const query = new URLSearchParams();
+  if (params?.from) query.set('from', params.from);
+  if (params?.to) query.set('to', params.to);
+  if (params?.item_type) query.set('item_type', String(params.item_type));
+  const qs = query.toString();
+  const response = await httpClient.get(`admin/reports/revenue${qs ? `?${qs}` : ''}`);
+  if (!isSuccess(response)) throw new Error(handleApiError(response));
+  return extractData(response);
+}
+
 export interface UserCourse {
   id: number;
   title: string;

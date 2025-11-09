@@ -305,6 +305,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('admin/create-instructor', [\App\Http\Controllers\AdminController::class, 'createInstructor']);
     Route::post('admin/reset-instructor-password', [\App\Http\Controllers\AdminController::class, 'resetInstructorPassword']);
     Route::get('admin/courses', [\App\Http\Controllers\AdminController::class, 'listCourses']);
+        Route::get('admin/reports/revenue', [\App\Http\Controllers\AdminReportController::class, 'revenueReport']);
     Route::put('admin/courses/{id}/approve', [\App\Http\Controllers\AdminController::class, 'approveCourse']);
     Route::put('admin/courses/{id}/reject', [\App\Http\Controllers\AdminController::class, 'rejectCourse']);
     Route::put('admin/courses/{id}/publish', [\App\Http\Controllers\AdminController::class, 'publishCourse']);

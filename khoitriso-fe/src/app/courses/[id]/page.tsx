@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import { notFound, useRouter, useParams } from 'next/navigation';
 import Image from 'next/image';
-import { 
-  ClockIcon, 
-  UserGroupIcon, 
+import {
+  ClockIcon,
+  UserGroupIcon,
   StarIcon,
   BookOpenIcon,
   ShoppingCartIcon
@@ -37,6 +37,14 @@ interface Course {
   rating: number;
   total_reviews: number;
   is_published: boolean;
+  lessons?: Array<{
+    id: number | string;
+    title: string;
+    lesson_order: number;
+    video_url?: string;
+    is_free?: boolean;
+    materials?: Array<{ id: number | string; title: string; file_path: string; file_name: string }>;
+  }>;
 }
 
 export default function CourseDetailPage() {
@@ -44,6 +52,18 @@ export default function CourseDetailPage() {
   const router = useRouter();
   const [course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
+  // Helper: detect YouTube links and return embeddable URL
+  const getYouTubeEmbedUrl = (url?: string | null): string | null => {
+    if (!url) return null;
+    try {
+      // Match common YouTube URL patterns and extract video id
+      const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/))([\w-_-]{11})/);
+      if (m && m[1]) return `https://www.youtube.com/embed/${m[1]}?rel=0`;
+    } catch (e) {
+      // ignore
+    }
+    return null;
+  };
 
   useEffect(() => {
     const fetchCourse = async () => {
@@ -51,14 +71,14 @@ export default function CourseDetailPage() {
         setLoading(true);
         // Backend returns course directly (not wrapped in success/data)
         const response = await httpClient.get(`courses/${params.id}`);
-        
+
         console.log('Course API response:', response);
-        
+
         if (response.ok) {
           // Backend returns course directly (not wrapped in success/data)
           // response.data is the course object itself
           const courseData = response.data as any;
-          
+
           // Check if it's actually a course object (has id and title)
           if (courseData && courseData.id && courseData.title) {
             console.log('Course data:', courseData);
@@ -102,7 +122,7 @@ export default function CourseDetailPage() {
 
     try {
       const response = await enrollCourse(course.id);
-      
+
       if (response) {
         // Redirect to learn page
         router.push(`/courses/${course.id}/learn`);
@@ -221,6 +241,58 @@ export default function CourseDetailPage() {
                   <p className="text-gray-700 text-lg leading-relaxed">{course.description}</p>
                 </div>
               )}
+
+              {/* Preview: show lesson 0 (lesson_order = 1) if available */}
+              {course.lessons && course.lessons.length > 0 && (
+                (() => {
+                  const lesson0 = course.lessons.find((l) => Number(l.lesson_order) === 0) || course.lessons[0];
+                  if (!lesson0) return null;
+                  const youtubeEmbed = getYouTubeEmbedUrl(lesson0.video_url ?? undefined);
+                  const videoSrc = !youtubeEmbed && lesson0.video_url
+                    ? (lesson0.video_url.startsWith('http') || lesson0.video_url.startsWith('/') ? lesson0.video_url : `/storage/${lesson0.video_url}`)
+                    : null;
+
+                  return (
+                    <div className="mt-6">
+                      <h3 className="text-lg font-semibold mb-2">Xem thử: {lesson0.title || 'Bài giới thiệu'}</h3>
+                      {youtubeEmbed ? (
+                        <div className="w-full rounded-md overflow-hidden">
+                          <div className="relative" style={{ paddingTop: '56.25%' }}>
+                            <iframe
+                              src={youtubeEmbed}
+                              title={lesson0.title || 'Video giới thiệu'}
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                              className="absolute top-0 left-0 w-full h-full border-0"
+                            />
+                          </div>
+                        </div>
+                      ) : videoSrc ? (
+                        <div className="w-full bg-black rounded-md overflow-hidden">
+                          <video controls className="w-full h-56 bg-black">
+                            <source src={videoSrc} />
+                            Trình duyệt của bạn không hỗ trợ thẻ video.
+                          </video>
+                          <div className="mt-2 text-sm text-gray-400 truncate">Nguồn: <a className="underline text-green-500" href={videoSrc} target="_blank" rel="noreferrer">{videoSrc}</a></div>
+                        </div>
+                      ) : (lesson0.materials && lesson0.materials.length > 0) ? (
+                        <div className="space-y-2">
+                          <p className="text-sm text-gray-600">Tài liệu kèm theo:</p>
+                          {lesson0.materials.map(m => (
+                            <div key={m.id} className="text-sm">
+                              <a className="text-green-600 underline" href={m.file_path ? (m.file_path.startsWith('http') ? m.file_path : `/storage/${m.file_path}`) : '#'} target="_blank" rel="noreferrer">{m.title || m.file_name}</a>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500">Không có video thử nghiệm hoặc tài liệu để xem trước cho bài này.</p>
+                      )}
+
+                      {/* no action button - only preview video/material shown */}
+                    </div>
+                  );
+                })()
+              )}
             </div>
 
             {/* Course Stats */}
@@ -288,14 +360,14 @@ export default function CourseDetailPage() {
 
               <div className="space-y-3">
                 {course.is_free || course.price === 0 ? (
-                  <button 
+                  <button
                     onClick={handleEnroll}
                     className="w-full px-6 py-4 bg-green-600 text-white text-lg font-semibold rounded-xl hover:bg-green-700 transition-colors"
                   >
                     Học ngay miễn phí
                   </button>
                 ) : (
-                  <button 
+                  <button
                     onClick={addToCart}
                     className="w-full px-6 py-4 bg-blue-600 text-white text-lg font-semibold rounded-xl hover:bg-blue-700 transition-colors flex items-center justify-center"
                   >
