@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getDashboard, getCourseAnalytics, getInstructorAnalytics } from '@/services/analytics';
+import { getDashboard } from '@/services/analytics';
+import { getRevenueReport } from '@/services/admin';
 import {
   ChartBarIcon,
   ArrowTrendingUpIcon,
@@ -26,99 +27,82 @@ const defaultOverview = { totalRevenue: 0, totalUsers: 0, totalCourses: 0, total
 
 const monthlyDataDefault: Array<{ month: string; revenue: number; users: number; courses: number; books: number }> = [];
 
-const topCoursesDefault = [
-  {
-    id: 1,
-    title: 'Toán học nâng cao lớp 12',
-    instructor: 'GS. Nguyễn Văn A',
-    students: 1234,
-    revenue: 369666000,
-    rating: 4.8,
-    completionRate: 85
-  },
-  {
-    id: 2,
-    title: 'Vật lý thí nghiệm lớp 11',
-    instructor: 'TS. Trần Thị B',
-    students: 987,
-    revenue: 196413000,
-    rating: 4.7,
-    completionRate: 78
-  },
-  {
-    id: 3,
-    title: 'Hóa học cơ bản lớp 10',
-    instructor: 'ThS. Lê Văn C',
-    students: 756,
-    revenue: 112644000,
-    rating: 4.6,
-    completionRate: 92
-  }
-];
-
-const topInstructorsDefault = [
-  {
-    id: 1,
-    name: 'GS. Nguyễn Văn A',
-    courses: 5,
-    students: 2341,
-    revenue: 701300000,
-    rating: 4.9,
-    completionRate: 87
-  },
-  {
-    id: 2,
-    name: 'TS. Trần Thị B',
-    students: 1876,
-    courses: 4,
-    revenue: 562800000,
-    rating: 4.8,
-    completionRate: 82
-  },
-  {
-    id: 3,
-    name: 'ThS. Lê Văn C',
-    students: 1523,
-    courses: 3,
-    revenue: 456900000,
-    rating: 4.7,
-    completionRate: 90
-  }
-];
+// Remove static mock top lists; data will come from API
 
 const userActivityDefault: Array<{ date: string; newUsers: number; activeUsers: number; coursesCompleted: number }> = [];
 
-const formatCurrency = (amount: number) => {
+const formatCurrency = (amount: number | null | undefined) => {
+  // Guard against null/undefined/NaN
+  if (amount === null || amount === undefined || !isFinite(amount)) return '—';
   return `₫${(amount / 1000000).toFixed(1)}M`;
 };
 
-const formatNumber = (num: number) => {
+const formatNumber = (num?: number | null) => {
+  if (num === null || num === undefined || !isFinite(num)) return '0';
   return num.toLocaleString();
 };
+
+// Safely format growth percentages (handles null/0/Infinity)
+const formatGrowth = (value?: number | null) => {
+  if (value === null || value === undefined || !isFinite(value)) return '—';
+  return `${value}%`;
+};
+
+// Local type for top books shown on dashboard
+type TopBook = {
+  id: number;
+  title: string;
+  rating?: number | null;
+  price?: number;
+  isFree?: boolean;
+  revenue?: number;
+  questions?: number;
+  purchases?: number;
+};
+
+// Local type for top courses shown on dashboard
+type TopCourse = {
+  id: number;
+  title: string;
+  students?: number;
+  rating?: number | null;
+  price?: number;
+  isFree?: boolean;
+  revenue?: number;
+};
+
 
 export default function ReportsPage() {
   const [overview, setOverview] = useState<any>(defaultOverview);
   const [monthlyData, setMonthlyData] = useState(monthlyDataDefault);
-  const [topCourses, setTopCourses] = useState<any[]>(topCoursesDefault);
-  const [topInstructors, setTopInstructors] = useState<any[]>(topInstructorsDefault);
+  const [topCourses, setTopCourses] = useState<TopCourse[]>([]);
+  const [topBooks, setTopBooks] = useState<TopBook[]>([]);
+  const [courseSort, setCourseSort] = useState<'revenue' | 'students'>('revenue');
+  const [bookSort, setBookSort] = useState<'revenue' | 'purchases'>('revenue');
   const [userActivity, setUserActivity] = useState(userActivityDefault);
+  
 
   useEffect(() => {
     (async () => {
-      const res = await getDashboard();
-      if (res.ok && res.data) {
-        const d: any = res.data;
-        setOverview({
-          totalRevenue: d.totalRevenue ?? 0,
-          totalUsers: d.totalUsers ?? 0,
-          totalCourses: d.totalCourses ?? 0,
-          totalBooks: d.totalBooks ?? 0,
-          monthlyGrowth: d.monthlyGrowth ?? defaultOverview.monthlyGrowth,
-        });
-        setMonthlyData(d.monthly ?? monthlyDataDefault);
-        setTopCourses(d.topCourses ?? topCoursesDefault);
-        setTopInstructors(d.topInstructors ?? topInstructorsDefault);
-        setUserActivity(d.userActivity ?? userActivityDefault);
+      try {
+  const d = await getDashboard();
+        if (d) {
+          setOverview({
+            totalRevenue: d.totalRevenue ?? 0,
+            totalUsers: d.totalUsers ?? 0,
+            totalCourses: d.totalCourses ?? 0,
+            totalBooks: d.totalBooks ?? 0,
+            monthlyGrowth: d.monthlyGrowth ?? defaultOverview.monthlyGrowth,
+          });
+          setMonthlyData(d.monthly ?? monthlyDataDefault);
+          setTopCourses(d.topCourses ?? []);
+          setTopBooks(d.topBooks ?? []);
+          setUserActivity(d.userActivity ?? userActivityDefault);
+        }
+
+        await getRevenueReport();
+      } catch {
+        // ignore for now; keep defaults
       }
     })();
   }, []);
@@ -185,7 +169,7 @@ export default function ReportsPage() {
                 <dd className="text-2xl font-bold text-gray-900">{formatCurrency(overview.totalRevenue)}</dd>
                 <dd className="flex items-center text-sm text-green-600">
                   <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
-                  +{overview.monthlyGrowth.revenue}%
+                  {formatGrowth(overview.monthlyGrowth.revenue)}
                 </dd>
               </dl>
             </div>
@@ -205,7 +189,7 @@ export default function ReportsPage() {
                 <dd className="text-2xl font-bold text-gray-900">{formatNumber(overview.totalUsers)}</dd>
                 <dd className="flex items-center text-sm text-blue-600">
                   <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
-                  +{overview.monthlyGrowth.users}%
+                  {formatGrowth(overview.monthlyGrowth.users)}
                 </dd>
               </dl>
             </div>
@@ -222,10 +206,10 @@ export default function ReportsPage() {
             <div className="ml-4">
               <dl>
                 <dt className="text-sm font-medium text-gray-500">Tổng khóa học</dt>
-                <dd className="text-2xl font-bold text-gray-900">{overview.totalCourses}</dd>
+                <dd className="text-2xl font-bold text-gray-900">{formatNumber(overview.totalCourses)}</dd>
                 <dd className="flex items-center text-sm text-purple-600">
                   <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
-                  +{overview.monthlyGrowth.courses}%
+                  {formatGrowth(overview.monthlyGrowth.courses)}
                 </dd>
               </dl>
             </div>
@@ -242,10 +226,10 @@ export default function ReportsPage() {
             <div className="ml-4">
               <dl>
                 <dt className="text-sm font-medium text-gray-500">Tổng sách</dt>
-                <dd className="text-2xl font-bold text-gray-900">{overview.totalBooks}</dd>
+                <dd className="text-2xl font-bold text-gray-900">{formatNumber(overview.totalBooks)}</dd>
                 <dd className="flex items-center text-sm text-yellow-600">
                   <ArrowTrendingUpIcon className="h-4 w-4 mr-1" />
-                  +{overview.monthlyGrowth.books}%
+                  {formatGrowth(overview.monthlyGrowth.books)}
                 </dd>
               </dl>
             </div>
@@ -278,7 +262,13 @@ export default function ReportsPage() {
                         {formatCurrency(month.revenue)}
                       </div>
                       <div className="text-sm text-green-600">
-                        +{index === 0 ? 0 : ((month.revenue - monthlyData[index-1].revenue) / monthlyData[index-1].revenue * 100).toFixed(1)}%
+                        {(() => {
+                          const prev = monthlyData[index - 1]?.revenue;
+                          const curr = month.revenue;
+                          if (!isFinite(prev as number) || !isFinite(curr as number) || prev === 0) return '—';
+                          const change = ((curr - (prev as number)) / (prev as number)) * 100;
+                          return `+${change.toFixed(1)}%`;
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -327,71 +317,110 @@ export default function ReportsPage() {
           <div className="px-6 py-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-medium text-gray-900">Khóa học hàng đầu</h3>
-              <button className="text-sm text-blue-600 hover:text-blue-800">Xem tất cả</button>
+              <div className="flex items-center space-x-3">
+                <select
+                  value={courseSort}
+                  onChange={(e) => setCourseSort(e.target.value as 'revenue' | 'students')}
+                  className="text-sm border border-gray-300 rounded-lg px-2 py-1"
+                >
+                  <option value="revenue">Sắp xếp: Doanh thu</option>
+                  <option value="students">Sắp xếp: Học viên</option>
+                </select>
+                <button className="text-sm text-blue-600 hover:text-blue-800">Xem tất cả</button>
+              </div>
             </div>
           </div>
-          <div className="p-6 space-y-4">
-            {topCourses.map((course, index) => (
-              <div key={course.id} className="flex items-start space-x-3">
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <span className="text-sm font-semibold text-blue-600">#{index + 1}</span>
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-medium text-gray-900 truncate">
-                    {course.title}
-                  </h4>
-                  <p className="text-xs text-gray-500">{course.instructor}</p>
-                  <div className="flex items-center justify-between mt-2">
-                    <div className="flex items-center space-x-3 text-xs text-gray-600">
-                      <span>{formatNumber(course.students)} học viên</span>
-                      <span>★ {course.rating}</span>
-                      <span>{course.completionRate}% hoàn thành</span>
+            <div className="p-6 space-y-4">
+            {(() => {
+              const displayCourses = Array.isArray(topCourses) ? [...topCourses] : [];
+              displayCourses.sort((a: TopCourse, b: TopCourse) => {
+                if (courseSort === 'revenue') {
+                  return (b.revenue ?? 0) - (a.revenue ?? 0);
+                }
+                return (b.students ?? 0) - (a.students ?? 0);
+              });
+              return displayCourses.map((course: TopCourse, index: number) => {
+              const isFree = course.isFree === true;
+              return (
+                <div key={course.id} className="flex items-start space-x-3">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <span className="text-sm font-semibold text-blue-600">#{index + 1}</span>
                     </div>
                   </div>
-                  <div className="text-sm font-semibold text-green-600 mt-1">
-                    {formatCurrency(course.revenue)}
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-medium text-gray-900 truncate">
+                      {course.title}
+                    </h4>
+                    <div className="flex items-center justify-between mt-2">
+                      <div className="flex items-center space-x-3 text-xs text-gray-600">
+                        <span>★ {course.rating}</span>
+                      </div>
+                    </div>
+                    <div className="text-sm font-semibold text-green-600 mt-1">
+                      {isFree ? 'Miễn phí' : formatCurrency(course.revenue ?? 0)}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+              });
+            })()}
           </div>
         </div>
 
-        {/* Top instructors */}
+        {/* Top books (replaced top instructors) */}
         <div className="bg-white shadow-sm rounded-lg border border-gray-200">
           <div className="px-6 py-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium text-gray-900">Giảng viên hàng đầu</h3>
-              <button className="text-sm text-blue-600 hover:text-blue-800">Xem tất cả</button>
+              <h3 className="text-lg font-medium text-gray-900">Sách hàng đầu</h3>
+              <div className="flex items-center space-x-3">
+                <select
+                  value={bookSort}
+                  onChange={(e) => setBookSort(e.target.value as 'revenue' | 'purchases')}
+                  className="text-sm border border-gray-300 rounded-lg px-2 py-1"
+                >
+                  <option value="revenue">Sắp xếp: Doanh thu</option>
+                  <option value="purchases">Sắp xếp: Lượt mua</option>
+                </select>
+                <button className="text-sm text-blue-600 hover:text-blue-800">Xem tất cả</button>
+              </div>
             </div>
           </div>
           <div className="p-6 space-y-4">
-            {topInstructors.map((instructor, index) => (
-              <div key={instructor.id} className="flex items-start space-x-3">
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                    <span className="text-sm font-semibold text-green-600">#{index + 1}</span>
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-medium text-gray-900">
-                    {instructor.name}
-                  </h4>
-                  <div className="flex items-center justify-between mt-1">
-                    <div className="flex items-center space-x-3 text-xs text-gray-600">
-                      <span>{instructor.courses} khóa học</span>
-                      <span>{formatNumber(instructor.students)} học viên</span>
-                      <span>★ {instructor.rating}</span>
+            {(() => {
+              const displayBooks = Array.isArray(topBooks) ? [...topBooks] : [];
+              displayBooks.sort((a: TopBook, b: TopBook) => {
+                if (bookSort === 'revenue') {
+                  return (b.revenue ?? b.price ?? 0) - (a.revenue ?? a.price ?? 0);
+                }
+                return (b.purchases ?? 0) - (a.purchases ?? 0);
+              });
+              return displayBooks.map((book: TopBook, index: number) => {
+              const isFree = book.isFree === true;
+              return (
+                <div key={book.id} className="flex items-start space-x-3">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                      <span className="text-sm font-semibold text-green-600">#{index + 1}</span>
                     </div>
                   </div>
-                  <div className="text-sm font-semibold text-green-600 mt-1">
-                    {formatCurrency(instructor.revenue)}
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-medium text-gray-900">
+                      {book.title}
+                    </h4>
+                    <div className="flex items-center justify-between mt-1">
+                      <div className="flex items-center space-x-3 text-xs text-gray-600">
+                        <span>★ {book.rating ?? '—'}</span>
+                      </div>
+                    </div>
+                    <div className="text-sm font-semibold text-green-600 mt-1">
+                      {isFree ? 'Miễn phí' : formatCurrency(book.revenue ?? book.price ?? 0)}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+              });
+            })()}
           </div>
         </div>
       </div>
