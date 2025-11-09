@@ -124,6 +124,27 @@ export default function OrderDetailPage() {
     if (params.id) {
       fetchOrder();
     }
+
+    // Check for VNPay callback status in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const status = urlParams.get('status');
+    const message = urlParams.get('message');
+    
+    if (status === 'success') {
+      // Show success message
+      setTimeout(() => {
+        alert('Thanh toán thành công!');
+        // Clean URL
+        window.history.replaceState({}, '', window.location.pathname);
+      }, 500);
+    } else if (status === 'error' && message) {
+      // Show error message
+      setTimeout(() => {
+        alert(decodeURIComponent(message));
+        // Clean URL
+        window.history.replaceState({}, '', window.location.pathname);
+      }, 500);
+    }
   }, [params.id, router]);
 
   const formatPrice = (price: number) => {

@@ -163,23 +163,139 @@ class AnalyticsController extends BaseController
     public function course(int $id, Request $request): JsonResponse
     {
         try {
+            $course = \App\Models\Course::find($id);
+            if (!$course) {
+                return $this->notFound('Course');
+            }
+
+            // Total enrollments
+            $totalEnrollments = (int) DB::table('course_enrollments')
+                ->where('course_id', $id)
+                ->count();
+
+            // Active students (currently enrolled)
+            $activeStudents = (int) DB::table('course_enrollments')
+                ->where('course_id', $id)
+                ->whereRaw('is_active = true')
+                ->count();
+
+            // Completion rate
+            $completed = (int) DB::table('course_enrollments')
+                ->where('course_id', $id)
+                ->whereNotNull('completed_at')
+                ->count();
+            $completionRate = $totalEnrollments > 0 ? round(($completed / $totalEnrollments) * 100, 2) : 0;
+
+            // Average progress
+            $avgProgress = (float) DB::table('course_enrollments')
+                ->where('course_id', $id)
+                ->whereRaw('is_active = true')
+                ->avg('progress_percentage') ?? 0;
+            $averageProgress = round($avgProgress, 2);
+
+            // Rating
+            $rating = is_numeric($course->rating) ? (float) $course->rating : 0.0;
+
+            // Total revenue from orders (paid orders with this course)
+            $totalRevenue = (float) DB::table('orders')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.status', 2) // Paid
+                ->where('order_items.item_type', 1) // Course
+                ->where('order_items.item_id', $id)
+                ->sum('order_items.price');
+
+            // Enrollment trend - last 30 days
+            $enrollmentTrend = [];
+            for ($i = 29; $i >= 0; $i--) {
+                $date = now()->subDays($i)->startOfDay();
+                $nextDate = $date->copy()->addDay();
+                $count = (int) DB::table('course_enrollments')
+                    ->where('course_id', $id)
+                    ->where('enrolled_at', '>=', $date)
+                    ->where('enrolled_at', '<', $nextDate)
+                    ->count();
+                $enrollmentTrend[] = [
+                    'date' => $date->format('Y-m-d'),
+                    'label' => $date->format('d/m'),
+                    'enrollments' => $count,
+                ];
+            }
+
+            // Progress distribution
+            $progressDistribution = [
+                ['range' => '0-20%', 'count' => (int) DB::table('course_enrollments')->where('course_id', $id)->whereRaw('is_active = true')->whereRaw('progress_percentage >= 0 AND progress_percentage < 20')->count()],
+                ['range' => '20-40%', 'count' => (int) DB::table('course_enrollments')->where('course_id', $id)->whereRaw('is_active = true')->whereRaw('progress_percentage >= 20 AND progress_percentage < 40')->count()],
+                ['range' => '40-60%', 'count' => (int) DB::table('course_enrollments')->where('course_id', $id)->whereRaw('is_active = true')->whereRaw('progress_percentage >= 40 AND progress_percentage < 60')->count()],
+                ['range' => '60-80%', 'count' => (int) DB::table('course_enrollments')->where('course_id', $id)->whereRaw('is_active = true')->whereRaw('progress_percentage >= 60 AND progress_percentage < 80')->count()],
+                ['range' => '80-100%', 'count' => (int) DB::table('course_enrollments')->where('course_id', $id)->whereRaw('is_active = true')->whereRaw('progress_percentage >= 80')->count()],
+            ];
+
+            // Lesson engagement (views/completions per lesson)
+            $lessons = DB::table('lessons')
+                ->where('course_id', $id)
+                ->whereRaw('is_published = true')
+                ->orderBy('lesson_order')
+                ->get(['id', 'title', 'lesson_order']);
+            
+            $lessonEngagement = $lessons->map(function($lesson) {
+                $views = (int) DB::table('lesson_progress')
+                    ->where('lesson_id', $lesson->id)
+                    ->count();
+                $completions = (int) DB::table('lesson_progress')
+                    ->where('lesson_id', $lesson->id)
+                    ->whereRaw('is_completed = true')
+                    ->count();
+                return [
+                    'lessonId' => $lesson->id,
+                    'title' => $lesson->title,
+                    'order' => $lesson->lesson_order,
+                    'views' => $views,
+                    'completions' => $completions,
+                    'completionRate' => $views > 0 ? round(($completions / $views) * 100, 2) : 0,
+                ];
+            });
+
+            // Revenue trend - last 30 days
+            $revenueTrend = [];
+            for ($i = 29; $i >= 0; $i--) {
+                $date = now()->subDays($i)->startOfDay();
+                $nextDate = $date->copy()->addDay();
+                $revenue = (float) DB::table('orders')
+                    ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                    ->where('orders.status', 2)
+                    ->where('order_items.item_type', 1)
+                    ->where('order_items.item_id', $id)
+                    ->where('orders.updated_at', '>=', $date)
+                    ->where('orders.updated_at', '<', $nextDate)
+                    ->sum('order_items.price');
+                $revenueTrend[] = [
+                    'date' => $date->format('Y-m-d'),
+                    'label' => $date->format('d/m'),
+                    'revenue' => $revenue,
+                ];
+            }
+
             $data = [
                 'courseId' => $id,
-                'totalEnrollments' => 0,
-                'activeStudents' => 0,
-                'completionRate' => 0,
-                'averageProgress' => 0,
-                'rating' => 0,
-                'totalRevenue' => 0,
-                'enrollmentTrend' => [],
-                'progressDistribution' => [],
-                'lessonEngagement' => [],
+                'courseTitle' => $course->title,
+                'totalEnrollments' => $totalEnrollments,
+                'activeStudents' => $activeStudents,
+                'completionRate' => $completionRate,
+                'averageProgress' => $averageProgress,
+                'rating' => $rating,
+                'totalReviews' => is_numeric($course->total_reviews) ? (int) $course->total_reviews : 0,
+                'totalRevenue' => $totalRevenue,
+                'enrollmentTrend' => $enrollmentTrend,
+                'revenueTrend' => $revenueTrend,
+                'progressDistribution' => $progressDistribution,
+                'lessonEngagement' => $lessonEngagement,
             ];
             
             return $this->success($data);
 
         } catch (\Exception $e) {
             \Log::error('Error in analytics course: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
             return $this->internalError();
         }
     }

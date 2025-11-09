@@ -11,6 +11,7 @@ use App\Models\Course;
 use App\Models\Book;
 use App\Models\BookActivationCode;
 use App\Models\UserBook;
+use App\Services\VNPayService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -185,7 +186,29 @@ class OrderController extends Controller
         // Clear cart after order creation
         CartItem::where('user_id', $request->user()->id)->delete();
 
-        return response()->json(['success' => true, 'order' => $order, 'paymentUrl' => null], 201);
+        // Generate payment URL if payment method is VNPay
+        $paymentUrl = null;
+        if (strtolower($data['paymentMethod']) === 'vnpay') {
+            try {
+                $vnpayService = new VNPayService();
+                $orderDescription = "Thanh toan don hang {$order->order_code}";
+                $paymentUrl = $vnpayService->createPaymentUrl(
+                    $order->id,
+                    $order->final_amount,
+                    $orderDescription,
+                    $order->order_code,
+                    $request->ip()
+                );
+            } catch (\Exception $e) {
+                \Log::error('Error creating VNPay payment URL: ' . $e->getMessage());
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'order' => $order,
+            'paymentUrl' => $paymentUrl
+        ], 201);
     }
 
     public function cancel(int $id, Request $request)
@@ -344,9 +367,169 @@ class OrderController extends Controller
                 }
             }
             
+            $this->processOrderItems($order);
             return response()->json(['success' => true, 'order' => $order]);
         }
         return response()->json(['success' => false, 'message' => 'Invalid status'], 400);
+    }
+
+    /**
+     * VNPay payment callback
+     */
+    public function vnpayCallback(Request $request)
+    {
+        try {
+            $vnpayService = new VNPayService();
+            $inputData = $request->all();
+            
+            // Verify payment
+            $verifyResult = $vnpayService->verifyPayment($inputData);
+            
+            if (!$verifyResult['success']) {
+                \Log::error('VNPay payment verification failed', ['data' => $inputData]);
+                return redirect('/orders?status=error&message=' . urlencode('Xác thực thanh toán thất bại'));
+            }
+            
+            // Find order by order code
+            $order = Order::where('order_code', $verifyResult['order_code'])->first();
+            
+            if (!$order) {
+                \Log::error('Order not found for VNPay callback', ['order_code' => $verifyResult['order_code']]);
+                return redirect('/orders?status=error&message=' . urlencode('Không tìm thấy đơn hàng'));
+            }
+            
+            // Check if order is already paid
+            if ($order->status == 2) {
+                return redirect("/orders/{$order->id}?status=success");
+            }
+            
+            // Check response code
+            if ($verifyResult['response_code'] === '00') {
+                // Payment successful
+                $order->status = 2; // Paid
+                $order->paid_at = now();
+                $order->transaction_id = $verifyResult['transaction_id'];
+                $order->payment_method = 'vnpay';
+                $order->payment_gateway = 'vnpay';
+                $order->save();
+                
+                // Process order items (enroll courses, generate book codes)
+                $this->processOrderItems($order);
+                
+                \Log::info('VNPay payment successful', [
+                    'order_id' => $order->id,
+                    'order_code' => $order->order_code,
+                    'transaction_id' => $verifyResult['transaction_id']
+                ]);
+                
+                return redirect("/orders/{$order->id}?status=success");
+            } else {
+                // Payment failed
+                $order->status = 3; // Failed
+                $order->save();
+                
+                \Log::warning('VNPay payment failed', [
+                    'order_id' => $order->id,
+                    'response_code' => $verifyResult['response_code'],
+                    'message' => $verifyResult['message']
+                ]);
+                
+                return redirect("/orders/{$order->id}?status=error&message=" . urlencode($verifyResult['message']));
+            }
+            
+        } catch (\Exception $e) {
+            \Log::error('Error processing VNPay callback: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+            return redirect('/orders?status=error&message=' . urlencode('Có lỗi xảy ra khi xử lý thanh toán'));
+        }
+    }
+
+    /**
+     * Process order items after successful payment
+     */
+    private function processOrderItems(Order $order)
+    {
+        $orderItems = OrderItem::where('order_id', $order->id)->get();
+        $activationCodes = [];
+        $enrolledCourses = [];
+        
+        foreach ($orderItems as $item) {
+            if ($item->item_type == 1) { // Course
+                // Use DB::table for PostgreSQL compatibility
+                $existing = DB::table('course_enrollments')
+                    ->where('user_id', $order->user_id)
+                    ->where('course_id', $item->item_id)
+                    ->first();
+                
+                if (!$existing) {
+                    DB::table('course_enrollments')->insert([
+                        'user_id' => $order->user_id,
+                        'course_id' => $item->item_id,
+                        'enrolled_at' => now(),
+                        'progress_percentage' => 0,
+                        'is_active' => DB::raw('true'),
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                } else {
+                    DB::table('course_enrollments')
+                        ->where('user_id', $order->user_id)
+                        ->where('course_id', $item->item_id)
+                        ->update([
+                            'is_active' => DB::raw('true'),
+                            'enrolled_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                }
+                
+                $enrolledCourses[] = $item->item_id;
+            } elseif ($item->item_type == 2) { // Book
+                // Generate activation code for books
+                $code = 'BOOK-' . strtoupper(substr(md5(uniqid()), 0, 8));
+                
+                try {
+                    DB::table('book_activation_codes')->insert([
+                        'book_id' => $item->item_id,
+                        'activation_code' => $code,
+                        'is_used' => DB::raw('false'),
+                        'used_by_id' => null,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                    
+                    // Link book to user
+                    $existingUserBook = DB::table('user_books')
+                        ->where('user_id', $order->user_id)
+                        ->where('book_id', $item->item_id)
+                        ->first();
+                    
+                    if (!$existingUserBook) {
+                        DB::table('user_books')->insert([
+                            'user_id' => $order->user_id,
+                            'book_id' => $item->item_id,
+                            'activation_code' => $code,
+                            'activated_at' => now(),
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    }
+                    
+                    $activationCodes[] = [
+                        'book_id' => $item->item_id,
+                        'book_name' => $item->item_name,
+                        'code' => $code,
+                    ];
+                } catch (\Exception $e) {
+                    \Log::error("Failed to create activation code for book_id: {$item->item_id}, error: " . $e->getMessage());
+                }
+            }
+        }
+        
+        return [
+            'enrolled_courses' => $enrolledCourses,
+            'activation_codes' => $activationCodes,
+        ];
     }
 }
 

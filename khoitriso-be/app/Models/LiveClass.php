@@ -18,6 +18,16 @@ class LiveClass extends Model
         'chat_enabled' => 'boolean',
         'recording_enabled' => 'boolean',
     ];
+
+    public function course()
+    {
+        return $this->belongsTo(Course::class, 'course_id');
+    }
+
+    public function instructor()
+    {
+        return $this->belongsTo(User::class, 'instructor_id');
+    }
 }
 
 

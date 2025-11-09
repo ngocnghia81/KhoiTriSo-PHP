@@ -24,6 +24,18 @@ class Assignment extends Model
     {
         return $this->belongsTo(\App\Models\Lesson::class, 'lesson_id');
     }
+
+    public function questions()
+    {
+        return $this->hasMany(\App\Models\Question::class, 'context_id')
+            ->where('context_type', 1)
+            ->orderBy('order_index');
+    }
+
+    public function attempts()
+    {
+        return $this->hasMany(\App\Models\UserAssignmentAttempt::class, 'assignment_id');
+    }
 }
 
 

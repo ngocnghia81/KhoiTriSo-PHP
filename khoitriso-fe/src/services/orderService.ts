@@ -72,7 +72,8 @@ export const orderService = {
   createOrder: async (data?: {
     couponCode?: string;
     paymentMethod?: string;
-  }): Promise<Order> => {
+    items?: Array<{ itemId: number; itemType: number; quantity: number }>;
+  }): Promise<{ order: Order; paymentUrl: string | null }> => {
     try {
       // api.post returns response.data directly
       const response = await api.post('/orders', data) as { success: boolean; order: Order; paymentUrl: null | string; message?: string };
@@ -86,7 +87,10 @@ export const orderService = {
       
       // Check if order exists
       if (response.order) {
-        return response.order;
+        return {
+          order: response.order,
+          paymentUrl: response.paymentUrl || null
+        };
       }
       
       console.error('Invalid order response structure:', response);

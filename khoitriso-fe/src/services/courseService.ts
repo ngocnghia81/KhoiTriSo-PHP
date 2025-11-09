@@ -1,15 +1,92 @@
 import { api } from '@/lib/api';
-import type { 
-  Course,
-  Lesson,
-  LessonMaterial,
-  CourseEnrollment,
-  Review,
-  Discussion,
-  ApiResponse,
-  PaginatedResponse,
-  CourseFilters
-} from '@/types';
+import type { ApiResponse, PaginatedResponse } from '@/types';
+
+export interface Course {
+  id: number;
+  title: string;
+  description: string;
+  thumbnail?: string;
+  instructorId?: number;
+  categoryId?: number;
+  level?: string;
+  isFree: boolean;
+  price: number;
+  language?: string;
+  requirements?: string[];
+  whatYouWillLearn?: string[];
+  totalLessons?: number;
+  totalStudents?: number;
+  rating?: number;
+  totalReviews?: number;
+  isPublished?: boolean;
+  isActive?: boolean;
+  approvalStatus?: number;
+  instructor?: {
+    id: number;
+    name: string;
+    email: string;
+  };
+  category?: {
+    id: number;
+    name: string;
+  };
+  lessons?: Lesson[];
+}
+
+export interface Lesson {
+  id: number;
+  courseId?: number;
+  course_id?: number;
+  title: string;
+  description: string;
+  videoUrl?: string;
+  video_url?: string;
+  videoDuration?: number;
+  video_duration?: number;
+  contentText?: string;
+  content_text?: string;
+  lessonOrder?: number;
+  lesson_order?: number;
+  isFree?: boolean;
+  is_free?: boolean;
+  isPublished?: boolean;
+  is_published?: boolean;
+  materials?: LessonMaterial[];
+  course?: {
+    id: number;
+    title: string;
+  };
+}
+
+export interface LessonMaterial {
+  id: number;
+  lessonId: number;
+  title: string;
+  fileName: string;
+  filePath: string;
+  fileType?: string;
+  fileSize?: number;
+  downloadCount?: number;
+}
+
+export interface LessonDiscussion {
+  id: number;
+  lessonId: number;
+  userId: number;
+  parentId?: number;
+  content: string;
+  videoTimestamp?: number;
+  isInstructor: boolean;
+  likeCount: number;
+  createdAt: string;
+  user?: {
+    id: number;
+    name: string;
+    email: string;
+    avatar?: string;
+  };
+  replies?: LessonDiscussion[];
+}
 
 /**
  * Course Service
@@ -17,192 +94,296 @@ import type {
  */
 export const courseService = {
   /**
-   * Get all courses with filters
-   * GET /api/courses
+   * List courses for admin with filters, search, and pagination
+   * GET /api/admin/courses
    */
-  getAll: async (filters?: CourseFilters): Promise<PaginatedResponse<Course>> => {
-    const response = await api.get<PaginatedResponse<Course>>('/courses', { params: filters });
-    return response;
+  listCoursesAdmin: async (params?: {
+    search?: string;
+    categoryId?: number;
+    instructorId?: number;
+    status?: string;
+    approvalStatus?: number;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ data: Course[]; pagination: any }> => {
+    const response = await api.get<any>('/admin/courses', { params });
+    // API returns: { success: true, data: Course[], pagination: {...} }
+    if (response.success && response.data) {
+      return {
+        data: Array.isArray(response.data) ? response.data : [],
+        pagination: response.pagination || {},
+      };
+    }
+    throw new Error(response.message || 'Failed to list courses');
   },
 
   /**
-   * Get course by ID or slug
-   * GET /api/courses/{id}
+   * Get course detail for admin
+   * GET /api/admin/courses/{id}
    */
-  getById: async (id: number | string): Promise<Course> => {
-    const response = await api.get<Course>(`/courses/${id}`);
-    return response;
+  getCourseAdmin: async (id: number): Promise<Course> => {
+    try {
+      const response = await api.get<ApiResponse<Course>>(`/admin/courses/${id}`);
+      if (response.success && response.data) {
+        return response.data;
+      }
+      throw new Error(response.message || 'Failed to get course');
+    } catch (error: any) {
+      if (error.response?.status === 404 || error.response?.status === 400) {
+        const errorMessage = error.response?.data?.message || 'Course not found';
+        throw new Error(errorMessage);
+      }
+      throw error;
+    }
   },
 
   /**
-   * Get featured courses
-   * GET /api/courses/featured
+   * Create course (Admin only)
+   * POST /api/admin/courses
    */
-  getFeatured: async (limit = 6): Promise<Course[]> => {
-    const response = await api.get<ApiResponse<Course[]>>('/courses/featured', { params: { limit } });
-    return response.data || [];
+  createCourse: async (data: {
+    title: string;
+    description: string;
+    thumbnail?: string;
+    instructorId?: number;
+    categoryId?: number;
+    level?: string;
+    isFree?: boolean;
+    price?: number;
+    language?: string;
+    requirements?: string[];
+    whatYouWillLearn?: string[];
+  }): Promise<Course> => {
+    const response = await api.post<ApiResponse<Course>>('/admin/courses', data);
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.message || 'Failed to create course');
   },
 
   /**
-   * Get popular courses
-   * GET /api/courses/popular
+   * Update course (Admin only)
+   * PUT /api/admin/courses/{id}
    */
-  getPopular: async (limit = 6): Promise<Course[]> => {
-    const response = await api.get<ApiResponse<Course[]>>('/courses/popular', { params: { limit } });
-    return response.data || [];
+  updateCourse: async (id: number, data: Partial<Course>): Promise<Course> => {
+    const response = await api.put<ApiResponse<Course>>(`/admin/courses/${id}`, data);
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.message || 'Failed to update course');
   },
 
   /**
-   * Get course lessons
-   * GET /api/courses/{id}/lessons
+   * Delete course (Admin only)
+   * DELETE /api/admin/courses/{id}
    */
-  getLessons: async (courseId: number): Promise<Lesson[]> => {
-    const response = await api.get<ApiResponse<Lesson[]>>(`/courses/${courseId}/lessons`);
-    return response.data?.data || [];
+  deleteCourse: async (id: number): Promise<void> => {
+    const response = await api.delete<ApiResponse<null>>(`/admin/courses/${id}`);
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to delete course');
+    }
   },
 
   /**
-   * Get lesson by ID
-   * GET /api/lessons/{id}
+   * Get lesson detail for admin
+   * GET /api/admin/lessons/{id}
    */
-  getLessonById: async (lessonId: number): Promise<Lesson> => {
-    const response = await api.get<ApiResponse<Lesson>>(`/lessons/${lessonId}`);
-    return response.data?.data!;
+  getLessonAdmin: async (id: number): Promise<Lesson> => {
+    try {
+      const response = await api.get<ApiResponse<any>>(`/admin/lessons/${id}`);
+      if (response.success && response.data) {
+        const lesson = response.data;
+        // Map snake_case to camelCase for consistency
+        return {
+          ...lesson,
+          videoUrl: lesson.video_url || lesson.videoUrl,
+          videoDuration: lesson.video_duration || lesson.videoDuration,
+          contentText: lesson.content_text || lesson.contentText,
+          lessonOrder: lesson.lesson_order || lesson.lessonOrder,
+          isFree: lesson.is_free !== undefined ? lesson.is_free : lesson.isFree,
+          isPublished: lesson.is_published !== undefined ? lesson.is_published : lesson.isPublished,
+          courseId: lesson.course_id || lesson.courseId,
+        };
+      }
+      throw new Error(response.message || 'Failed to get lesson');
+    } catch (error: any) {
+      if (error.response?.status === 404 || error.response?.status === 400) {
+        const errorMessage = error.response?.data?.message || 'Lesson not found';
+        throw new Error(errorMessage);
+      }
+      throw error;
+    }
   },
 
   /**
-   * Get lesson materials
-   * GET /api/lessons/{id}/materials
+   * Create lesson (Admin only)
+   * POST /api/admin/courses/{courseId}/lessons
    */
-  getLessonMaterials: async (lessonId: number): Promise<LessonMaterial[]> => {
-    const response = await api.get<ApiResponse<LessonMaterial[]>>(`/lessons/${lessonId}/materials`);
-    return response.data?.data || [];
+  createLesson: async (courseId: number, data: {
+    title: string;
+    description: string;
+    videoUrl: string;
+    videoDuration?: number;
+    contentText?: string;
+    lessonOrder?: number;
+    isFree?: boolean;
+    isPublished?: boolean;
+  }): Promise<Lesson> => {
+    const response = await api.post<ApiResponse<Lesson>>(`/admin/courses/${courseId}/lessons`, data);
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.message || 'Failed to create lesson');
   },
 
   /**
-   * Enroll in course
-   * POST /api/courses/{id}/enroll
+   * Update lesson (Admin only)
+   * PUT /api/admin/lessons/{id}
    */
-  enroll: async (courseId: number): Promise<CourseEnrollment> => {
-    const response = await api.post<ApiResponse<CourseEnrollment>>(`/courses/${courseId}/enroll`);
-    return response.data?.data!;
+  updateLesson: async (id: number, data: Partial<Lesson>): Promise<Lesson> => {
+    const response = await api.put<ApiResponse<Lesson>>(`/admin/lessons/${id}`, data);
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.message || 'Failed to update lesson');
   },
 
   /**
-   * Get user's enrolled courses
-   * GET /api/courses/enrolled
+   * Delete lesson (Admin only)
+   * DELETE /api/admin/lessons/{id}
    */
-  getEnrolled: async (): Promise<Course[]> => {
-    const response = await api.get<ApiResponse<Course[]>>('/courses/enrolled');
-    return response.data?.data || [];
+  deleteLesson: async (id: number): Promise<void> => {
+    const response = await api.delete<ApiResponse<null>>(`/admin/lessons/${id}`);
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to delete lesson');
+    }
   },
 
   /**
-   * Get course progress
-   * GET /api/courses/{id}/progress
+   * Upload material for lesson (Admin only)
+   * POST /api/admin/lessons/{lessonId}/materials
    */
-  getProgress: async (courseId: number): Promise<CourseEnrollment> => {
-    const response = await api.get<ApiResponse<CourseEnrollment>>(`/courses/${courseId}/progress`);
-    return response.data?.data!;
+  uploadLessonMaterial: async (lessonId: number, data: {
+    title: string;
+    fileUrl: string;
+    fileName: string;
+    fileType?: string;
+    fileSize?: number;
+  }): Promise<LessonMaterial> => {
+    const response = await api.post<ApiResponse<LessonMaterial>>(`/admin/lessons/${lessonId}/materials`, data);
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.message || 'Failed to upload material');
   },
 
   /**
-   * Mark lesson as completed
-   * POST /api/lessons/{id}/complete
+   * Delete material (Admin only)
+   * DELETE /api/admin/materials/{id}
    */
-  completeLesson: async (lessonId: number): Promise<void> => {
-    await api.post(`/lessons/${lessonId}/complete`);
+  deleteLessonMaterial: async (id: number): Promise<void> => {
+    const response = await api.delete<ApiResponse<null>>(`/admin/materials/${id}`);
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to delete material');
+    }
   },
 
   /**
-   * Get course reviews
-   * GET /api/courses/{id}/reviews
+   * Get lesson discussions/questions (Admin only)
+   * GET /api/admin/lessons/{lessonId}/discussions
    */
-  getReviews: async (courseId: number, page = 1): Promise<PaginatedResponse<Review>> => {
-    const response = await api.get<PaginatedResponse<Review>>(`/courses/${courseId}/reviews`, { 
-      params: { page } 
-    });
-    return response.data;
+  getLessonDiscussions: async (lessonId: number, params?: {
+    page?: number;
+    pageSize?: number;
+  }): Promise<PaginatedResponse<LessonDiscussion>> => {
+    const response = await api.get<ApiResponse<PaginatedResponse<LessonDiscussion>>>(`/admin/lessons/${lessonId}/discussions`, { params });
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.message || 'Failed to get discussions');
   },
 
   /**
-   * Add course review
-   * POST /api/courses/{id}/reviews
+   * Reply to discussion as instructor/admin
+   * POST /api/admin/lessons/{lessonId}/discussions/{discussionId}/reply
    */
-  addReview: async (courseId: number, data: { rating: number; comment?: string }): Promise<Review> => {
-    const response = await api.post<ApiResponse<Review>>(`/courses/${courseId}/reviews`, data);
-    return response.data?.data!;
+  replyToDiscussion: async (lessonId: number, discussionId: number, content: string): Promise<LessonDiscussion> => {
+    const response = await api.post<ApiResponse<LessonDiscussion>>(`/admin/lessons/${lessonId}/discussions/${discussionId}/reply`, { content });
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.message || 'Failed to reply to discussion');
   },
 
   /**
-   * Get lesson discussions
-   * GET /api/lessons/{id}/discussions
+   * Get course enrollments (students who enrolled)
+   * GET /api/admin/courses/{id}/enrollments
    */
-  getDiscussions: async (lessonId: number): Promise<Discussion[]> => {
-    const response = await api.get<ApiResponse<Discussion[]>>(`/lessons/${lessonId}/discussions`);
-    return response.data?.data || [];
+  getCourseEnrollments: async (courseId: number, params?: {
+    page?: number;
+    pageSize?: number;
+  }): Promise<PaginatedResponse<any>> => {
+    const response = await api.get<ApiResponse<PaginatedResponse<any>>>(`/admin/courses/${courseId}/enrollments`, { params });
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.message || 'Failed to get enrollments');
   },
 
   /**
-   * Add discussion/reply
-   * POST /api/lessons/{id}/discussions
+   * Get course revenue statistics
+   * GET /api/admin/courses/{courseId}/revenue
    */
-  addDiscussion: async (lessonId: number, data: { content: string; parentId?: number }): Promise<Discussion> => {
-    const response = await api.post<ApiResponse<Discussion>>(`/lessons/${lessonId}/discussions`, data);
-    return response.data?.data!;
+  getCourseRevenue: async (courseId: number, params?: {
+    startDate?: string;
+    endDate?: string;
+  }): Promise<any> => {
+    const response = await api.get<ApiResponse<any>>(`/admin/courses/${courseId}/revenue`, { params });
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.message || 'Failed to get revenue');
   },
 
   /**
-   * Like/unlike discussion
-   * POST /api/discussions/{id}/like
+   * Get all courses revenue statistics
+   * GET /api/admin/courses/revenue
    */
-  likeDiscussion: async (discussionId: number): Promise<void> => {
-    await api.post(`/discussions/${discussionId}/like`);
+  getAllCoursesRevenue: async (params?: {
+    startDate?: string;
+    endDate?: string;
+  }): Promise<any> => {
+    const response = await api.get<ApiResponse<any>>(`/admin/courses/revenue`, { params });
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.message || 'Failed to get revenue');
   },
 
   /**
-   * Search courses
-   * GET /api/courses/search
+   * Get course analytics
+   * GET /api/analytics/courses/{id}
    */
-  search: async (query: string): Promise<Course[]> => {
-    const response = await api.get<ApiResponse<Course[]>>('/courses/search', { 
-      params: { q: query } 
-    });
-    return response.data?.data || [];
+  getCourseAnalytics: async (courseId: number): Promise<any> => {
+    const response = await api.get<ApiResponse<any>>(`/analytics/courses/${courseId}`);
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.message || 'Failed to get analytics');
   },
 
   /**
-   * Get instructor courses (for instructor dashboard)
-   * GET /api/instructor/courses
+   * Get total revenue (all courses + books)
+   * GET /api/admin/revenue/total
    */
-  getInstructorCourses: async (): Promise<Course[]> => {
-    const response = await api.get<ApiResponse<Course[]>>('/instructor/courses');
-    return response.data?.data || [];
-  },
-
-  /**
-   * Create course (instructor only)
-   * POST /api/instructor/courses
-   */
-  create: async (data: Partial<Course>): Promise<Course> => {
-    const response = await api.post<ApiResponse<Course>>('/instructor/courses', data);
-    return response.data?.data!;
-  },
-
-  /**
-   * Update course (instructor only)
-   * PUT /api/instructor/courses/{id}
-   */
-  update: async (id: number, data: Partial<Course>): Promise<Course> => {
-    const response = await api.put<ApiResponse<Course>>(`/instructor/courses/${id}`, data);
-    return response.data?.data!;
-  },
-
-  /**
-   * Delete course (instructor only)
-   * DELETE /api/instructor/courses/{id}
-   */
-  delete: async (id: number): Promise<void> => {
-    await api.delete(`/instructor/courses/${id}`);
+  getTotalRevenue: async (params?: {
+    startDate?: string;
+    endDate?: string;
+  }): Promise<any> => {
+    const response = await api.get<ApiResponse<any>>(`/admin/revenue/total`, { params });
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.message || 'Failed to get total revenue');
   },
 };

@@ -359,7 +359,15 @@ export default function BookDetailPage() {
           <div className="lg:col-span-2">
             {selectedChapter ? (
               <div className="bg-white rounded-lg shadow p-6">
-                <h2 className="text-2xl font-semibold mb-2">{selectedChapter.title}</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-2xl font-semibold">{selectedChapter.title}</h2>
+                  <button
+                    onClick={() => router.push(`/dashboard/books/${bookId}/chapters/${selectedChapter.id}/questions/create`)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
+                  >
+                    + Thêm câu hỏi
+                  </button>
+                </div>
                 <div className="text-gray-600 mb-6">{renderMathContent(selectedChapter.description)}</div>
 
                 {loadingQuestions ? (

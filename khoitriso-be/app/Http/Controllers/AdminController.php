@@ -194,7 +194,7 @@ class AdminController extends BaseController
                     if ($hasPhoneColumn && !empty($data['phone'])) {
                         $userData['phone'] = $data['phone'];
                     }
-                    } catch (\Exception $e) {
+                } catch (\Exception $e) {
                     // Column doesn't exist, skip phone
                     Log::info('Phone column does not exist in users table, skipping phone field');
                 }
@@ -331,6 +331,7 @@ class AdminController extends BaseController
                         'approvalStatus' => $course->approval_status,
                         'rating' => $course->rating,
                         'totalStudents' => $course->total_students,
+                        'totalLessons' => $course->total_lessons ?? 0,
                         'instructor' => $course->instructor ? [
                             'id' => $course->instructor->id,
                             'name' => $course->instructor->name,
@@ -397,7 +398,7 @@ class AdminController extends BaseController
                     ->whereRaw('is_active = true')
                     ->whereNotNull('rating')
                     ->avg('rating');
-                } catch (\Exception $e) {
+            } catch (\Exception $e) {
                 // Rating column doesn't exist in books table
                 Log::info('Books table does not have rating column, skipping book rating calculation');
             }
@@ -1715,9 +1716,10 @@ class AdminController extends BaseController
             
             // Get questions with is_active filter (PostgreSQL compatible)
             // For admin, we can show all questions (active and inactive) for debugging
+            // PostgreSQL requires explicit boolean cast
             $questions = \App\Models\Question::where('context_type', 2)
                 ->where('context_id', $chapterId)
-                ->where('is_active', true) // Use direct boolean comparison instead of whereRaw
+                ->whereRaw('is_active = true') // PostgreSQL boolean comparison
                 ->with(['options', 'bookSolutions'])
                 ->orderBy('order_index')
                 ->get();
@@ -1728,7 +1730,7 @@ class AdminController extends BaseController
             if ($questions->count() === 0) {
                 $inactiveQuestions = \App\Models\Question::where('context_type', 2)
                     ->where('context_id', $chapterId)
-                    ->where('is_active', false)
+                    ->whereRaw('is_active = false') // PostgreSQL boolean comparison
                     ->count();
                 \Log::info('Inactive questions for chapter ' . $chapterId . ': ' . $inactiveQuestions);
                 
@@ -1958,6 +1960,1583 @@ class AdminController extends BaseController
 
         } catch (\Exception $e) {
             \Log::error('Error in admin createChapterQuestions: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get course detail for admin
+     * GET /api/admin/courses/{id}
+     */
+    public function getCourse(int $id, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem chi tiết khóa học');
+            }
+
+            $course = Course::with(['category:id,name', 'instructor:id,name,email', 'lessons' => function ($q) {
+                $q->orderBy('lesson_order');
+            }])->find($id);
+
+            if (!$course) {
+                return $this->notFound('Course');
+            }
+
+            return $this->success($course, 'Lấy thông tin khóa học thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin getCourse: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Create course (Admin only)
+     * POST /api/admin/courses
+     */
+    public function createCourse(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền tạo khóa học');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'title' => ['required', 'string', 'max:200'],
+                'description' => ['required', 'string'],
+                'thumbnail' => ['nullable', 'string', 'max:255'],
+                'instructorId' => ['nullable', 'integer', 'exists:users,id'], // Optional, will default to current user
+                'categoryId' => ['required', 'integer', 'exists:categories,id'],
+                'level' => ['nullable', 'string', 'in:beginner,intermediate,advanced'],
+                'isFree' => ['nullable', 'boolean'],
+                'price' => ['nullable', 'numeric', 'min:0'],
+                'language' => ['nullable', 'string', 'max:10'],
+                'requirements' => ['nullable', 'array'],
+                'whatYouWillLearn' => ['nullable', 'array'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+
+            // Map level string to integer
+            $levelMap = [
+                'beginner' => 1,
+                'intermediate' => 2,
+                'advanced' => 3,
+            ];
+            $level = isset($data['level']) && isset($levelMap[$data['level']]) 
+                ? $levelMap[$data['level']] 
+                : 1; // Default to beginner (1)
+
+            // Use provided instructorId or default to current user (the creator)
+            $instructorId = isset($data['instructorId']) && $data['instructorId'] !== null
+                ? (int)$data['instructorId']
+                : (int)$user->id;
+
+            // Generate static_page_path from title
+            $staticPagePath = \Illuminate\Support\Str::slug($data['title']);
+
+            // Prepare course data with explicit PostgreSQL-compatible types
+            $requirementsJson = json_encode($data['requirements'] ?? [], JSON_UNESCAPED_UNICODE);
+            $whatYouWillLearnJson = json_encode($data['whatYouWillLearn'] ?? [], JSON_UNESCAPED_UNICODE);
+            
+            // Use raw SQL with parameter binding for PostgreSQL compatibility
+            $isFree = isset($data['isFree']) ? ($data['isFree'] ? 'true' : 'false') : 'false';
+            $price = isset($data['price']) ? (float)$data['price'] : 0.0;
+            
+            $courseId = DB::selectOne("
+                INSERT INTO courses (
+                    title, static_page_path, description, thumbnail, instructor_id, category_id, level,
+                    is_free, price, language, requirements, what_you_will_learn,
+                    total_lessons, total_students, rating, total_reviews,
+                    is_published, is_active, approval_status, created_at, updated_at
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?,
+                    ?::boolean, ?, ?, ?::json, ?::json,
+                    ?, ?, ?, ?,
+                    false::boolean, true::boolean, ?, ?, ?
+                ) RETURNING id
+            ", [
+                $data['title'],
+                $staticPagePath,
+                $data['description'],
+                $data['thumbnail'] ?? null,
+                $instructorId,
+                (int)$data['categoryId'],
+                $level,
+                $isFree,
+                $price,
+                $data['language'] ?? 'vi',
+                $requirementsJson,
+                $whatYouWillLearnJson,
+                0,
+                0,
+                0.0,
+                0,
+                3,
+                now(),
+                now(),
+            ])->id;
+            
+            // Load the created course
+            $course = Course::find($courseId);
+
+            return $this->success($course, 'Tạo khóa học thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin createCourse: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Update course (Admin only)
+     * PUT /api/admin/courses/{id}
+     */
+    public function updateCourse(int $id, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền cập nhật khóa học');
+            }
+
+            $course = Course::find($id);
+            if (!$course) {
+                return $this->notFound('Course');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'title' => ['sometimes', 'required', 'string', 'max:200'],
+                'description' => ['sometimes', 'required', 'string'],
+                'thumbnail' => ['nullable', 'string', 'max:255'],
+                'instructorId' => ['nullable', 'integer', 'exists:users,id'],
+                'categoryId' => ['nullable', 'integer', 'exists:categories,id'],
+                'level' => ['nullable', 'string', 'in:beginner,intermediate,advanced'],
+                'isFree' => ['nullable', 'boolean'],
+                'price' => ['nullable', 'numeric', 'min:0'],
+                'language' => ['nullable', 'string', 'max:10'],
+                'requirements' => ['nullable', 'array'],
+                'whatYouWillLearn' => ['nullable', 'array'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+
+            $course->fill([
+                'title' => $data['title'] ?? $course->title,
+                'description' => $data['description'] ?? $course->description,
+                'thumbnail' => $data['thumbnail'] ?? $course->thumbnail,
+                'instructor_id' => $data['instructorId'] ?? $course->instructor_id,
+                'category_id' => $data['categoryId'] ?? $course->category_id,
+                'level' => $data['level'] ?? $course->level,
+                'is_free' => isset($data['isFree']) ? (bool)$data['isFree'] : $course->is_free,
+                'price' => $data['price'] ?? $course->price,
+                'language' => $data['language'] ?? $course->language,
+                'requirements' => $data['requirements'] ?? $course->requirements,
+                'what_you_will_learn' => $data['whatYouWillLearn'] ?? $course->what_you_will_learn,
+            ])->save();
+
+            return $this->success($course, 'Cập nhật khóa học thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin updateCourse: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Delete course (Admin only)
+     * DELETE /api/admin/courses/{id}
+     */
+    public function deleteCourse(int $id, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xóa khóa học');
+            }
+
+            $course = Course::find($id);
+            if (!$course) {
+                return $this->notFound('Course');
+            }
+
+            // Check if course has lessons
+            $lessonCount = \App\Models\Lesson::where('course_id', $id)->count();
+            if ($lessonCount > 0) {
+                return $this->error(
+                    MessageCode::VALIDATION_ERROR,
+                    "Không thể xóa khóa học vì có {$lessonCount} bài học. Vui lòng xóa các bài học trước.",
+                    null,
+                    400
+                );
+            }
+
+            $course->delete();
+
+            return $this->success(null, 'Xóa khóa học thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin deleteCourse: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get lesson detail for admin
+     * GET /api/admin/lessons/{id}
+     */
+    public function getLesson(int $id, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem chi tiết bài học');
+            }
+
+            $lesson = \App\Models\Lesson::with(['materials', 'course:id,title'])->find($id);
+
+            if (!$lesson) {
+                return $this->notFound('Lesson');
+            }
+
+            return $this->success($lesson, 'Lấy thông tin bài học thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin getLesson: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Create lesson (Admin only)
+     * POST /api/admin/courses/{courseId}/lessons
+     */
+    public function createLesson(int $courseId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền tạo bài học');
+            }
+
+            // Verify course exists
+            $course = Course::find($courseId);
+            if (!$course) {
+                return $this->notFound('Course');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'title' => ['required', 'string', 'max:200'],
+                'description' => ['required', 'string'],
+                'videoUrl' => ['required', 'string', 'max:255'],
+                'videoDuration' => ['nullable', 'integer', 'min:0'],
+                'contentText' => ['nullable', 'string'],
+                'lessonOrder' => ['nullable', 'integer', 'min:0'],
+                'isFree' => ['nullable', 'boolean'],
+                'isPublished' => ['nullable', 'boolean'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+
+            // Get next lesson_order if not provided
+            $lessonOrder = $data['lessonOrder'] ?? null;
+            if ($lessonOrder === null) {
+                $maxOrder = \App\Models\Lesson::where('course_id', $courseId)->max('lesson_order');
+                $lessonOrder = ($maxOrder === null) ? 0 : ($maxOrder + 1);
+            }
+
+            // Auto-set is_free based on lesson_order:
+            // - lesson_order = 0: Bài giới thiệu, miễn phí (is_free = true) - người chưa mua có thể xem
+            // - lesson_order >= 1: Bài học chính, phải mua (is_free = false) - chỉ người đã mua mới xem được
+            $isFree = ($lessonOrder === 0) ? true : false;
+            $isPublished = isset($data['isPublished']) ? (bool)$data['isPublished'] : false;
+            $videoDuration = isset($data['videoDuration']) && $data['videoDuration'] !== '' 
+                ? (int)$data['videoDuration'] 
+                : null;
+
+            // Generate static_page_path from title and course_id
+            $staticPagePath = "/lessons/course-{$courseId}/lesson-{$lessonOrder}.html";
+
+            // Use raw SQL with explicit PostgreSQL type casting to avoid datatype mismatch errors
+            $sql = "
+                INSERT INTO lessons (
+                    course_id, title, description, video_url, video_duration, 
+                    content_text, lesson_order, static_page_path, is_free, is_published, 
+                    created_at, updated_at
+                ) VALUES (
+                    :course_id, :title, :description, :video_url, :video_duration,
+                    :content_text, :lesson_order, :static_page_path, :is_free::boolean, :is_published::boolean,
+                    NOW(), NOW()
+                ) RETURNING id
+            ";
+
+            $result = \DB::selectOne($sql, [
+                'course_id' => $courseId,
+                'title' => $data['title'],
+                'description' => $data['description'],
+                'video_url' => $data['videoUrl'],
+                'video_duration' => $videoDuration,
+                'content_text' => $data['contentText'] ?? '',
+                'lesson_order' => $lessonOrder,
+                'static_page_path' => $staticPagePath,
+                'is_free' => $isFree,
+                'is_published' => $isPublished,
+            ]);
+
+            $lessonId = $result->id;
+            $lesson = \App\Models\Lesson::find($lessonId);
+
+            // Update course total_lessons
+            $totalLessons = \App\Models\Lesson::where('course_id', $courseId)->count();
+            Course::where('id', $courseId)->update(['total_lessons' => $totalLessons]);
+
+            return $this->success($lesson, 'Tạo bài học thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin createLesson: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Update lesson (Admin only)
+     * PUT /api/admin/lessons/{id}
+     */
+    public function updateLesson(int $id, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền cập nhật bài học');
+            }
+
+            $lesson = \App\Models\Lesson::find($id);
+            if (!$lesson) {
+                return $this->notFound('Lesson');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'title' => ['sometimes', 'required', 'string', 'max:200'],
+                'description' => ['sometimes', 'required', 'string'],
+                'videoUrl' => ['sometimes', 'required', 'string', 'max:255'],
+                'videoDuration' => ['nullable', 'integer', 'min:0'],
+                'contentText' => ['nullable', 'string'],
+                'lessonOrder' => ['nullable', 'integer', 'min:1'],
+                'isFree' => ['nullable', 'boolean'],
+                'isPublished' => ['nullable', 'boolean'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+
+            $lesson->fill([
+                'title' => $data['title'] ?? $lesson->title,
+                'description' => $data['description'] ?? $lesson->description,
+                'video_url' => $data['videoUrl'] ?? $lesson->video_url,
+                'video_duration' => $data['videoDuration'] ?? $lesson->video_duration,
+                'content_text' => $data['contentText'] ?? $lesson->content_text,
+                'lesson_order' => $data['lessonOrder'] ?? $lesson->lesson_order,
+                'is_free' => isset($data['isFree']) ? (bool)$data['isFree'] : $lesson->is_free,
+                'is_published' => isset($data['isPublished']) ? (bool)$data['isPublished'] : $lesson->is_published,
+            ])->save();
+
+            return $this->success($lesson, 'Cập nhật bài học thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin updateLesson: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Delete lesson (Admin only)
+     * DELETE /api/admin/lessons/{id}
+     */
+    public function deleteLesson(int $id, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xóa bài học');
+            }
+
+            $lesson = \App\Models\Lesson::find($id);
+            if (!$lesson) {
+                return $this->notFound('Lesson');
+            }
+
+            $courseId = $lesson->course_id;
+            $lesson->delete();
+
+            // Update course total_lessons
+            $totalLessons = \App\Models\Lesson::where('course_id', $courseId)->count();
+            Course::where('id', $courseId)->update(['total_lessons' => $totalLessons]);
+
+            return $this->success(null, 'Xóa bài học thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin deleteLesson: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Upload material for lesson (Admin only)
+     * POST /api/admin/lessons/{lessonId}/materials
+     */
+    public function uploadLessonMaterial(int $lessonId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền upload tài liệu');
+            }
+
+            // Verify lesson exists
+            $lesson = \App\Models\Lesson::find($lessonId);
+            if (!$lesson) {
+                return $this->notFound('Lesson');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'title' => ['required', 'string', 'max:200'],
+                'fileUrl' => ['required', 'string', 'max:255'],
+                'fileName' => ['required', 'string', 'max:255'],
+                'fileType' => ['nullable', 'string', 'max:255'], // Increased to handle long MIME types
+                'fileSize' => ['nullable', 'integer', 'min:0'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+
+            // Extract file extension from fileName - database column only allows 20 chars
+            // So we'll use extension instead of full MIME type
+            $fileName = $data['fileName'] ?? '';
+            $extension = pathinfo($fileName, PATHINFO_EXTENSION);
+            
+            // Use extension if available, otherwise try to extract from MIME type
+            if ($extension) {
+                $fileType = strtolower($extension);
+            } else {
+                // Try to extract extension from MIME type
+                $mimeType = $data['fileType'] ?? 'application/octet-stream';
+                $fileType = $this->extractExtensionFromMimeType($mimeType);
+            }
+            
+            // Truncate to 20 chars max (database column limit)
+            if (strlen($fileType) > 20) {
+                $fileType = substr($fileType, 0, 20);
+            }
+
+            $material = \App\Models\LessonMaterial::create([
+                'lesson_id' => $lessonId,
+                'title' => $data['title'],
+                'file_name' => $data['fileName'],
+                'file_path' => $data['fileUrl'],
+                'file_type' => $fileType,
+                'file_size' => $data['fileSize'] ?? 0,
+                'download_count' => 0,
+            ]);
+
+            return $this->success($material, 'Upload tài liệu thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin uploadLessonMaterial: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Extract file extension from MIME type
+     */
+    private function extractExtensionFromMimeType(string $mimeType): string
+    {
+        $mimeToExtension = [
+            'application/pdf' => 'pdf',
+            'application/msword' => 'doc',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+            'application/vnd.ms-excel' => 'xls',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+            'application/vnd.ms-powerpoint' => 'ppt',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation' => 'pptx',
+            'application/zip' => 'zip',
+            'application/x-rar-compressed' => 'rar',
+            'application/x-7z-compressed' => '7z',
+            'video/mp4' => 'mp4',
+            'video/quicktime' => 'mov',
+            'video/x-msvideo' => 'avi',
+            'audio/mpeg' => 'mp3',
+            'audio/wav' => 'wav',
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp',
+            'text/plain' => 'txt',
+            'text/html' => 'html',
+            'application/json' => 'json',
+        ];
+
+        // Try exact match first
+        if (isset($mimeToExtension[$mimeType])) {
+            return $mimeToExtension[$mimeType];
+        }
+
+        // Try partial match (e.g., image/* -> extract subtype)
+        if (strpos($mimeType, '/') !== false) {
+            $parts = explode('/', $mimeType);
+            if (count($parts) === 2) {
+                $subtype = explode(';', $parts[1])[0]; // Remove parameters
+                $subtype = trim($subtype);
+                // Return first 20 chars of subtype as fallback
+                return substr($subtype, 0, 20);
+            }
+        }
+
+        // Default fallback
+        return 'bin';
+    }
+
+    /**
+     * Delete material (Admin only)
+     * DELETE /api/admin/materials/{id}
+     */
+    public function deleteLessonMaterial(int $id, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xóa tài liệu');
+            }
+
+            $material = \App\Models\LessonMaterial::find($id);
+            if (!$material) {
+                return $this->notFound('Material');
+            }
+
+            $material->delete();
+
+            return $this->success(null, 'Xóa tài liệu thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin deleteLessonMaterial: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Reply to lesson discussion as instructor/admin
+     * POST /api/admin/lessons/{lessonId}/discussions/{discussionId}/reply
+     */
+    public function replyToDiscussion(int $lessonId, int $discussionId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || ($user->role !== 'admin' && $user->role !== 'instructor')) {
+                return $this->forbidden('Chỉ admin hoặc giảng viên mới có quyền trả lời');
+            }
+
+            // Verify discussion exists and belongs to lesson
+            $parentDiscussion = \App\Models\LessonDiscussion::where('id', $discussionId)
+                ->where('lesson_id', $lessonId)
+                ->first();
+
+            if (!$parentDiscussion) {
+                return $this->notFound('Discussion');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'content' => ['required', 'string'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+
+            // Create reply with is_instructor = true
+            $reply = \App\Models\LessonDiscussion::create([
+                'lesson_id' => $lessonId,
+                'user_id' => $user->id,
+                'parent_id' => $discussionId,
+                'content' => $data['content'],
+                'is_instructor' => \DB::raw('true'),
+                'is_hidden' => \DB::raw('false'),
+                'like_count' => 0,
+            ]);
+
+            $reply->load('user:id,name,email,avatar');
+
+            return $this->success($reply, 'Trả lời thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin replyToDiscussion: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get lesson questions/discussions for admin
+     * GET /api/admin/lessons/{lessonId}/discussions
+     */
+    public function getLessonDiscussions(int $lessonId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem danh sách câu hỏi');
+            }
+
+            // Verify lesson exists
+            $lesson = \App\Models\Lesson::find($lessonId);
+            if (!$lesson) {
+                return $this->notFound('Lesson');
+            }
+
+            $page = (int) $request->query('page', 1);
+            $pageSize = (int) $request->query('pageSize', 20);
+
+            $q = \App\Models\LessonDiscussion::with(['user:id,name,email,avatar'])
+                ->where('lesson_id', $lessonId)
+                ->whereNull('parent_id'); // Only top-level questions
+
+            $total = $q->count();
+            $discussions = $q->orderBy('created_at', 'desc')
+                ->skip(($page - 1) * $pageSize)
+                ->take($pageSize)
+                ->get()
+                ->map(function ($discussion) {
+                    // Load replies for each discussion
+                    $replies = \App\Models\LessonDiscussion::with(['user:id,name,email,avatar'])
+                        ->where('parent_id', $discussion->id)
+                        ->orderBy('created_at', 'asc')
+                        ->get();
+                    
+                    return [
+                        'id' => $discussion->id,
+                        'content' => $discussion->content,
+                        'videoTimestamp' => $discussion->video_timestamp,
+                        'isInstructor' => $discussion->is_instructor,
+                        'likeCount' => $discussion->like_count,
+                        'createdAt' => is_string($discussion->created_at) ? $discussion->created_at : $discussion->created_at->toISOString(),
+                        'user' => $discussion->user ? [
+                            'id' => $discussion->user->id,
+                            'name' => $discussion->user->name,
+                            'email' => $discussion->user->email,
+                            'avatar' => $discussion->user->avatar,
+                        ] : null,
+                        'replies' => $replies->map(function ($reply) {
+                            return [
+                                'id' => $reply->id,
+                                'content' => $reply->content,
+                                'isInstructor' => $reply->is_instructor,
+                                'likeCount' => $reply->like_count,
+                                'createdAt' => is_string($reply->created_at) ? $reply->created_at : $reply->created_at->toISOString(),
+                                'user' => $reply->user ? [
+                                    'id' => $reply->user->id,
+                                    'name' => $reply->user->name,
+                                    'email' => $reply->user->email,
+                                    'avatar' => $reply->user->avatar,
+                                ] : null,
+                            ];
+                        }),
+                    ];
+                });
+
+            return $this->paginated($discussions->toArray(), $page, $pageSize, $total);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin getLessonDiscussions: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get assignments for a lesson (Admin only)
+     * GET /api/admin/lessons/{lessonId}/assignments
+     */
+    public function getLessonAssignments(int $lessonId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem danh sách bài tập');
+            }
+
+            // Verify lesson exists
+            $lesson = \App\Models\Lesson::find($lessonId);
+            if (!$lesson) {
+                return $this->notFound('Lesson');
+            }
+
+            $assignments = \App\Models\Assignment::where('lesson_id', $lessonId)
+                ->with(['lesson:id,title'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            return $this->success($assignments, 'Lấy danh sách bài tập thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin getLessonAssignments: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Create assignment for a lesson (Admin only)
+     * POST /api/admin/lessons/{lessonId}/assignments
+     */
+    public function createLessonAssignment(int $lessonId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền tạo bài tập');
+            }
+
+            // Verify lesson exists
+            $lesson = \App\Models\Lesson::find($lessonId);
+            if (!$lesson) {
+                return $this->notFound('Lesson');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'title' => ['required', 'string', 'max:200'],
+                'description' => ['required', 'string'],
+                'assignmentType' => ['required', 'integer', 'in:1,2,3'], // 1=quiz, 2=assignment, 3=exam
+                'maxScore' => ['required', 'integer', 'min:1'],
+                'timeLimit' => ['nullable', 'integer', 'min:1'],
+                'maxAttempts' => ['required', 'integer', 'min:1'],
+                'showAnswersAfter' => ['required', 'integer', 'in:1,2,3'], // 1=immediately, 2=after due, 3=never
+                'dueDate' => ['nullable', 'date'],
+                'isPublished' => ['nullable', 'boolean'],
+                'passingScore' => ['nullable', 'numeric', 'min:0'],
+                'shuffleQuestions' => ['nullable', 'boolean'],
+                'shuffleOptions' => ['nullable', 'boolean'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+
+            $assignment = \App\Models\Assignment::create([
+                'lesson_id' => $lessonId,
+                'title' => $data['title'],
+                'description' => $data['description'],
+                'assignment_type' => $data['assignmentType'],
+                'max_score' => $data['maxScore'],
+                'time_limit' => $data['timeLimit'] ?? null,
+                'max_attempts' => $data['maxAttempts'],
+                'show_answers_after' => $data['showAnswersAfter'],
+                'due_date' => isset($data['dueDate']) ? $data['dueDate'] : null,
+                'is_published' => $data['isPublished'] ?? false,
+                'passing_score' => $data['passingScore'] ?? null,
+                'shuffle_questions' => $data['shuffleQuestions'] ?? false,
+                'shuffle_options' => $data['shuffleOptions'] ?? false,
+            ]);
+
+            return $this->success($assignment, 'Tạo bài tập thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin createLessonAssignment: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Create question for assignment (Admin only)
+     * POST /api/admin/assignments/{assignmentId}/questions
+     */
+    public function createAssignmentQuestion(int $assignmentId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền tạo câu hỏi');
+            }
+
+            // Verify assignment exists
+            $assignment = \App\Models\Assignment::find($assignmentId);
+            if (!$assignment) {
+                return $this->notFound('Assignment');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'questionContent' => ['required', 'string'],
+                'questionType' => ['required', 'integer', 'in:1,2,3'], // 1=multiple choice, 2=true/false, 3=short answer/essay
+                'difficultyLevel' => ['nullable', 'integer', 'in:1,2,3'], // 1=easy, 2=medium, 3=hard
+                'defaultPoints' => ['nullable', 'numeric', 'min:0'],
+                'explanationContent' => ['nullable', 'string'],
+                'orderIndex' => ['nullable', 'integer', 'min:0'],
+                'options' => ['required_if:questionType,1,2', 'array', 'min:2'], // Required for multiple choice and true/false
+                'options.*.content' => ['required_with:options', 'string'],
+                'options.*.isCorrect' => ['required_with:options', 'boolean'],
+                'options.*.pointsValue' => ['nullable', 'numeric', 'min:0'],
+                'options.*.orderIndex' => ['nullable', 'integer', 'min:0'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+
+            // Get next order_index if not provided
+            $orderIndex = $data['orderIndex'] ?? null;
+            if ($orderIndex === null) {
+                $maxOrder = \App\Models\Question::where('context_type', 1)
+                    ->where('context_id', $assignmentId)
+                    ->max('order_index');
+                $orderIndex = ($maxOrder ?? 0) + 1;
+            }
+
+            $question = \App\Models\Question::create([
+                'context_type' => 1, // 1=assignment
+                'context_id' => $assignmentId,
+                'question_content' => $data['questionContent'],
+                'question_type' => $data['questionType'],
+                'difficulty_level' => $data['difficultyLevel'] ?? 2, // Default to medium
+                'default_points' => $data['defaultPoints'] ?? 10.0,
+                'explanation_content' => $data['explanationContent'] ?? '',
+                'order_index' => $orderIndex,
+                'is_active' => true,
+            ]);
+
+            // Create options for multiple choice and true/false questions
+            if (in_array($data['questionType'], [1, 2]) && isset($data['options'])) {
+                foreach ($data['options'] as $index => $optionData) {
+                    \App\Models\QuestionOption::create([
+                        'question_id' => $question->id,
+                        'option_content' => $optionData['content'],
+                        'is_correct' => $optionData['isCorrect'] ?? false,
+                        'points_value' => $optionData['pointsValue'] ?? ($optionData['isCorrect'] ? $question->default_points : 0),
+                        'order_index' => $optionData['orderIndex'] ?? ($index + 1),
+                    ]);
+                }
+            }
+
+            $question->load('options');
+
+            return $this->success($question, 'Tạo câu hỏi thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin createAssignmentQuestion: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get assignment attempts for grading (Admin/Instructor only)
+     * GET /api/admin/assignments/{assignmentId}/attempts
+     */
+    public function getAssignmentAttempts(int $assignmentId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || !in_array($user->role, ['admin', 'teacher'])) {
+                return $this->forbidden('Chỉ admin và giảng viên mới có quyền xem danh sách bài nộp');
+            }
+
+            // Verify assignment exists
+            $assignment = \App\Models\Assignment::find($assignmentId);
+            if (!$assignment) {
+                return $this->notFound('Assignment');
+            }
+
+            $page = (int) $request->query('page', 1);
+            $pageSize = (int) $request->query('pageSize', 20);
+
+            $q = \App\Models\UserAssignmentAttempt::with(['user:id,name,email'])
+                ->where('assignment_id', $assignmentId)
+                ->where('is_completed', true);
+
+            $total = $q->count();
+            $attempts = $q->orderBy('submitted_at', 'desc')
+                ->skip(($page - 1) * $pageSize)
+                ->take($pageSize)
+                ->get()
+                ->map(function ($attempt) {
+                    return [
+                        'id' => $attempt->id,
+                        'userId' => $attempt->user_id,
+                        'user' => $attempt->user ? [
+                            'id' => $attempt->user->id,
+                            'name' => $attempt->user->name,
+                            'email' => $attempt->user->email,
+                        ] : null,
+                        'attemptNumber' => $attempt->attempt_number,
+                        'score' => $attempt->score,
+                        'isPassed' => $attempt->is_passed,
+                        'startedAt' => $attempt->started_at ? $attempt->started_at->toISOString() : null,
+                        'submittedAt' => $attempt->submitted_at ? $attempt->submitted_at->toISOString() : null,
+                        'timeSpent' => $attempt->time_spent,
+                    ];
+                });
+
+            return $this->paginated($attempts->toArray(), $page, $pageSize, $total);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin getAssignmentAttempts: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get attempt details with answers for grading (Admin/Instructor only)
+     * GET /api/admin/attempts/{attemptId}
+     */
+    public function getAttemptDetails(int $attemptId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || !in_array($user->role, ['admin', 'teacher'])) {
+                return $this->forbidden('Chỉ admin và giảng viên mới có quyền xem chi tiết bài nộp');
+            }
+
+            $attempt = \App\Models\UserAssignmentAttempt::with(['user:id,name,email'])
+                ->find($attemptId);
+
+            if (!$attempt) {
+                return $this->notFound('Attempt');
+            }
+
+            // Get assignment
+            $assignment = \App\Models\Assignment::find($attempt->assignment_id);
+            if (!$assignment) {
+                return $this->notFound('Assignment');
+            }
+
+            // Get questions
+            $questions = \App\Models\Question::where('context_type', 1)
+                ->where('context_id', $assignment->id)
+                ->with('options')
+                ->orderBy('order_index')
+                ->get();
+
+            // Get answers
+            $answers = \App\Models\UserAssignmentAnswer::where('attempt_id', $attemptId)
+                ->get()
+                ->keyBy('question_id');
+
+            $questionsWithAnswers = $questions->map(function ($question) use ($answers) {
+                $answer = $answers[$question->id] ?? null;
+                return [
+                    'id' => $question->id,
+                    'questionContent' => $question->question_content,
+                    'questionType' => $question->question_type,
+                    'defaultPoints' => $question->default_points,
+                    'explanationContent' => $question->explanation_content,
+                    'options' => $question->options->map(function ($option) {
+                        return [
+                            'id' => $option->id,
+                            'content' => $option->option_content,
+                            'isCorrect' => $option->is_correct,
+                            'pointsValue' => $option->points_value,
+                        ];
+                    }),
+                    'answer' => $answer ? [
+                        'id' => $answer->id,
+                        'optionId' => $answer->option_id,
+                        'answerText' => $answer->answer_text,
+                        'isCorrect' => $answer->is_correct,
+                        'pointsEarned' => $answer->points_earned,
+                    ] : null,
+                ];
+            });
+
+            $result = [
+                'attempt' => [
+                    'id' => $attempt->id,
+                    'userId' => $attempt->user_id,
+                    'user' => $attempt->user ? [
+                        'id' => $attempt->user->id,
+                        'name' => $attempt->user->name,
+                        'email' => $attempt->user->email,
+                    ] : null,
+                    'attemptNumber' => $attempt->attempt_number,
+                    'score' => $attempt->score,
+                    'isPassed' => $attempt->is_passed,
+                    'startedAt' => $attempt->started_at ? $attempt->started_at->toISOString() : null,
+                    'submittedAt' => $attempt->submitted_at ? $attempt->submitted_at->toISOString() : null,
+                    'timeSpent' => $attempt->time_spent,
+                ],
+                'assignment' => [
+                    'id' => $assignment->id,
+                    'title' => $assignment->title,
+                    'maxScore' => $assignment->max_score,
+                    'passingScore' => $assignment->passing_score,
+                ],
+                'questions' => $questionsWithAnswers,
+            ];
+
+            return $this->success($result, 'Lấy chi tiết bài nộp thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin getAttemptDetails: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Grade assignment attempt (Admin/Instructor only)
+     * POST /api/admin/attempts/{attemptId}/grade
+     */
+    public function gradeAttempt(int $attemptId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || !in_array($user->role, ['admin', 'teacher'])) {
+                return $this->forbidden('Chỉ admin và giảng viên mới có quyền chấm bài');
+            }
+
+            $attempt = \App\Models\UserAssignmentAttempt::find($attemptId);
+            if (!$attempt) {
+                return $this->notFound('Attempt');
+            }
+
+            if (!$attempt->is_completed) {
+                return $this->error(\App\Constants\MessageCode::VALIDATION_ERROR, 'Bài tập chưa được nộp', null, 400);
+            }
+
+            $validator = Validator::make($request->all(), [
+                'grades' => ['required', 'array'],
+                'grades.*.questionId' => ['required', 'integer'],
+                'grades.*.pointsEarned' => ['required', 'numeric', 'min:0'],
+                'grades.*.isCorrect' => ['nullable', 'boolean'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+
+            // Get assignment
+            $assignment = \App\Models\Assignment::find($attempt->assignment_id);
+            if (!$assignment) {
+                return $this->notFound('Assignment');
+            }
+
+            $totalScore = 0;
+
+            // Update grades for each question
+            foreach ($data['grades'] as $grade) {
+                $answer = \App\Models\UserAssignmentAnswer::where('attempt_id', $attemptId)
+                    ->where('question_id', $grade['questionId'])
+                    ->first();
+
+                if ($answer) {
+                    $pointsEarned = (float) $grade['pointsEarned'];
+                    $answer->points_earned = $pointsEarned;
+                    if (isset($grade['isCorrect'])) {
+                        $answer->is_correct = (bool) $grade['isCorrect'];
+                    }
+                    $answer->save();
+                    $totalScore += $pointsEarned;
+                }
+            }
+
+            // Update attempt score
+            $attempt->score = $totalScore;
+            $attempt->is_passed = $assignment->passing_score ? ($totalScore >= $assignment->passing_score) : null;
+            $attempt->save();
+
+            return $this->success([
+                'attempt' => $attempt,
+                'totalScore' => $totalScore,
+                'maxScore' => $assignment->max_score,
+                'isPassed' => $attempt->is_passed,
+            ], 'Chấm bài thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin gradeAttempt: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get course revenue statistics (Admin only)
+     * GET /api/admin/courses/{courseId}/revenue
+     */
+    public function getCourseRevenue(int $courseId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem thống kê doanh thu');
+            }
+
+            $course = \App\Models\Course::find($courseId);
+            if (!$course) {
+                return $this->notFound('Course');
+            }
+
+            // Get date range from query params
+            $startDate = $request->query('startDate') ? \Carbon\Carbon::parse($request->query('startDate'))->startOfDay() : now()->subDays(30)->startOfDay();
+            $endDate = $request->query('endDate') ? \Carbon\Carbon::parse($request->query('endDate'))->endOfDay() : now()->endOfDay();
+
+            // Total revenue from paid orders
+            $totalRevenue = (float) \DB::table('orders')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.status', 2) // Paid
+                ->where('order_items.item_type', 1) // Course
+                ->where('order_items.item_id', $courseId)
+                ->whereBetween('orders.updated_at', [$startDate, $endDate])
+                ->sum('order_items.price');
+
+            // Total orders
+            $totalOrders = (int) \DB::table('orders')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.status', 2)
+                ->where('order_items.item_type', 1)
+                ->where('order_items.item_id', $courseId)
+                ->whereBetween('orders.updated_at', [$startDate, $endDate])
+                ->distinct('orders.id')
+                ->count('orders.id');
+
+            // Revenue by day
+            $revenueByDay = [];
+            $currentDate = $startDate->copy();
+            while ($currentDate <= $endDate) {
+                $nextDate = $currentDate->copy()->addDay();
+                $revenue = (float) \DB::table('orders')
+                    ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                    ->where('orders.status', 2)
+                    ->where('order_items.item_type', 1)
+                    ->where('order_items.item_id', $courseId)
+                    ->where('orders.updated_at', '>=', $currentDate)
+                    ->where('orders.updated_at', '<', $nextDate)
+                    ->sum('order_items.price');
+                $revenueByDay[] = [
+                    'date' => $currentDate->format('Y-m-d'),
+                    'label' => $currentDate->format('d/m/Y'),
+                    'revenue' => $revenue,
+                ];
+                $currentDate->addDay();
+            }
+
+            // Revenue by month
+            $revenueByMonth = [];
+            $currentMonth = $startDate->copy()->startOfMonth();
+            while ($currentMonth <= $endDate) {
+                $nextMonth = $currentMonth->copy()->endOfMonth()->addDay();
+                $revenue = (float) \DB::table('orders')
+                    ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                    ->where('orders.status', 2)
+                    ->where('order_items.item_type', 1)
+                    ->where('order_items.item_id', $courseId)
+                    ->where('orders.updated_at', '>=', $currentMonth)
+                    ->where('orders.updated_at', '<', $nextMonth)
+                    ->sum('order_items.price');
+                $revenueByMonth[] = [
+                    'month' => $currentMonth->format('Y-m'),
+                    'label' => $currentMonth->format('m/Y'),
+                    'revenue' => $revenue,
+                ];
+                $currentMonth->addMonth();
+            }
+
+            return $this->success([
+                'courseId' => $courseId,
+                'courseTitle' => $course->title,
+                'totalRevenue' => $totalRevenue,
+                'totalOrders' => $totalOrders,
+                'averageOrderValue' => $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0,
+                'revenueByDay' => $revenueByDay,
+                'revenueByMonth' => $revenueByMonth,
+                'startDate' => $startDate->format('Y-m-d'),
+                'endDate' => $endDate->format('Y-m-d'),
+            ], 'Lấy thống kê doanh thu thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin getCourseRevenue: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get all courses revenue statistics (Admin only)
+     * GET /api/admin/courses/revenue
+     */
+    public function getAllCoursesRevenue(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem thống kê doanh thu');
+            }
+
+            // Get date range from query params
+            $startDate = $request->query('startDate') ? \Carbon\Carbon::parse($request->query('startDate'))->startOfDay() : now()->subDays(30)->startOfDay();
+            $endDate = $request->query('endDate') ? \Carbon\Carbon::parse($request->query('endDate'))->endOfDay() : now()->endOfDay();
+
+            // Get revenue for each course
+            $coursesRevenue = \DB::table('courses')
+                ->leftJoin('order_items', function($join) use ($startDate, $endDate) {
+                    $join->on('courses.id', '=', 'order_items.item_id')
+                        ->where('order_items.item_type', 1) // Course
+                        ->join('orders', 'order_items.order_id', '=', 'orders.id')
+                        ->where('orders.status', 2) // Paid
+                        ->whereBetween('orders.updated_at', [$startDate, $endDate]);
+                })
+                ->select(
+                    'courses.id',
+                    'courses.title',
+                    \DB::raw('COALESCE(SUM(order_items.price), 0) as revenue'),
+                    \DB::raw('COUNT(DISTINCT orders.id) as order_count')
+                )
+                ->groupBy('courses.id', 'courses.title')
+                ->orderByDesc('revenue')
+                ->get()
+                ->map(function($item) {
+                    return [
+                        'courseId' => $item->id,
+                        'title' => $item->title,
+                        'revenue' => (float) $item->revenue,
+                        'orderCount' => (int) $item->order_count,
+                    ];
+                });
+
+            $totalRevenue = $coursesRevenue->sum('revenue');
+            $totalOrders = $coursesRevenue->sum('orderCount');
+
+            return $this->success([
+                'courses' => $coursesRevenue,
+                'totalRevenue' => $totalRevenue,
+                'totalOrders' => $totalOrders,
+                'startDate' => $startDate->format('Y-m-d'),
+                'endDate' => $endDate->format('Y-m-d'),
+            ], 'Lấy thống kê doanh thu tất cả khóa học thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin getAllCoursesRevenue: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get book revenue statistics (Admin only)
+     * GET /api/admin/books/{bookId}/revenue
+     */
+    public function getBookRevenue(int $bookId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem thống kê doanh thu');
+            }
+
+            $book = \App\Models\Book::find($bookId);
+            if (!$book) {
+                return $this->notFound('Book');
+            }
+
+            // Get date range from query params
+            $startDate = $request->query('startDate') ? \Carbon\Carbon::parse($request->query('startDate'))->startOfDay() : now()->subDays(30)->startOfDay();
+            $endDate = $request->query('endDate') ? \Carbon\Carbon::parse($request->query('endDate'))->endOfDay() : now()->endOfDay();
+
+            // Total revenue from paid orders
+            $totalRevenue = (float) \DB::table('orders')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.status', 2) // Paid
+                ->where('order_items.item_type', 2) // Book
+                ->where('order_items.item_id', $bookId)
+                ->whereBetween('orders.updated_at', [$startDate, $endDate])
+                ->sum('order_items.price');
+
+            // Total orders
+            $totalOrders = (int) \DB::table('orders')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.status', 2)
+                ->where('order_items.item_type', 2)
+                ->where('order_items.item_id', $bookId)
+                ->whereBetween('orders.updated_at', [$startDate, $endDate])
+                ->distinct('orders.id')
+                ->count('orders.id');
+
+            // Revenue by day
+            $revenueByDay = [];
+            $currentDate = $startDate->copy();
+            while ($currentDate <= $endDate) {
+                $nextDate = $currentDate->copy()->addDay();
+                $revenue = (float) \DB::table('orders')
+                    ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                    ->where('orders.status', 2)
+                    ->where('order_items.item_type', 2)
+                    ->where('order_items.item_id', $bookId)
+                    ->where('orders.updated_at', '>=', $currentDate)
+                    ->where('orders.updated_at', '<', $nextDate)
+                    ->sum('order_items.price');
+                $revenueByDay[] = [
+                    'date' => $currentDate->format('Y-m-d'),
+                    'label' => $currentDate->format('d/m/Y'),
+                    'revenue' => $revenue,
+                ];
+                $currentDate->addDay();
+            }
+
+            // Total purchases (activation codes used)
+            $totalPurchases = (int) \DB::table('book_activation_codes')
+                ->where('book_id', $bookId)
+                ->whereRaw('is_used = true')
+                ->whereBetween('used_at', [$startDate, $endDate])
+                ->count();
+
+            return $this->success([
+                'bookId' => $bookId,
+                'bookTitle' => $book->title,
+                'totalRevenue' => $totalRevenue,
+                'totalOrders' => $totalOrders,
+                'totalPurchases' => $totalPurchases,
+                'averageOrderValue' => $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0,
+                'revenueByDay' => $revenueByDay,
+                'startDate' => $startDate->format('Y-m-d'),
+                'endDate' => $endDate->format('Y-m-d'),
+            ], 'Lấy thống kê doanh thu thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin getBookRevenue: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get all books revenue statistics (Admin only)
+     * GET /api/admin/books/revenue
+     */
+    public function getAllBooksRevenue(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem thống kê doanh thu');
+            }
+
+            // Get date range from query params
+            $startDate = $request->query('startDate') ? \Carbon\Carbon::parse($request->query('startDate'))->startOfDay() : now()->subDays(30)->startOfDay();
+            $endDate = $request->query('endDate') ? \Carbon\Carbon::parse($request->query('endDate'))->endOfDay() : now()->endOfDay();
+
+            // Get revenue for each book
+            $booksRevenue = \DB::table('books')
+                ->leftJoin('order_items', function($join) use ($startDate, $endDate) {
+                    $join->on('books.id', '=', 'order_items.item_id')
+                        ->where('order_items.item_type', 2) // Book
+                        ->join('orders', 'order_items.order_id', '=', 'orders.id')
+                        ->where('orders.status', 2) // Paid
+                        ->whereBetween('orders.updated_at', [$startDate, $endDate]);
+                })
+                ->select(
+                    'books.id',
+                    'books.title',
+                    \DB::raw('COALESCE(SUM(order_items.price), 0) as revenue'),
+                    \DB::raw('COUNT(DISTINCT orders.id) as order_count')
+                )
+                ->groupBy('books.id', 'books.title')
+                ->orderByDesc('revenue')
+                ->get()
+                ->map(function($item) {
+                    return [
+                        'bookId' => $item->id,
+                        'title' => $item->title,
+                        'revenue' => (float) $item->revenue,
+                        'orderCount' => (int) $item->order_count,
+                    ];
+                });
+
+            $totalRevenue = $booksRevenue->sum('revenue');
+            $totalOrders = $booksRevenue->sum('orderCount');
+
+            return $this->success([
+                'books' => $booksRevenue,
+                'totalRevenue' => $totalRevenue,
+                'totalOrders' => $totalOrders,
+                'startDate' => $startDate->format('Y-m-d'),
+                'endDate' => $endDate->format('Y-m-d'),
+            ], 'Lấy thống kê doanh thu tất cả sách thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin getAllBooksRevenue: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get total revenue statistics (all courses + books) (Admin only)
+     * GET /api/admin/revenue/total
+     */
+    public function getTotalRevenue(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem thống kê doanh thu');
+            }
+
+            // Get date range from query params
+            $startDate = $request->query('startDate') ? \Carbon\Carbon::parse($request->query('startDate'))->startOfDay() : now()->subDays(30)->startOfDay();
+            $endDate = $request->query('endDate') ? \Carbon\Carbon::parse($request->query('endDate'))->endOfDay() : now()->endOfDay();
+
+            // Total revenue from courses
+            $coursesRevenue = (float) \DB::table('orders')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.status', 2) // Paid
+                ->where('order_items.item_type', 1) // Course
+                ->whereBetween('orders.updated_at', [$startDate, $endDate])
+                ->sum('order_items.price');
+
+            // Total revenue from books
+            $booksRevenue = (float) \DB::table('orders')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.status', 2) // Paid
+                ->where('order_items.item_type', 2) // Book
+                ->whereBetween('orders.updated_at', [$startDate, $endDate])
+                ->sum('order_items.price');
+
+            $totalRevenue = $coursesRevenue + $booksRevenue;
+
+            // Total orders
+            $totalOrders = (int) \DB::table('orders')
+                ->where('status', 2)
+                ->whereBetween('updated_at', [$startDate, $endDate])
+                ->count();
+
+            // Revenue by day
+            $revenueByDay = [];
+            $currentDate = $startDate->copy();
+            while ($currentDate <= $endDate) {
+                $nextDate = $currentDate->copy()->addDay();
+                $dayRevenue = (float) \DB::table('orders')
+                    ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                    ->where('orders.status', 2)
+                    ->where('orders.updated_at', '>=', $currentDate)
+                    ->where('orders.updated_at', '<', $nextDate)
+                    ->sum('order_items.price');
+                $revenueByDay[] = [
+                    'date' => $currentDate->format('Y-m-d'),
+                    'label' => $currentDate->format('d/m/Y'),
+                    'revenue' => $dayRevenue,
+                ];
+                $currentDate->addDay();
+            }
+
+            // Revenue by month
+            $revenueByMonth = [];
+            $currentMonth = $startDate->copy()->startOfMonth();
+            while ($currentMonth <= $endDate) {
+                $nextMonth = $currentMonth->copy()->endOfMonth()->addDay();
+                $monthRevenue = (float) \DB::table('orders')
+                    ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                    ->where('orders.status', 2)
+                    ->where('orders.updated_at', '>=', $currentMonth)
+                    ->where('orders.updated_at', '<', $nextMonth)
+                    ->sum('order_items.price');
+                $revenueByMonth[] = [
+                    'month' => $currentMonth->format('Y-m'),
+                    'label' => $currentMonth->format('m/Y'),
+                    'revenue' => $monthRevenue,
+                ];
+                $currentMonth->addMonth();
+            }
+
+            // Revenue breakdown by type
+            $revenueBreakdown = [
+                'courses' => $coursesRevenue,
+                'books' => $booksRevenue,
+                'total' => $totalRevenue,
+            ];
+
+            return $this->success([
+                'totalRevenue' => $totalRevenue,
+                'coursesRevenue' => $coursesRevenue,
+                'booksRevenue' => $booksRevenue,
+                'totalOrders' => $totalOrders,
+                'averageOrderValue' => $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0,
+                'revenueByDay' => $revenueByDay,
+                'revenueByMonth' => $revenueByMonth,
+                'revenueBreakdown' => $revenueBreakdown,
+                'startDate' => $startDate->format('Y-m-d'),
+                'endDate' => $endDate->format('Y-m-d'),
+            ], 'Lấy thống kê doanh thu tổng thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin getTotalRevenue: ' . $e->getMessage());
             \Log::error('Stack trace: ' . $e->getTraceAsString());
             return $this->internalError();
         }

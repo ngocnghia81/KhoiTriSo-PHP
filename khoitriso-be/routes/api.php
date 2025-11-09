@@ -128,7 +128,6 @@ Route::prefix('auth')->group(function () {
     Route::post('admin/login', [\App\Http\Controllers\AuthController::class, 'login']);
     Route::post('admin/forgot-password', [\App\Http\Controllers\AuthController::class, 'forgotPassword']);
     Route::post('admin/reset-password', [\App\Http\Controllers\AuthController::class, 'resetPassword']);
-    Route::put('admin/change-password', [\App\Http\Controllers\AuthController::class, 'logout']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -194,6 +193,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('orders/{id}/cancel', [\App\Http\Controllers\OrderController::class, 'cancel']);
     Route::post('orders/{id}/pay', [\App\Http\Controllers\OrderController::class, 'pay']);
     Route::post('orders/{id}/payment-callback', [\App\Http\Controllers\OrderController::class, 'paymentCallback']);
+    Route::get('orders/vnpay/callback', [\App\Http\Controllers\OrderController::class, 'vnpayCallback']);
+    Route::post('orders/vnpay/callback', [\App\Http\Controllers\OrderController::class, 'vnpayCallback']);
 
     // Coupons
     Route::post('coupons/validate', [\App\Http\Controllers\CouponController::class, 'validateCode']);
@@ -331,7 +332,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('admin/instructors/{id}/books', [\App\Http\Controllers\AdminController::class, 'getInstructorBooks']);
     Route::put('admin/instructors/{id}/toggle-status', [\App\Http\Controllers\AdminController::class, 'toggleInstructorStatus']);
     Route::get('admin/courses/{id}/enrollments', [\App\Http\Controllers\AdminController::class, 'getCourseEnrollments']);
+    Route::get('admin/courses/{courseId}/revenue', [\App\Http\Controllers\AdminController::class, 'getCourseRevenue']);
+    Route::get('admin/courses/revenue', [\App\Http\Controllers\AdminController::class, 'getAllCoursesRevenue']);
     Route::get('admin/books/{id}/purchases', [\App\Http\Controllers\AdminController::class, 'getBookPurchases']);
+    Route::get('admin/books/{bookId}/revenue', [\App\Http\Controllers\AdminController::class, 'getBookRevenue']);
+    Route::get('admin/books/revenue', [\App\Http\Controllers\AdminController::class, 'getAllBooksRevenue']);
+    Route::get('admin/revenue/total', [\App\Http\Controllers\AdminController::class, 'getTotalRevenue']);
     
 // Admin Books Management
 Route::get('admin/books', [\App\Http\Controllers\AdminController::class, 'listBooks']);
@@ -342,6 +348,35 @@ Route::delete('admin/books/{id}', [\App\Http\Controllers\AdminController::class,
 Route::post('admin/books/{bookId}/chapters', [\App\Http\Controllers\AdminController::class, 'createChapter']);
 Route::get('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'getChapterQuestions']);
 Route::post('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'createChapterQuestions']);
+
+// Admin Courses Management
+Route::get('admin/courses', [\App\Http\Controllers\AdminController::class, 'listCourses']);
+Route::get('admin/courses/{id}', [\App\Http\Controllers\AdminController::class, 'getCourse']);
+Route::post('admin/courses', [\App\Http\Controllers\AdminController::class, 'createCourse']);
+Route::put('admin/courses/{id}', [\App\Http\Controllers\AdminController::class, 'updateCourse']);
+Route::delete('admin/courses/{id}', [\App\Http\Controllers\AdminController::class, 'deleteCourse']);
+
+// Admin Lessons Management
+Route::get('admin/lessons/{id}', [\App\Http\Controllers\AdminController::class, 'getLesson']);
+Route::post('admin/courses/{courseId}/lessons', [\App\Http\Controllers\AdminController::class, 'createLesson']);
+Route::put('admin/lessons/{id}', [\App\Http\Controllers\AdminController::class, 'updateLesson']);
+Route::delete('admin/lessons/{id}', [\App\Http\Controllers\AdminController::class, 'deleteLesson']);
+
+// Admin Lesson Materials
+Route::post('admin/lessons/{lessonId}/materials', [\App\Http\Controllers\AdminController::class, 'uploadLessonMaterial']);
+Route::delete('admin/materials/{id}', [\App\Http\Controllers\AdminController::class, 'deleteLessonMaterial']);
+
+// Admin Lesson Q&A
+Route::get('admin/lessons/{lessonId}/discussions', [\App\Http\Controllers\AdminController::class, 'getLessonDiscussions']);
+Route::post('admin/lessons/{lessonId}/discussions/{discussionId}/reply', [\App\Http\Controllers\AdminController::class, 'replyToDiscussion']);
+
+// Admin Lesson Assignments
+Route::get('admin/lessons/{lessonId}/assignments', [\App\Http\Controllers\AdminController::class, 'getLessonAssignments']);
+Route::post('admin/lessons/{lessonId}/assignments', [\App\Http\Controllers\AdminController::class, 'createLessonAssignment']);
+Route::post('admin/assignments/{assignmentId}/questions', [\App\Http\Controllers\AdminController::class, 'createAssignmentQuestion']);
+Route::get('admin/assignments/{assignmentId}/attempts', [\App\Http\Controllers\AdminController::class, 'getAssignmentAttempts']);
+Route::get('admin/attempts/{attemptId}', [\App\Http\Controllers\AdminController::class, 'getAttemptDetails']);
+Route::post('admin/attempts/{attemptId}/grade', [\App\Http\Controllers\AdminController::class, 'gradeAttempt']);
 
     // Forum (MongoDB-backed)
     Route::prefix('forum-api')->group(function () {

@@ -18,6 +18,7 @@ import { bookService } from '@/services/bookService';
 import { getCategories, Category } from '@/services/categories';
 import { uploadFile } from '@/services/uploads';
 import { useToast } from '@/components/ToastProvider';
+import RichTextEditor from '@/components/RichTextEditor';
 
 interface Book {
   id: number;
@@ -637,10 +638,12 @@ export default function BooksPage() {
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
                     </div>
                     <div className="sm:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700">Mô tả *</label>
-                      <textarea required rows={3} value={bookForm.description}
-                        onChange={(e) => setBookForm(prev => ({ ...prev, description: e.target.value }))}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Mô tả *</label>
+                      <RichTextEditor
+                        value={bookForm.description}
+                        onChange={(value) => setBookForm(prev => ({ ...prev, description: value }))}
+                        placeholder="Mô tả chi tiết về sách... (Sử dụng thanh công cụ để định dạng văn bản)"
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Giá (₫) *</label>
@@ -740,10 +743,12 @@ export default function BooksPage() {
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
                     </div>
                     <div className="sm:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700">Mô tả *</label>
-                      <textarea required rows={3} value={bookForm.description}
-                        onChange={(e) => setBookForm(prev => ({ ...prev, description: e.target.value }))}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Mô tả *</label>
+                      <RichTextEditor
+                        value={bookForm.description}
+                        onChange={(value) => setBookForm(prev => ({ ...prev, description: value }))}
+                        placeholder="Mô tả chi tiết về sách... (Sử dụng thanh công cụ để định dạng văn bản)"
+                      />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Giá (₫) *</label>

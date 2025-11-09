@@ -46,3 +46,9 @@ export async function updateLiveClass(id: number, data: any) {
   if (!isSuccess(response)) throw new Error(handleApiError(response));
   return extractData(response);
 }
+
+export async function deleteLiveClass(id: number) {
+  const response = await httpClient.delete(`live-classes/${id}`);
+  if (!isSuccess(response)) throw new Error(handleApiError(response));
+  return extractData(response);
+}

@@ -36,7 +36,7 @@ export default function CreateChapterPage() {
     solutionType?: 'text' | 'video' | 'latex';
   }>>([]);
 
-  const [showPreview, setShowPreview] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
   const [showCalculator, setShowCalculator] = useState(false);
   const [loading, setLoading] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number | null>(null);

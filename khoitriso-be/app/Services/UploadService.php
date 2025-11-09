@@ -50,10 +50,13 @@ class UploadService
         $isPublic = ($data['accessRole'] ?? null) === 'GUEST' || !isset($data['accessRole']);
         $folder = $data['folder'] ?? 'uploads';
         
-        // Use original filename (no slug, no uploadId prefix)
-        // Worker will use this key as-is and return it in response
+        // Process filename: create slug + UUID for uniqueness
         $originalFileName = $data['fileName'] ?? 'file';
-        $fileKey = $originalFileName; // Worker saves with this exact key
+        $safeFileName = $this->generateSafeUniqueFileName($originalFileName);
+        
+        // Construct file key with folder structure
+        $targetFolder = $isPublic ? "public/{$folder}" : "private/{$folder}";
+        $fileKey = "{$targetFolder}/{$safeFileName}";
         $accessRole = $data['accessRole'] ?? 'GUEST';
         
         $payload = [
@@ -65,13 +68,14 @@ class UploadService
 
         $uploadToken = $this->generateJwt($payload, 15); // 15 minutes
 
-        // Worker route: PUT /upload/:key where key is a single segment
-        // Worker will save with this key and return it in response
-        $uploadUrl = "{$this->uploadWorkerBaseUrl}/upload/{$fileKey}?token={$uploadToken}";
+        // Worker route: PUT /upload/:key where key may contain slashes
+        // URL encode the file key to handle special characters
+        $encodedFileKey = rawurlencode($fileKey);
+        $uploadUrl = "{$this->uploadWorkerBaseUrl}/upload/{$encodedFileKey}?token={$uploadToken}";
 
         return [
             'uploadUrl' => $uploadUrl,
-            'key' => $fileKey, // Return key as-is (Worker will return actual key in response)
+            'key' => $fileKey, // Return processed key (Worker will return actual key in response)
             'uploadId' => $payload['uploadId'],
             'accessRole' => $accessRole,
             'expiresIn' => 900, // 15 minutes in seconds
@@ -598,6 +602,43 @@ class UploadService
     }
 
     /**
+     * Generate safe unique filename from original filename
+     * Creates slug + UUID to ensure uniqueness and avoid special character issues
+     */
+    public function generateSafeUniqueFileName(string $originalFileName): string
+    {
+        if (empty($originalFileName)) {
+            $originalFileName = 'file';
+        }
+
+        // Extract extension
+        $lastDotIndex = strrpos($originalFileName, '.');
+        $nameWithoutExtension = $originalFileName;
+        $extension = '';
+
+        if ($lastDotIndex !== false && $lastDotIndex > 0) {
+            $nameWithoutExtension = substr($originalFileName, 0, $lastDotIndex);
+            $extension = substr($originalFileName, $lastDotIndex);
+        }
+
+        // Generate slug from filename
+        $slug = $this->generateSlug($nameWithoutExtension);
+        
+        // Remove extension from slug if it was added
+        if (!empty($extension) && str_ends_with($slug, $extension)) {
+            $slug = substr($slug, 0, -strlen($extension));
+        }
+        
+        // Add UUID for uniqueness (short UUID: first 8 chars)
+        $uniqueId = substr(Str::uuid()->toString(), 0, 8);
+        
+        // Construct safe filename: slug-uuid.extension
+        $safeFileName = $slug . '-' . $uniqueId . $extension;
+        
+        return $safeFileName;
+    }
+
+    /**
      * Generate slug from filename
      */
     public function generateSlug(string $fileName): string
@@ -651,7 +692,7 @@ class UploadService
         $slug = preg_replace('/-+/', '-', $slug);
         
         // Remove invalid filename characters
-        $invalidChars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+        $invalidChars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*', '#', '@', '!', '$', '%', '^', '&', '(', ')', '+', '=', '[', ']', '{', '}'];
         foreach ($invalidChars as $char) {
             $slug = str_replace($char, '', $slug);
         }

@@ -19,6 +19,21 @@ class UserAssignmentAttempt extends Model
         'is_completed' => 'boolean',
         'is_passed' => 'boolean',
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'user_id');
+    }
+
+    public function assignment()
+    {
+        return $this->belongsTo(\App\Models\Assignment::class, 'assignment_id');
+    }
+
+    public function answers()
+    {
+        return $this->hasMany(\App\Models\UserAssignmentAnswer::class, 'attempt_id');
+    }
 }
 
 

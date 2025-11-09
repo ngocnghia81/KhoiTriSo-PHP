@@ -79,16 +79,8 @@ export default function LoginPage() {
       });
 
       const { user } = response;
-      switch (user.role) {
-        case 'admin':
-          router.push('/dashboard');
-          break;
-        case 'instructor':
-          router.push('/instructor');
-          break;
-        default:
-          router.push('/');
-      }
+      // Redirect to home page after successful login
+      router.push('/');
     } catch (error: any) {
       console.error('Login error:', error);
       

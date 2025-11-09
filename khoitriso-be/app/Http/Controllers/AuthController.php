@@ -154,9 +154,23 @@ class AuthController extends BaseController
                 return $this->unauthorized();
             }
 
-            $request->user()->currentAccessToken()->delete();
+            $user = $request->user();
             
-            return $this->success(null);
+            // Delete current access token
+            $user->currentAccessToken()?->delete();
+            
+            // Revoke all refresh tokens for this user
+            RefreshToken::where('user_id', $user->id)
+                ->whereRaw('revoked = false')
+                ->update(['revoked' => DB::raw('true')]);
+            
+            \Log::info('User logged out', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'role' => $user->role
+            ]);
+            
+            return $this->success(null, $this->getLanguage($request) === 'vi' ? 'Đăng xuất thành công' : 'Logout successful');
 
         } catch (\Exception $e) {
             \Log::error('Error in logout: ' . $e->getMessage());

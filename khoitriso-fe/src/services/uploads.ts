@@ -48,6 +48,12 @@ export async function uploadFileToPresignedUrl(presignedUrl: string, file: File)
     const urlObj = new URL(presignedUrl);
     const token = urlObj.searchParams.get('token');
     
+    // Get the file key from the URL path (after /upload/)
+    // The path is like: /upload/public/courses/videos/filename.mp4
+    // We need to extract the key part (everything after /upload/)
+    const pathParts = urlObj.pathname.split('/upload/');
+    const fileKeyFromUrl = pathParts.length > 1 ? pathParts[1] : null;
+    
     // Get contentType from JWT payload or file.type
     let contentType = file.type || 'application/octet-stream';
     if (token) {
@@ -89,6 +95,7 @@ export async function uploadFileToPresignedUrl(presignedUrl: string, file: File)
         errorJson,
         url: presignedUrl,
         tokenPresent: !!token,
+        fileKeyFromUrl,
       });
       
       throw new Error(`Upload failed (${response.status}): ${errorJson?.message || errorJson?.error || errorText || response.statusText}`);
@@ -96,7 +103,7 @@ export async function uploadFileToPresignedUrl(presignedUrl: string, file: File)
 
     // Worker returns key and fileUrl in response: { Key: "...", FileUrl: "...", ... }
     const responseData = await response.json();
-    const actualKey = responseData.Key || responseData.key || responseData.fileKey || responseData.FileKey;
+    const actualKey = responseData.Key || responseData.key || responseData.fileKey || responseData.FileKey || fileKeyFromUrl;
     const fileUrl = responseData.FileUrl || responseData.fileUrl;
     
     if (!actualKey) {
@@ -117,9 +124,12 @@ export async function uploadFileToPresignedUrl(presignedUrl: string, file: File)
 
 /**
  * Confirm file upload
+ * File key may contain special characters, so we need to encode it properly
  */
 export async function confirmFileUpload(fileKey: string): Promise<void> {
-  const response = await httpClient.post(`upload/confirm/${fileKey}`);
+  // Encode the file key for URL (handles special characters, spaces, etc.)
+  const encodedKey = encodeURIComponent(fileKey);
+  const response = await httpClient.post(`upload/confirm/${encodedKey}`);
   if (!isSuccess(response)) throw new Error(handleApiError(response));
 }
 
@@ -152,10 +162,21 @@ export async function uploadFile(file: File, folder: string = 'courses'): Promis
     
     // Fallback: construct file access URL
     // Worker routes: /files/public/:key or /files/private/:key
-    // Since accessRole is 'GUEST', use public route
+    // File key already contains "public/" or "private/" prefix from backend
+    // So we just need to prepend "/files/" to the key
     const uploadUrlObj = new URL(presignData.uploadUrl);
     const baseUrl = `${uploadUrlObj.protocol}//${uploadUrlObj.host}`;
-    const fileUrl = `${baseUrl}/files/public/${actualKey}`;
+    const encodedKey = encodeURIComponent(actualKey);
+    
+    // Check if key already has public/ or private/ prefix
+    let fileUrl;
+    if (actualKey.startsWith('public/') || actualKey.startsWith('private/')) {
+      // Key already has prefix, just add /files/ before it
+      fileUrl = `${baseUrl}/files/${encodedKey}`;
+    } else {
+      // Key doesn't have prefix, add public/ (default for GUEST access)
+      fileUrl = `${baseUrl}/files/public/${encodedKey}`;
+    }
     
     return fileUrl;
   } catch (error) {

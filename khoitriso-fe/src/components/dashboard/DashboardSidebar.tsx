@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useSidebar } from '@/contexts/SidebarContext';
 import ResizablePanel from './ResizablePanel';
 import { getCourses, AdminCourse } from '@/services/admin';
+import { authService } from '@/services/authService';
 import {
   HomeIcon,
   AcademicCapIcon,
@@ -26,7 +27,8 @@ import {
   Bars3Icon,
   XMarkIcon,
   ChevronLeftIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  ArrowRightOnRectangleIcon
 } from '@heroicons/react/24/outline';
 import Logo from '@/components/Logo';
 
@@ -68,8 +70,6 @@ const navigation = [
     children: [
       { name: 'Danh sách sách', href: '/dashboard/books' },
       { name: 'Mã kích hoạt', href: '/dashboard/activation-codes' },
-      { name: 'Chương sách', href: '/dashboard/book-chapters' },
-      { name: 'Câu hỏi sách', href: '/dashboard/book-questions' },
     ],
   },
   {
@@ -135,6 +135,7 @@ const navigation = [
 ];
 
 export default function DashboardSidebar() {
+  const router = useRouter();
   const pathname = usePathname();
   const { 
     sidebarOpen, 
@@ -147,6 +148,43 @@ export default function DashboardSidebar() {
   const [expandedItems, setExpandedItems] = useState<string[]>(['Tổng quan']);
   const [courses, setCourses] = useState<AdminCourse[]>([]);
   const [coursesLoading, setCoursesLoading] = useState(false);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    // Get current user from localStorage
+    try {
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        setUser(JSON.parse(userStr));
+      }
+    } catch (error) {
+      console.error('Error getting user:', error);
+    }
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      // Call logout API
+      await authService.logout();
+      
+      // Clear local storage
+      localStorage.removeItem('user');
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      
+      // Redirect to home page
+      router.push('/');
+      window.location.reload();
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Force clear and redirect even if API fails
+      localStorage.removeItem('user');
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      router.push('/');
+      window.location.reload();
+    }
+  };
 
   // Fetch courses from database
   useEffect(() => {
@@ -167,9 +205,6 @@ export default function DashboardSidebar() {
   // Build courses menu items dynamically
   const coursesMenuItems = [
     { name: 'Danh sách khóa học', href: '/dashboard/courses' },
-    { name: 'Tạo khóa học mới', href: '/dashboard/courses/create' },
-    { name: 'Bài giảng', href: '/dashboard/lessons' },
-    { name: 'Tài liệu', href: '/dashboard/materials' },
     { name: 'Lớp học trực tuyến', href: '/dashboard/live-classes' },
   ];
 
@@ -336,7 +371,7 @@ export default function DashboardSidebar() {
         </nav>
 
         {/* Sidebar footer */}
-        <div className="border-t border-gray-200 p-3">
+        <div className="border-t border-gray-200 p-3 space-y-2">
           <div className="flex items-center">
             <div className="flex-shrink-0">
               <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
@@ -344,12 +379,34 @@ export default function DashboardSidebar() {
               </div>
             </div>
             {!sidebarCollapsed && (
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-900">Admin User</p>
-                <p className="text-xs text-gray-500">admin@khoitriso.com</p>
+              <div className="ml-3 flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {user?.username || user?.name || 'Admin User'}
+                </p>
+                <p className="text-xs text-gray-500 truncate">
+                  {user?.email || 'admin@khoitriso.com'}
+                </p>
               </div>
             )}
           </div>
+          {!sidebarCollapsed && (
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              <ArrowRightOnRectangleIcon className="h-5 w-5 mr-2" />
+              Đăng xuất
+            </button>
+          )}
+          {sidebarCollapsed && (
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center justify-center p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              title="Đăng xuất"
+            >
+              <ArrowRightOnRectangleIcon className="h-5 w-5" />
+            </button>
+          )}
         </div>
       </ResizablePanel>
     </>
