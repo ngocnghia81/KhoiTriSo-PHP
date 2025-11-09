@@ -177,6 +177,7 @@ class OauthController extends BaseController
                 'user_id' => $user->id,
                 'token' => Str::random(64),
                 'expires_at' => now()->addDays(30),
+                'revoked' => DB::raw('false'),
             ]);
             return $this->success(['token' => $token, 'refreshToken' => $refresh->token]);
 
@@ -379,7 +380,7 @@ class OauthController extends BaseController
                     'user_id' => $user->id,
                     'token' => Str::random(64),
                     'expires_at' => now()->addDays(30),
-                    'revoked' => false,
+                    'revoked' => DB::raw('false'),
                 ]);
             } catch (\Exception $e) {
                 \Log::error('Failed to create refresh token', [

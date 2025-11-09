@@ -33,7 +33,7 @@ class CouponController extends BaseController
             $data = $validator->validated();
             
             $coupon = Coupon::where('code', $data['couponCode'])
-                ->where('is_active', true)
+                ->whereRaw('is_active = true')
                 ->first();
             
             if (!$coupon || !now()->between($coupon->valid_from, $coupon->valid_to)) {
@@ -69,7 +69,7 @@ class CouponController extends BaseController
     public function index(Request $request): JsonResponse
     {
         try {
-            $q = Coupon::query()->where('is_active', true);
+            $q = Coupon::query()->whereRaw('is_active = true');
             
             if ($request->filled('itemType')) {
                 // Optional filter: include if applicable_item_types contains itemType

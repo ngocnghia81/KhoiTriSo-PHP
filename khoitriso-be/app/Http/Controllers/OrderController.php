@@ -136,7 +136,7 @@ class OrderController extends Controller
         $discount = 0;
         $coupon = null;
         if (! empty($data['couponCode'])) {
-            $coupon = Coupon::where('code', $data['couponCode'])->where('is_active', true)->first();
+            $coupon = Coupon::where('code', $data['couponCode'])->whereRaw('is_active = true')->first();
             if ($coupon && now()->between($coupon->valid_from, $coupon->valid_to)) {
                 if ((int) $coupon->discount_type === 1) {
                     $discount = round($total * ((float) $coupon->discount_value) / 100, 2);

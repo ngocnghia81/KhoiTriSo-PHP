@@ -18,7 +18,7 @@ class LearningPathController extends BaseController
     public function index(Request $request): JsonResponse
     {
         try {
-            $q = LearningPath::query()->where('is_active', true);
+            $q = LearningPath::query()->whereRaw('is_active = true');
             
             if ($request->filled('category')) {
                 $q->where('category_id', $request->integer('category'));
