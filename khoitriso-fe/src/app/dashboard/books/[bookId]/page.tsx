@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeftIcon, BookOpenIcon, QuestionMarkCircleIcon } from '@heroicons/react/24/outline';
 import { bookService } from '@/services/bookService';
+import { getInstructorBook } from '@/services/instructor';
 import { useToast } from '@/components/ToastProvider';
 import { BlockMath, InlineMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
@@ -53,6 +54,20 @@ export default function BookDetailPage() {
   const [questions, setQuestions] = useState<QuestionDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [isInstructor, setIsInstructor] = useState(false);
+
+  useEffect(() => {
+    // Check user role
+    try {
+      const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      if (userStr) {
+        const userData = JSON.parse(userStr);
+        setIsInstructor(userData.role === 'instructor');
+      }
+    } catch (error) {
+      console.error('Error getting user:', error);
+    }
+  }, []);
 
   useEffect(() => {
     console.log('BookDetailPage - params:', params, 'bookId:', bookId);
@@ -64,14 +79,21 @@ export default function BookDetailPage() {
     }
     fetchBook();
     fetchChapters();
-  }, [bookId, router, params]);
+  }, [bookId, router, params, isInstructor]);
 
   const fetchBook = async () => {
     if (!bookId) return;
     try {
       setLoading(true);
       console.log('Fetching book with ID:', bookId);
-      const bookData = await bookService.getBookAdmin(bookId);
+      let bookData;
+      if (isInstructor) {
+        // Use instructor API
+        bookData = await getInstructorBook(bookId);
+      } else {
+        // Use admin API
+        bookData = await bookService.getBookAdmin(bookId);
+      }
       console.log('Book data received:', bookData);
       if (!bookData) {
         notify('Không tìm thấy sách', 'error');

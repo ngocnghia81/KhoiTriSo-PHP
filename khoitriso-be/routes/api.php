@@ -306,11 +306,28 @@ Route::middleware('auth:sanctum')->group(function () {
     // Static Pages (public for viewing, protected for management)
     Route::get('static-pages/{slug}', [\App\Http\Controllers\StaticPageController::class, 'showBySlug']);
 
-    // Instructor endpoints (require instructor or admin role)
+    // Instructor endpoints (require instructor role only, not admin)
     Route::middleware('role.instructor')->group(function () {
         Route::get('instructor/dashboard', [\App\Http\Controllers\InstructorController::class, 'dashboard']);
+        
+        // Instructor Courses Management
         Route::get('instructor/courses', [\App\Http\Controllers\InstructorController::class, 'courses']);
+        Route::get('instructor/courses/{id}', [\App\Http\Controllers\InstructorController::class, 'getCourse']);
+        Route::post('instructor/courses', [\App\Http\Controllers\InstructorController::class, 'createCourse']);
+        Route::put('instructor/courses/{id}', [\App\Http\Controllers\InstructorController::class, 'updateCourse']);
+        Route::delete('instructor/courses/{id}', [\App\Http\Controllers\InstructorController::class, 'deleteCourse']);
+        Route::get('instructor/courses/{id}/analytics', [\App\Http\Controllers\InstructorController::class, 'getCourseAnalytics']);
+        Route::get('instructor/courses/{id}/revenue', [\App\Http\Controllers\InstructorController::class, 'getCourseRevenue']);
+        Route::get('instructor/courses/{id}/enrollments', [\App\Http\Controllers\InstructorController::class, 'getCourseEnrollments']);
+        
+        // Instructor Books Management
         Route::get('instructor/books', [\App\Http\Controllers\InstructorController::class, 'books']);
+        Route::get('instructor/books/{id}', [\App\Http\Controllers\InstructorController::class, 'getBook']);
+        Route::post('instructor/books', [\App\Http\Controllers\InstructorController::class, 'createBook']);
+        Route::put('instructor/books/{id}', [\App\Http\Controllers\InstructorController::class, 'updateBook']);
+        Route::delete('instructor/books/{id}', [\App\Http\Controllers\InstructorController::class, 'deleteBook']);
+        
+        // Instructor Students & Orders
         Route::get('instructor/students', [\App\Http\Controllers\InstructorController::class, 'students']);
         Route::get('instructor/orders', [\App\Http\Controllers\InstructorController::class, 'orders']);
     });
@@ -328,7 +345,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('admin/courses', [\App\Http\Controllers\AdminController::class, 'listCourses']);
         Route::get('admin/reports/revenue', [\App\Http\Controllers\AdminReportController::class, 'revenueReport']);
         Route::get('admin/reports/total-revenue', [\App\Http\Controllers\AdminReportController::class, 'adminTotalRevenue']);
+        // Instructor revenue - accessible by both admin and instructor
         Route::get('admin/reports/instructor-revenue', [\App\Http\Controllers\AdminReportController::class, 'instructorRevenue']);
+        Route::get('instructor/reports/revenue', [\App\Http\Controllers\AdminReportController::class, 'instructorRevenue']);
         Route::get('admin/commissions/stats', [\App\Http\Controllers\AdminReportController::class, 'commissionStats']);
         Route::get('admin/commissions/pending-payouts', [\App\Http\Controllers\AdminReportController::class, 'pendingPayouts']);
         Route::get('admin/commissions/top-instructors', [\App\Http\Controllers\AdminReportController::class, 'topInstructors']);

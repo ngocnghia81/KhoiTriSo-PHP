@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeftIcon, VideoCameraIcon, PlusIcon, ChatBubbleLeftRightIcon, XMarkIcon, DocumentArrowUpIcon } from '@heroicons/react/24/outline';
 import { courseService, Course, Lesson, LessonDiscussion } from '@/services/courseService';
+import { getInstructorCourse } from '@/services/instructor';
 import { useToast } from '@/components/ToastProvider';
 
 export default function CourseDetailPage() {
@@ -23,6 +24,20 @@ export default function CourseDetailPage() {
   const [loading, setLoading] = useState(true);
   const [loadingLessonDetails, setLoadingLessonDetails] = useState(false);
   const [loadingDiscussions, setLoadingDiscussions] = useState(false);
+  const [isInstructor, setIsInstructor] = useState(false);
+
+  useEffect(() => {
+    // Check user role
+    try {
+      const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      if (userStr) {
+        const userData = JSON.parse(userStr);
+        setIsInstructor(userData.role === 'instructor');
+      }
+    } catch (error) {
+      console.error('Error getting user:', error);
+    }
+  }, []);
 
   useEffect(() => {
     if (!courseId || isNaN(courseId)) {
@@ -31,16 +46,23 @@ export default function CourseDetailPage() {
       return;
     }
     fetchCourse();
-  }, [courseId, router]);
+  }, [courseId, router, isInstructor]);
 
   const fetchCourse = async () => {
     if (!courseId) return;
     try {
       setLoading(true);
-      const courseData = await courseService.getCourseAdmin(courseId);
-      setCourse(courseData);
-      if (courseData.lessons) {
-        setLessons(courseData.lessons);
+      let courseData;
+      if (isInstructor) {
+        // Use instructor API
+        courseData = await getInstructorCourse(courseId);
+      } else {
+        // Use admin API
+        courseData = await courseService.getCourseAdmin(courseId);
+      }
+      setCourse(courseData as Course);
+      if ((courseData as any).lessons) {
+        setLessons((courseData as any).lessons);
       }
     } catch (error: any) {
       console.error('Error fetching course:', error);

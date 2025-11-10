@@ -72,6 +72,7 @@ export async function getInstructorRevenue(params?: {
   from?: string; // YYYY-MM-DD
   to?: string; // YYYY-MM-DD
   instructor_id?: number;
+  isInstructor?: boolean; // If true, use instructor API
 }): Promise<{ instructors: InstructorRevenue[] }> {
   const query = new URLSearchParams();
   if (params?.from) query.set('from', params.from);
@@ -79,7 +80,15 @@ export async function getInstructorRevenue(params?: {
   if (params?.instructor_id) query.set('instructor_id', String(params.instructor_id));
   
   const qs = query.toString();
-  const response = await httpClient.get(`admin/reports/instructor-revenue${qs ? `?${qs}` : ''}`);
+  
+  // If instructor, use instructor API endpoint
+  const endpoint = params?.isInstructor 
+    ? `instructor/reports/revenue${qs ? `?${qs}` : ''}`
+    : `admin/reports/instructor-revenue${qs ? `?${qs}` : ''}`;
+  
+  console.log('getInstructorRevenue - isInstructor:', params?.isInstructor, 'endpoint:', endpoint);
+  
+  const response = await httpClient.get(endpoint);
   
   if (!isSuccess(response)) {
     throw new Error(handleApiError(response));

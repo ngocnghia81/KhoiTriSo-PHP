@@ -24,7 +24,13 @@ class LiveClassController extends BaseController
     public function index(Request $request): JsonResponse
     {
         try {
+            $user = $request->user();
             $q = LiveClass::query();
+            
+            // If user is instructor, only show their live classes
+            if ($user && ($user->role ?? '') === 'instructor') {
+                $q->where('instructor_id', $user->id);
+            }
             
             if ($request->filled('courseId')) {
                 $q->where('course_id', $request->integer('courseId'));
@@ -102,11 +108,25 @@ class LiveClassController extends BaseController
 
             $data = $validator->validated();
             
+            // Check course ownership (only instructor can create live class for their course)
+            $course = Course::find($data['courseId']);
+            if (!$course) {
+                return $this->notFound('Course');
+            }
+
+            $user = $request->user();
+            // If user is instructor, must own the course. Admin can create for any course.
+            if (($user->role ?? '') === 'instructor' && $course->instructor_id !== $user->id) {
+                return $this->forbidden('Bạn chỉ có thể tạo lớp học trực tuyến cho khóa học của mình');
+            }
+            
             DB::beginTransaction();
             try {
                 // Use raw SQL for PostgreSQL boolean compatibility
                 $chatEnabled = filter_var($data['chatEnabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
                 $recordingEnabled = filter_var($data['recordingEnabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
+                
+                $instructorId = ($user->role ?? '') === 'admin' ? $course->instructor_id : $user->id;
                 
                 $lcId = DB::selectOne("
                     INSERT INTO live_classes (
@@ -118,7 +138,7 @@ class LiveClassController extends BaseController
                     RETURNING id
                 ", [
                     $data['courseId'],
-                    $request->user()->id,
+                    $instructorId,
                     $data['title'],
                     $data['description'],
                     $data['scheduledAt'],
@@ -208,10 +228,20 @@ class LiveClassController extends BaseController
     public function update(Request $request, int $id): JsonResponse
     {
         try {
-            $lc = LiveClass::find($id);
+            $user = $request->user();
+            if (!$user) {
+                return $this->forbidden();
+            }
+
+            $lc = LiveClass::with('course')->find($id);
             
             if (!$lc) {
                 return $this->notFound('Live class');
+            }
+
+            // Check ownership: instructor must own the course, admin can update any
+            if (($user->role ?? '') === 'instructor' && $lc->course && $lc->course->instructor_id !== $user->id) {
+                return $this->forbidden('Bạn chỉ có thể chỉnh sửa lớp học trực tuyến của khóa học mình');
             }
 
             $validator = Validator::make($request->all(), [
@@ -287,10 +317,20 @@ class LiveClassController extends BaseController
     public function destroy(int $id, Request $request): JsonResponse
     {
         try {
-            $lc = LiveClass::find($id);
+            $user = $request->user();
+            if (!$user) {
+                return $this->forbidden();
+            }
+
+            $lc = LiveClass::with('course')->find($id);
             
             if (!$lc) {
                 return $this->notFound('Live class');
+            }
+
+            // Check ownership: instructor must own the course, admin can delete any
+            if (($user->role ?? '') === 'instructor' && $lc->course && $lc->course->instructor_id !== $user->id) {
+                return $this->forbidden('Bạn chỉ có thể xóa lớp học trực tuyến của khóa học mình');
             }
             
             $lc->delete();

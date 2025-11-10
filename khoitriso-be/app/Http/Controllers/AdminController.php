@@ -1071,8 +1071,8 @@ class AdminController extends BaseController
             
             $reason = $request->input('reason', 'Nội dung không phù hợp với tiêu chuẩn của hệ thống.');
             
-            // Update approval status and store rejection reason
-            DB::statement('UPDATE courses SET approval_status = 2, review_notes = ? WHERE id = ?', [$reason, $id]);
+            // Update approval status, unpublish, and store rejection reason
+            DB::statement('UPDATE courses SET approval_status = 2, is_published = false::boolean, review_notes = ? WHERE id = ?', [$reason, $id]);
             $course->refresh();
             
             // Send notification to instructor with rejection reason
@@ -1224,8 +1224,8 @@ class AdminController extends BaseController
 
             $reason = $request->input('reason', 'Nội dung không phù hợp với tiêu chuẩn của hệ thống.');
             
-            // Update approval status and store rejection reason
-            DB::statement('UPDATE books SET approval_status = 2, review_notes = ? WHERE id = ?', [$reason, $id]);
+            // Update approval status, unpublish, and store rejection reason
+            DB::statement('UPDATE books SET approval_status = 2, is_published = false::boolean, review_notes = ? WHERE id = ?', [$reason, $id]);
             $book->refresh();
 
             // Send notification to author with rejection reason

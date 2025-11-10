@@ -15,7 +15,7 @@ import {
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
 import { bookService } from '@/services/bookService';
-import { getInstructorBooks } from '@/services/instructor';
+import { getInstructorBooks, createInstructorBook, updateInstructorBook, deleteInstructorBook } from '@/services/instructor';
 import { getBooks } from '@/services/admin';
 import { getCategories, Category } from '@/services/categories';
 import { uploadFile } from '@/services/uploads';
@@ -100,18 +100,33 @@ export default function BooksPage() {
       const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
       if (userStr) {
         const userData = JSON.parse(userStr);
+        console.log('Books: User loaded from localStorage:', userData);
         setUser(userData);
-        setIsInstructor(userData.role === 'instructor');
+        const isInstructorRole = userData.role === 'instructor';
+        console.log('Books: Setting isInstructor to:', isInstructorRole);
+        setIsInstructor(isInstructorRole);
+      } else {
+        console.log('Books: No user found in localStorage');
+        setUser(null); // Explicitly set to null if no user
       }
     } catch (error) {
       console.error('Error getting user:', error);
+      setUser(null); // Set to null on error
     }
   }, []);
 
   // Fetch books with filters and pagination
   const fetchBooks = async () => {
+    // Don't fetch if user is not loaded yet
+    if (user === null) {
+      console.log('Books: User not loaded yet, skipping fetch');
+      return;
+    }
+    
     try {
       setLoading(true);
+      console.log('Books: Fetching books, isInstructor:', isInstructor, 'user role:', user?.role);
+      
       const params: any = {
         page: currentPage,
         pageSize: perPage,
@@ -125,6 +140,7 @@ export default function BooksPage() {
       let response;
       if (isInstructor) {
         // Use instructor service
+        console.log('Books: Using instructor API');
         const instructorResponse = await getInstructorBooks(params);
         response = {
           data: instructorResponse.books.map(book => ({
@@ -136,6 +152,7 @@ export default function BooksPage() {
         };
       } else {
         // Use admin service
+        console.log('Books: Using admin API');
         const adminResponse = await getBooks(params);
         response = {
           data: adminResponse.books,
@@ -174,7 +191,7 @@ export default function BooksPage() {
   };
 
   useEffect(() => {
-    if (user) { // Only fetch when user is loaded
+    if (user !== null) { // Only fetch when user is loaded (including null check)
       fetchBooks();
     }
   }, [currentPage, perPage, search, categoryFilter, statusFilter, approvalFilter, isInstructor, user]);
@@ -248,18 +265,51 @@ export default function BooksPage() {
     }
 
     try {
-      const newBook = await bookService.createBook({
-        title: bookForm.title,
-        description: bookForm.description,
-        coverImage: bookForm.coverImage,
-        price: parseFloat(bookForm.price),
-        categoryId: bookForm.categoryId ? parseInt(bookForm.categoryId) : undefined,
-        language: bookForm.language,
-        publicationYear: bookForm.publicationYear ? parseInt(bookForm.publicationYear) : undefined,
-        edition: bookForm.edition || undefined,
-      });
-
-      notify('Tạo sách thành công!', 'success');
+      console.log('Books: Creating book, isInstructor:', isInstructor, 'user role:', user?.role);
+      
+      // Generate ISBN if not provided (max 20 characters)
+      // Format: ISBN + timestamp (last 8 digits) + random (4 chars) = 4 + 8 + 4 = 16 chars
+      const timestamp = Date.now().toString().slice(-8);
+      const random = Math.random().toString(36).substr(2, 4).toUpperCase();
+      const isbn = `ISBN${timestamp}${random}`;
+      const staticPagePath = bookForm.title.toLowerCase().replace(/\s+/g, '-');
+      
+      let newBook;
+      if (isInstructor) {
+        // Use instructor API
+        console.log('Books: Using instructor API to create book');
+        const bookData: any = {
+          title: bookForm.title,
+          description: bookForm.description,
+          isbn: isbn,
+          coverImage: bookForm.coverImage,
+          price: parseFloat(bookForm.price),
+          staticPagePath: staticPagePath,
+          language: bookForm.language || 'vi',
+        };
+        
+        if (bookForm.categoryId) bookData.categoryId = parseInt(bookForm.categoryId);
+        if (bookForm.publicationYear) bookData.publicationYear = parseInt(bookForm.publicationYear);
+        if (bookForm.edition) bookData.edition = bookForm.edition;
+        // ebookFile is optional, don't send if not provided
+        
+        newBook = await createInstructorBook(bookData);
+        notify('Tạo sách thành công! Sách đang chờ phê duyệt từ admin.', 'success');
+      } else {
+        // Use admin API
+        console.log('Books: Using admin API to create book');
+        newBook = await bookService.createBook({
+          title: bookForm.title,
+          description: bookForm.description,
+          coverImage: bookForm.coverImage,
+          price: parseFloat(bookForm.price),
+          categoryId: bookForm.categoryId ? parseInt(bookForm.categoryId) : undefined,
+          language: bookForm.language,
+          publicationYear: bookForm.publicationYear ? parseInt(bookForm.publicationYear) : undefined,
+          edition: bookForm.edition || undefined,
+        });
+        notify('Tạo sách thành công!', 'success');
+      }
       setShowCreateBookModal(false);
       resetBookForm();
       fetchBooks();
@@ -279,18 +329,29 @@ export default function BooksPage() {
     if (!selectedBook) return;
 
     try {
-      await bookService.updateBook(selectedBook.id, {
+      const bookData = {
         title: bookForm.title,
         description: bookForm.description,
         coverImage: bookForm.coverImage,
         price: parseFloat(bookForm.price),
-        categoryId: bookForm.categoryId ? parseInt(bookForm.categoryId) : null,
-        language: bookForm.language,
+        categoryId: bookForm.categoryId ? parseInt(bookForm.categoryId) : undefined,
+        language: bookForm.language || 'vi',
         publicationYear: bookForm.publicationYear ? parseInt(bookForm.publicationYear) : undefined,
         edition: bookForm.edition || undefined,
-        isActive: bookForm.isActive,
-        approvalStatus: bookForm.approvalStatus,
-      });
+      };
+
+      if (isInstructor) {
+        // Use instructor API
+        await updateInstructorBook(selectedBook.id, bookData);
+      } else {
+        // Use admin API
+        await bookService.updateBook(selectedBook.id, {
+          ...bookData,
+          categoryId: bookForm.categoryId ? parseInt(bookForm.categoryId) : null,
+          isActive: bookForm.isActive,
+          approvalStatus: bookForm.approvalStatus,
+        });
+      }
 
       notify('Cập nhật sách thành công', 'success');
       setShowEditBookModal(false);
@@ -306,7 +367,14 @@ export default function BooksPage() {
     if (!selectedBook) return;
 
     try {
-      await bookService.deleteBook(selectedBook.id);
+      if (isInstructor) {
+        // Use instructor API
+        await deleteInstructorBook(selectedBook.id);
+      } else {
+        // Use admin API
+        await bookService.deleteBook(selectedBook.id);
+      }
+      
       notify('Xóa sách thành công', 'success');
       setShowDeleteConfirm(false);
       setSelectedBook(null);
@@ -513,12 +581,38 @@ export default function BooksPage() {
               </div>
                   )}
               
-                  <div className="absolute top-3 left-3">
+                  <div className="absolute top-3 left-3 flex flex-col gap-2">
                 <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
                       book.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                 }`}>
                       {book.is_active ? 'Đang bán' : 'Tạm dừng'}
                 </span>
+                {(() => {
+                  const approvalStatus = book.approval_status ?? (book as any).approvalStatus ?? 0;
+                  if (approvalStatus === 0) {
+                    return (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                        <span className="w-1.5 h-1.5 bg-yellow-500 rounded-full mr-1.5 animate-pulse"></span>
+                        Chờ duyệt
+                      </span>
+                    );
+                  } else if (approvalStatus === 1) {
+                    return (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5"></span>
+                        Đã duyệt
+                      </span>
+                    );
+                  } else if (approvalStatus === 2) {
+                    return (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                        <span className="w-1.5 h-1.5 bg-red-500 rounded-full mr-1.5"></span>
+                        Từ chối
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             </div>
 
@@ -534,9 +628,14 @@ export default function BooksPage() {
                 {book.title}
               </h3>
 
-              <p className="text-sm text-gray-600 mb-4 line-clamp-2">
-                {book.description}
-              </p>
+              <p 
+                className="text-sm text-gray-600 mb-4 line-clamp-2"
+                dangerouslySetInnerHTML={{ 
+                  __html: book.description 
+                    ? book.description.replace(/<[^>]*>/g, '').substring(0, 150) + (book.description.length > 150 ? '...' : '')
+                    : '' 
+                }}
+              />
 
                   {book.author && (
               <div className="flex items-center mb-4">
@@ -553,6 +652,36 @@ export default function BooksPage() {
                   <span className="text-lg font-bold text-gray-900">
                       {parseFloat(book.price?.toString() || '0').toLocaleString()}₫
                   </span>
+                </div>
+                
+                {/* Approval Status Badge */}
+                <div className="mb-4">
+                  {(() => {
+                    const approvalStatus = book.approval_status ?? (book as any).approvalStatus ?? 0;
+                    if (approvalStatus === 0) {
+                      return (
+                        <div className="flex items-center text-xs text-yellow-700 bg-yellow-50 px-3 py-2 rounded-lg">
+                          <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2 animate-pulse"></span>
+                          <span>Đang chờ phê duyệt từ admin</span>
+                        </div>
+                      );
+                    } else if (approvalStatus === 1) {
+                      return (
+                        <div className="flex items-center text-xs text-green-700 bg-green-50 px-3 py-2 rounded-lg">
+                          <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                          <span>Đã được phê duyệt và xuất bản</span>
+                        </div>
+                      );
+                    } else if (approvalStatus === 2) {
+                      return (
+                        <div className="flex items-center text-xs text-red-700 bg-red-50 px-3 py-2 rounded-lg">
+                          <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
+                          <span>Đã bị từ chối - Vui lòng chỉnh sửa và gửi lại</span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
               </div>
 

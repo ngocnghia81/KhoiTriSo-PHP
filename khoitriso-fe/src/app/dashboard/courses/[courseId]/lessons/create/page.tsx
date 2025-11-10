@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeftIcon, XMarkIcon, DocumentArrowUpIcon } from '@heroicons/react/24/outline';
 import { courseService, Lesson, LessonMaterial } from '@/services/courseService';
+import { getInstructorCourse } from '@/services/instructor';
 import { useToast } from '@/components/ToastProvider';
 import { uploadFile } from '@/services/uploads';
 import RichTextEditor from '@/components/RichTextEditor';
@@ -39,6 +40,20 @@ export default function CreateLessonPage() {
   const [uploadingMaterial, setUploadingMaterial] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingCourse, setLoadingCourse] = useState(true);
+  const [isInstructor, setIsInstructor] = useState(false);
+
+  useEffect(() => {
+    // Check user role
+    try {
+      const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      if (userStr) {
+        const userData = JSON.parse(userStr);
+        setIsInstructor(userData.role === 'instructor');
+      }
+    } catch (error) {
+      console.error('Error getting user:', error);
+    }
+  }, []);
 
   useEffect(() => {
     if (!courseId) {
@@ -46,14 +61,21 @@ export default function CreateLessonPage() {
     } else {
       fetchCourse();
     }
-  }, [courseId, router]);
+  }, [courseId, router, isInstructor]);
 
   const fetchCourse = async () => {
     if (!courseId) return;
     try {
       setLoadingCourse(true);
-      const courseData = await courseService.getCourseAdmin(courseId);
-      setCourse(courseData);
+      let courseData;
+      if (isInstructor) {
+        // Use instructor API
+        courseData = await getInstructorCourse(courseId);
+      } else {
+        // Use admin API
+        courseData = await courseService.getCourseAdmin(courseId);
+      }
+      setCourse(courseData as any);
     } catch (error: any) {
       console.error('Error fetching course:', error);
       notify(error.message || 'Lỗi tải thông tin khóa học', 'error');

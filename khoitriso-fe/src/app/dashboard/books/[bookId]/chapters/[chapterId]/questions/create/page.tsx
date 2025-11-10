@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeftIcon, EyeIcon, EyeSlashIcon, CalculatorIcon } from '@heroicons/react/24/outline';
 import { bookService } from '@/services/bookService';
+import { getInstructorBook } from '@/services/instructor';
 import { useToast } from '@/components/ToastProvider';
 import MathEditor from '@/components/MathEditor';
 import SampleQuestionsButton from '@/components/SampleQuestionsButton';
@@ -37,6 +38,20 @@ export default function CreateQuestionsPage() {
   const [loading, setLoading] = useState(false);
   const [loadingChapter, setLoadingChapter] = useState(true);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number | null>(null);
+  const [isInstructor, setIsInstructor] = useState(false);
+
+  useEffect(() => {
+    // Check user role
+    try {
+      const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      if (userStr) {
+        const userData = JSON.parse(userStr);
+        setIsInstructor(userData.role === 'instructor');
+      }
+    } catch (error) {
+      console.error('Error getting user:', error);
+    }
+  }, []);
 
   useEffect(() => {
     if (!bookId || !chapterId) {
@@ -44,13 +59,20 @@ export default function CreateQuestionsPage() {
     } else {
       fetchChapter();
     }
-  }, [bookId, chapterId, router]);
+  }, [bookId, chapterId, router, isInstructor]);
 
   const fetchChapter = async () => {
     if (!bookId || !chapterId) return;
     try {
       setLoadingChapter(true);
-      const book = await bookService.getBookAdmin(bookId);
+      let book;
+      if (isInstructor) {
+        // Use instructor API
+        book = await getInstructorBook(bookId);
+      } else {
+        // Use admin API
+        book = await bookService.getBookAdmin(bookId);
+      }
       const chapterData = book.chapters?.find((ch: any) => ch.id === chapterId);
       if (chapterData) {
         setChapter(chapterData);

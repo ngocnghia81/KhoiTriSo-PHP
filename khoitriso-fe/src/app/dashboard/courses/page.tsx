@@ -15,7 +15,15 @@ import {
   CurrencyDollarIcon
 } from '@heroicons/react/24/outline';
 import { courseService, Course } from '@/services/courseService';
-import { getInstructorCourses } from '@/services/instructor';
+import { 
+  getInstructorCourses, 
+  createInstructorCourse, 
+  updateInstructorCourse, 
+  deleteInstructorCourse,
+  getInstructorCourseAnalytics,
+  getInstructorCourseRevenue,
+  getInstructorCourseEnrollments
+} from '@/services/instructor';
 import { getCourses } from '@/services/admin';
 import { useToast } from '@/components/ToastProvider';
 import { uploadFile } from '@/services/uploads';
@@ -194,25 +202,54 @@ export default function CoursesPage() {
   const handleCreateCourse = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      if (!courseForm.title || !courseForm.description || !courseForm.thumbnail || !courseForm.categoryId) {
+        notify('Vui lòng điền đầy đủ thông tin bắt buộc', 'error');
+        return;
+      }
+
+      // Convert level string to number: beginner=1, intermediate=2, advanced=3
+      const levelMap: { [key: string]: number } = {
+        'beginner': 1,
+        'intermediate': 2,
+        'advanced': 3,
+      };
+      const levelNumber = levelMap[courseForm.level] || 1;
+
       const courseData = {
         title: courseForm.title,
         description: courseForm.description,
-        thumbnail: courseForm.thumbnail || undefined,
-        categoryId: courseForm.categoryId ? parseInt(courseForm.categoryId) : undefined,
-        instructorId: courseForm.instructorId ? parseInt(courseForm.instructorId) : undefined,
-        level: courseForm.level,
+        thumbnail: courseForm.thumbnail,
+        categoryId: parseInt(courseForm.categoryId),
+        level: levelNumber,
         isFree: courseForm.isFree,
         price: courseForm.price ? parseFloat(courseForm.price) : 0,
-        language: courseForm.language,
-        requirements: courseForm.requirements,
-        whatYouWillLearn: courseForm.whatYouWillLearn,
+        staticPagePath: courseForm.title.toLowerCase().replace(/\s+/g, '-'),
+        language: courseForm.language || 'vi',
+        requirements: courseForm.requirements || [],
+        whatYouWillLearn: courseForm.whatYouWillLearn || [],
       };
 
-      await courseService.createCourse(courseData);
+      if (isInstructor) {
+        // Use instructor API (expects level as number)
+        await createInstructorCourse(courseData);
+      } else {
+        // Use admin API (expects level as string)
+        const levelStringMap: { [key: number]: string } = {
+          1: 'beginner',
+          2: 'intermediate',
+          3: 'advanced',
+        };
+        await courseService.createCourse({
+          ...courseData,
+          level: levelStringMap[courseData.level] || 'beginner',
+          instructorId: courseForm.instructorId ? parseInt(courseForm.instructorId) : undefined,
+        });
+      }
+      
       notify('Tạo khóa học thành công!', 'success');
       setShowCreateCourseModal(false);
       resetCourseForm();
-      fetchCourses();
+    fetchCourses();
     } catch (error: any) {
       console.error('Error creating course:', error);
       notify(error.message || 'Lỗi tạo khóa học', 'error');
@@ -243,21 +280,47 @@ export default function CoursesPage() {
     if (!selectedCourse) return;
 
     try {
+      // Convert level string to number: beginner=1, intermediate=2, advanced=3
+      const levelMap: { [key: string]: number } = {
+        'beginner': 1,
+        'intermediate': 2,
+        'advanced': 3,
+      };
+      const levelNumber = courseForm.level ? (levelMap[courseForm.level] || 1) : undefined;
+
       const courseData = {
         title: courseForm.title,
         description: courseForm.description,
         thumbnail: courseForm.thumbnail || undefined,
         categoryId: courseForm.categoryId ? parseInt(courseForm.categoryId) : undefined,
-        instructorId: courseForm.instructorId ? parseInt(courseForm.instructorId) : undefined,
-        level: courseForm.level,
+        level: levelNumber,
         isFree: courseForm.isFree,
         price: courseForm.price ? parseFloat(courseForm.price) : 0,
-        language: courseForm.language,
-        requirements: courseForm.requirements,
-        whatYouWillLearn: courseForm.whatYouWillLearn,
+        language: courseForm.language || 'vi',
+        requirements: courseForm.requirements || [],
+        whatYouWillLearn: courseForm.whatYouWillLearn || [],
       };
 
-      await courseService.updateCourse(selectedCourse.id, courseData);
+      if (isInstructor) {
+        // Use instructor API (expects level as number)
+        await updateInstructorCourse(selectedCourse.id, courseData);
+      } else {
+        // Use admin API (expects level as string)
+        const levelStringMap: { [key: number]: string } = {
+          1: 'beginner',
+          2: 'intermediate',
+          3: 'advanced',
+        };
+        const adminCourseData: any = {
+          ...courseData,
+          instructorId: courseForm.instructorId ? parseInt(courseForm.instructorId) : undefined,
+        };
+        if (courseData.level !== undefined) {
+          adminCourseData.level = levelStringMap[courseData.level] || 'beginner';
+        }
+        await courseService.updateCourse(selectedCourse.id, adminCourseData);
+      }
+      
       notify('Cập nhật khóa học thành công!', 'success');
       setShowEditCourseModal(false);
       resetCourseForm();
@@ -277,11 +340,18 @@ export default function CoursesPage() {
     if (!selectedCourse) return;
 
     try {
-      await courseService.deleteCourse(selectedCourse.id);
+      if (isInstructor) {
+        // Use instructor API
+        await deleteInstructorCourse(selectedCourse.id);
+      } else {
+        // Use admin API
+        await courseService.deleteCourse(selectedCourse.id);
+      }
+      
       notify('Xóa khóa học thành công!', 'success');
       setShowDeleteConfirm(false);
       setSelectedCourse(null);
-    fetchCourses();
+      fetchCourses();
     } catch (error: any) {
       console.error('Error deleting course:', error);
       notify(error.message || 'Lỗi xóa khóa học', 'error');
@@ -319,7 +389,14 @@ export default function CoursesPage() {
     if (!selectedCourseForDetails) return;
     setLoadingStatistics(true);
     try {
-      const data = await courseService.getCourseAnalytics(selectedCourseForDetails.id);
+      let data;
+      if (isInstructor) {
+        // Use instructor API
+        data = await getInstructorCourseAnalytics(selectedCourseForDetails.id);
+      } else {
+        // Use admin API
+        data = await courseService.getCourseAnalytics(selectedCourseForDetails.id);
+      }
       setStatistics(data);
     } catch (error: any) {
       notify(error.message || 'Lỗi tải thống kê', 'error');
@@ -342,10 +419,20 @@ export default function CoursesPage() {
       } else {
         // Fetch course-specific revenue
         if (!selectedCourseForDetails) return;
-        const data = await courseService.getCourseRevenue(selectedCourseForDetails.id, {
-          startDate: revenueDateRange.startDate,
-          endDate: revenueDateRange.endDate,
-        });
+        let data;
+        if (isInstructor) {
+          // Use instructor API
+          data = await getInstructorCourseRevenue(selectedCourseForDetails.id, {
+            startDate: revenueDateRange.startDate,
+            endDate: revenueDateRange.endDate,
+          });
+        } else {
+          // Use admin API
+          data = await courseService.getCourseRevenue(selectedCourseForDetails.id, {
+            startDate: revenueDateRange.startDate,
+            endDate: revenueDateRange.endDate,
+          });
+        }
         setRevenueData(data);
       }
     } catch (error: any) {
@@ -360,10 +447,24 @@ export default function CoursesPage() {
     if (!selectedCourseForDetails) return;
     setLoadingEnrollments(true);
     try {
-      const data = await courseService.getCourseEnrollments(selectedCourseForDetails.id, {
-        page: enrollmentsPage,
-        pageSize: 20,
-      });
+      let data;
+      if (isInstructor) {
+        // Use instructor API
+        const instructorData = await getInstructorCourseEnrollments(selectedCourseForDetails.id, {
+          page: enrollmentsPage,
+          pageSize: 20,
+        });
+        data = {
+          data: instructorData.enrollments,
+          pagination: instructorData.pagination,
+        };
+      } else {
+        // Use admin API
+        data = await courseService.getCourseEnrollments(selectedCourseForDetails.id, {
+          page: enrollmentsPage,
+          pageSize: 20,
+        });
+      }
       setEnrollments(data.data || []);
       setEnrollmentsTotal(data.pagination?.total || 0);
     } catch (error: any) {
@@ -487,8 +588,8 @@ export default function CoursesPage() {
               Người dùng đã đăng ký
             </button>
           </nav>
-        </div>
-      </div>
+              </div>
+              </div>
 
       {/* Tab Content */}
       {activeTab === 'list' && (
@@ -509,7 +610,7 @@ export default function CoursesPage() {
               }}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                 />
-              </div>
+            </div>
 
           {/* Category Filter */}
           <select
@@ -552,12 +653,12 @@ export default function CoursesPage() {
             className="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">Tất cả phê duyệt</option>
-            <option value="1">Chờ duyệt</option>
-                <option value="2">Từ chối</option>
-            <option value="3">Đã duyệt</option>
+            <option value="0">Chờ duyệt</option>
+            <option value="1">Đã duyệt</option>
+            <option value="2">Từ chối</option>
               </select>
+          </div>
         </div>
-      </div>
 
       {/* Courses Table */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -565,11 +666,11 @@ export default function CoursesPage() {
           <div className="p-12 text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
             <p className="mt-4 text-gray-500">Đang tải...</p>
-        </div>
+              </div>
       ) : courses.length === 0 ? (
           <div className="p-12 text-center">
           <p className="text-gray-500">Không có khóa học nào</p>
-        </div>
+              </div>
       ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 table-fixed">
@@ -590,8 +691,11 @@ export default function CoursesPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12">
                     Bài học
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12">
                     Trạng thái
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12">
+                    Phê duyệt
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/8">
                     Thao tác
@@ -612,14 +716,21 @@ export default function CoursesPage() {
                         )}
                         <div className="min-w-0 flex-1">
                           <div className="text-sm font-medium text-gray-900 truncate">{course.title}</div>
-                          <div className="text-sm text-gray-500 line-clamp-2 mt-1">{course.description}</div>
+                          <div 
+                            className="text-sm text-gray-500 line-clamp-2 mt-1"
+                            dangerouslySetInnerHTML={{ 
+                              __html: course.description 
+                                ? course.description.replace(/<[^>]*>/g, '').substring(0, 100) + (course.description.length > 100 ? '...' : '')
+                                : '' 
+                            }}
+                          />
                         </div>
-                      </div>
+          </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
                       <div className="truncate" title={course.instructor?.name || 'Chưa có'}>
                         {course.instructor?.name || 'Chưa có'}
-                      </div>
+        </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
                       <div className="truncate" title={course.category?.name || 'Chưa có'}>
@@ -646,6 +757,38 @@ export default function CoursesPage() {
                       >
                         {course.isActive ? 'Hoạt động' : 'Không hoạt động'}
                       </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {(() => {
+                        const approvalStatus = (course as any).approvalStatus ?? (course as any).approval_status ?? 0;
+                        if (approvalStatus === 0) {
+                          return (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                              <span className="w-1.5 h-1.5 bg-yellow-500 rounded-full mr-1.5 animate-pulse"></span>
+                              Chờ duyệt
+                            </span>
+                          );
+                        } else if (approvalStatus === 1) {
+                          return (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5"></span>
+                              Đã duyệt
+                            </span>
+                          );
+                        } else if (approvalStatus === 2) {
+                          return (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              <span className="w-1.5 h-1.5 bg-red-500 rounded-full mr-1.5"></span>
+                              Từ chối
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            Không xác định
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-6 py-4 text-right text-sm font-medium">
                       <div className="flex items-center justify-end space-x-2">
@@ -704,7 +847,7 @@ export default function CoursesPage() {
             >
               Sau
             </button>
-          </div>
+              </div>
           <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
             <div>
               <p className="text-sm text-gray-700">
@@ -712,7 +855,7 @@ export default function CoursesPage() {
                   <span className="font-medium">{Math.min(currentPage * perPage, total)}</span> trong tổng số{' '}
                   <span className="font-medium">{total}</span> khóa học
               </p>
-            </div>
+              </div>
             <div>
                 <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
                 <button 
@@ -755,11 +898,11 @@ export default function CoursesPage() {
                   Sau
                 </button>
               </nav>
-              </div>
             </div>
           </div>
+          </div>
         )}
-      </div>
+        </div>
 
       {/* Create Course Modal */}
       {showCreateCourseModal && (
@@ -767,7 +910,7 @@ export default function CoursesPage() {
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b">
               <h3 className="text-xl font-semibold">Tạo khóa học mới</h3>
-            </div>
+              </div>
             <form onSubmit={handleCreateCourse} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tiêu đề *</label>
@@ -787,7 +930,7 @@ export default function CoursesPage() {
                   onChange={(value) => setCourseForm({ ...courseForm, description: value })}
                   placeholder="Mô tả chi tiết về khóa học... (Sử dụng thanh công cụ để định dạng văn bản)"
                 />
-              </div>
+            </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Ảnh đại diện</label>
@@ -801,7 +944,7 @@ export default function CoursesPage() {
                 {thumbnailPreview && (
                   <img src={thumbnailPreview} alt="Preview" className="mt-2 h-32 w-32 object-cover rounded" />
                 )}
-              </div>
+          </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -818,7 +961,7 @@ export default function CoursesPage() {
                       </option>
                     ))}
                   </select>
-                </div>
+        </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Cấp độ</label>
@@ -831,7 +974,7 @@ export default function CoursesPage() {
                     <option value="intermediate">Trung bình</option>
                     <option value="advanced">Nâng cao</option>
                   </select>
-                </div>
+              </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -846,7 +989,7 @@ export default function CoursesPage() {
                     disabled={courseForm.isFree}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
                   />
-                </div>
+            </div>
 
                 <div className="flex items-center pt-6">
                   <input
@@ -856,8 +999,8 @@ export default function CoursesPage() {
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
                   <label className="ml-2 text-sm text-gray-700">Miễn phí</label>
-                </div>
-              </div>
+          </div>
+        </div>
 
               <div className="flex justify-end space-x-3 pt-4">
                 <button
@@ -876,7 +1019,7 @@ export default function CoursesPage() {
                 >
                   Tạo khóa học
                 </button>
-              </div>
+      </div>
             </form>
           </div>
         </div>
@@ -888,7 +1031,7 @@ export default function CoursesPage() {
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b">
               <h3 className="text-xl font-semibold">Sửa khóa học</h3>
-            </div>
+                </div>
             <form onSubmit={handleEditCourse} className="p-6 space-y-4">
               {/* Same form fields as create modal */}
               <div>
@@ -928,7 +1071,7 @@ export default function CoursesPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Danh mục</label>
-                  <select
+              <select 
                     value={courseForm.categoryId}
                     onChange={(e) => setCourseForm({ ...courseForm, categoryId: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
@@ -939,12 +1082,12 @@ export default function CoursesPage() {
                         {cat.name}
                       </option>
                     ))}
-                  </select>
+              </select>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Cấp độ</label>
-                  <select
+              <select 
                     value={courseForm.level}
                     onChange={(e) => setCourseForm({ ...courseForm, level: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
@@ -952,9 +1095,9 @@ export default function CoursesPage() {
                     <option value="beginner">Cơ bản</option>
                     <option value="intermediate">Trung bình</option>
                     <option value="advanced">Nâng cao</option>
-                  </select>
+              </select>
                 </div>
-              </div>
+            </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -982,8 +1125,8 @@ export default function CoursesPage() {
               </div>
 
               <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
+              <button
+                type="button"
                   onClick={() => {
                     setShowEditCourseModal(false);
                     resetCourseForm();
@@ -997,8 +1140,8 @@ export default function CoursesPage() {
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
                   Cập nhật
-                </button>
-              </div>
+              </button>
+            </div>
             </form>
           </div>
         </div>
@@ -1028,25 +1171,25 @@ export default function CoursesPage() {
               >
                 Xóa
               </button>
-            </div>
-          </div>
         </div>
+        </div>
+                    </div>
       )}
-        </>
-      )}
-
+                  </>
+                )}
+                
       {/* Statistics Tab */}
       {activeTab === 'statistics' && (
         <div className="bg-white rounded-lg shadow p-6">
           {!selectedCourseForDetails ? (
             <div className="text-center py-12">
               <p className="text-gray-500">Vui lòng chọn khóa học từ danh sách</p>
-            </div>
+                </div>
           ) : loadingStatistics ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
               <p className="mt-4 text-gray-500">Đang tải thống kê...</p>
-            </div>
+                  </div>
           ) : statistics ? (
             <div className="space-y-6">
               <div className="flex items-center justify-between mb-4">
@@ -1063,31 +1206,31 @@ export default function CoursesPage() {
                     <option key={c.id} value={c.id}>{c.title}</option>
                   ))}
                 </select>
-              </div>
+                </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600">Tổng đăng ký</p>
-                  <p className="text-2xl font-bold text-blue-600">{statistics.totalEnrollments}</p>
-                </div>
+                  <p className="text-2xl font-bold text-blue-600">{statistics.totalEnrollments ?? 0}</p>
+              </div>
                 <div className="bg-green-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600">Học viên đang học</p>
-                  <p className="text-2xl font-bold text-green-600">{statistics.activeStudents}</p>
+                  <p className="text-2xl font-bold text-green-600">{statistics.activeStudents ?? 0}</p>
                 </div>
                 <div className="bg-purple-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600">Tỷ lệ hoàn thành</p>
-                  <p className="text-2xl font-bold text-purple-600">{statistics.completionRate}%</p>
-                </div>
+                  <p className="text-2xl font-bold text-purple-600">{statistics.completionRate ?? 0}%</p>
+                    </div>
                 <div className="bg-yellow-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600">Tiến độ trung bình</p>
-                  <p className="text-2xl font-bold text-yellow-600">{statistics.averageProgress}%</p>
+                  <p className="text-2xl font-bold text-yellow-600">{statistics.averageProgress ?? 0}%</p>
                 </div>
                 <div className="bg-orange-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600">Đánh giá</p>
-                  <p className="text-2xl font-bold text-orange-600">{statistics.rating.toFixed(1)} ⭐</p>
+                  <p className="text-2xl font-bold text-orange-600">{(statistics.rating ?? 0).toFixed(1)} ⭐</p>
                 </div>
                 <div className="bg-red-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600">Tổng doanh thu</p>
-                  <p className="text-2xl font-bold text-red-600">{statistics.totalRevenue.toLocaleString('vi-VN')} ₫</p>
+                  <p className="text-2xl font-bold text-red-600">{(statistics.totalRevenue ?? 0).toLocaleString('vi-VN')} ₫</p>
                 </div>
               </div>
             </div>
@@ -1096,8 +1239,8 @@ export default function CoursesPage() {
               <p className="text-gray-500">Không có dữ liệu thống kê</p>
             </div>
           )}
-        </div>
-      )}
+                  </div>
+                )}
 
       {/* Revenue Tab */}
       {activeTab === 'revenue' && (
@@ -1109,7 +1252,7 @@ export default function CoursesPage() {
             </div>
           ) : revenueData ? (
             <div className="space-y-6">
-              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold">
                   {revenueViewMode === 'total' ? 'Doanh thu tổng hợp' : `Doanh thu: ${revenueData.courseTitle}`}
                 </h2>
@@ -1141,8 +1284,8 @@ export default function CoursesPage() {
                       ))}
                     </select>
                   )}
-                </div>
-              </div>
+                    </div>
+                  </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Từ ngày</label>
@@ -1161,37 +1304,37 @@ export default function CoursesPage() {
                     onChange={(e) => setRevenueDateRange({ ...revenueDateRange, endDate: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md"
                   />
-                </div>
-              </div>
+                  </div>
+                  </div>
               {revenueViewMode === 'total' && revenueData.revenueBreakdown && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                   <div className="bg-blue-50 p-4 rounded-lg">
                     <p className="text-sm text-gray-600">Doanh thu khóa học</p>
-                    <p className="text-2xl font-bold text-blue-600">{revenueData.revenueBreakdown.courses.toLocaleString('vi-VN')} ₫</p>
-                  </div>
+                    <p className="text-2xl font-bold text-blue-600">{(revenueData.revenueBreakdown?.courses ?? 0).toLocaleString('vi-VN')} ₫</p>
+                </div>
                   <div className="bg-green-50 p-4 rounded-lg">
                     <p className="text-sm text-gray-600">Doanh thu sách</p>
-                    <p className="text-2xl font-bold text-green-600">{revenueData.revenueBreakdown.books.toLocaleString('vi-VN')} ₫</p>
-                  </div>
+                    <p className="text-2xl font-bold text-green-600">{(revenueData.revenueBreakdown?.books ?? 0).toLocaleString('vi-VN')} ₫</p>
+              </div>
                   <div className="bg-purple-50 p-4 rounded-lg">
                     <p className="text-sm text-gray-600">Tổng doanh thu</p>
-                    <p className="text-2xl font-bold text-purple-600">{revenueData.revenueBreakdown.total.toLocaleString('vi-VN')} ₫</p>
+                    <p className="text-2xl font-bold text-purple-600">{(revenueData.revenueBreakdown?.total ?? 0).toLocaleString('vi-VN')} ₫</p>
                   </div>
-                </div>
+                  </div>
               )}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600">Tổng doanh thu</p>
-                  <p className="text-2xl font-bold text-blue-600">{revenueData.totalRevenue.toLocaleString('vi-VN')} ₫</p>
+                  <p className="text-2xl font-bold text-blue-600">{(revenueData.totalRevenue ?? 0).toLocaleString('vi-VN')} ₫</p>
                 </div>
                 <div className="bg-green-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600">Tổng đơn hàng</p>
-                  <p className="text-2xl font-bold text-green-600">{revenueData.totalOrders}</p>
-                </div>
+                  <p className="text-2xl font-bold text-green-600">{revenueData.totalOrders ?? 0}</p>
+              </div>
                 <div className="bg-purple-50 p-4 rounded-lg">
                   <p className="text-sm text-gray-600">Giá trị đơn trung bình</p>
-                  <p className="text-2xl font-bold text-purple-600">{revenueData.averageOrderValue.toLocaleString('vi-VN')} ₫</p>
-                </div>
+                  <p className="text-2xl font-bold text-purple-600">{(revenueData.averageOrderValue ?? 0).toLocaleString('vi-VN')} ₫</p>
+            </div>
               </div>
             </div>
           ) : (
@@ -1230,7 +1373,7 @@ export default function CoursesPage() {
                     <option key={c.id} value={c.id}>{c.title}</option>
                   ))}
                 </select>
-              </div>
+          </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -1249,10 +1392,10 @@ export default function CoursesPage() {
                             {enrollment.user?.avatar && (
                               <img className="h-10 w-10 rounded-full mr-3" src={enrollment.user.avatar} alt="" />
                             )}
-                            <div>
+            <div>
                               <div className="text-sm font-medium text-gray-900">{enrollment.user?.name || 'N/A'}</div>
                               <div className="text-sm text-gray-500">{enrollment.user?.email || 'N/A'}</div>
-                            </div>
+            </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -1276,22 +1419,22 @@ export default function CoursesPage() {
                 <div className="flex items-center justify-between mt-4">
                   <p className="text-sm text-gray-700">Hiển thị {enrollments.length} / {enrollmentsTotal} người dùng</p>
                   <div className="flex space-x-2">
-                    <button
+                <button 
                       onClick={() => setEnrollmentsPage(Math.max(1, enrollmentsPage - 1))}
                       disabled={enrollmentsPage === 1}
                       className="px-4 py-2 border border-gray-300 rounded-md disabled:opacity-50"
-                    >
-                      Trước
-                    </button>
+                >
+                  Trước
+                </button>
                     <button
                       onClick={() => setEnrollmentsPage(enrollmentsPage + 1)}
                       disabled={enrollments.length < 20}
                       className="px-4 py-2 border border-gray-300 rounded-md disabled:opacity-50"
-                    >
-                      Sau
-                    </button>
-                  </div>
-                </div>
+                >
+                  Sau
+                </button>
+            </div>
+          </div>
               )}
             </div>
           )}

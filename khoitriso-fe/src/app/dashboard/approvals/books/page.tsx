@@ -261,7 +261,12 @@ export default function ApprovalsBooksPage() {
                       </div>
                     </div>
                     {book.description && (
-                      <p className="text-sm text-gray-600 mb-3 line-clamp-2">{book.description}</p>
+                      <p 
+                        className="text-sm text-gray-600 mb-3 line-clamp-2"
+                        dangerouslySetInnerHTML={{ 
+                          __html: book.description.replace(/<[^>]*>/g, '').substring(0, 150) + (book.description.length > 150 ? '...' : '')
+                        }}
+                      />
                     )}
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm text-gray-600">
                       <div className="flex items-center">

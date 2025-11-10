@@ -258,7 +258,12 @@ export default function ApprovalsCoursesPage() {
                       </div>
                     </div>
                     {course.description && (
-                      <p className="text-sm text-gray-600 mb-3 line-clamp-2">{course.description}</p>
+                      <p 
+                        className="text-sm text-gray-600 mb-3 line-clamp-2"
+                        dangerouslySetInnerHTML={{ 
+                          __html: course.description.replace(/<[^>]*>/g, '').substring(0, 150) + (course.description.length > 150 ? '...' : '')
+                        }}
+                      />
                     )}
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm text-gray-600">
                       <div className="flex items-center">

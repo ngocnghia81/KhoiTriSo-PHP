@@ -135,10 +135,12 @@ export default function ReportsPage() {
   const fetchInstructorRevenue = async () => {
     setLoading(true);
     try {
+      console.log('fetchInstructorRevenue - isInstructor:', isInstructor, 'user:', user);
       const data = await getInstructorRevenue({
         from: instructorDateRange.from,
         to: instructorDateRange.to,
         instructor_id: isInstructor ? user?.id : undefined, // If instructor, only show their data
+        isInstructor: isInstructor, // Pass flag to use correct API
       });
       setInstructorRevenue(data.instructors || []);
     } catch (error: any) {

@@ -18,6 +18,7 @@ import {
 import Link from 'next/link';
 import { getLiveClasses, createLiveClass, updateLiveClass, deleteLiveClass } from '@/services/liveclasses';
 import { courseService, Course } from '@/services/courseService';
+import { getInstructorCourses } from '@/services/instructor';
 import { useToast } from '@/components/ToastProvider';
 import { getCategories, Category } from '@/services/categories';
 
@@ -67,6 +68,7 @@ export default function LiveClassesPage() {
   const [selectedFilter, setSelectedFilter] = useState<'all' | number>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [courseFilter, setCourseFilter] = useState<number | ''>('');
+  const [isInstructor, setIsInstructor] = useState<boolean | undefined>(undefined);
   
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -89,9 +91,31 @@ export default function LiveClassesPage() {
   });
 
   useEffect(() => {
-    fetchLiveClasses();
-    fetchCourses();
+    // Check user role
+    try {
+      const userStr = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      if (userStr) {
+        const userData = JSON.parse(userStr);
+        const isInstructorRole = userData.role === 'instructor';
+        console.log('LiveClasses: Setting isInstructor to:', isInstructorRole);
+        setIsInstructor(isInstructorRole);
+      } else {
+        setIsInstructor(false);
+      }
+    } catch (error) {
+      console.error('Error getting user:', error);
+      setIsInstructor(false);
+    }
   }, []);
+
+  useEffect(() => {
+    // Only fetch when isInstructor is determined (not undefined/null)
+    if (isInstructor !== undefined) {
+      console.log('LiveClasses: Fetching courses, isInstructor:', isInstructor);
+      fetchLiveClasses();
+      fetchCourses();
+    }
+  }, [isInstructor]);
 
   const fetchLiveClasses = async () => {
     try {
@@ -130,9 +154,45 @@ export default function LiveClassesPage() {
   };
 
   const fetchCourses = async () => {
+    // Don't fetch if isInstructor is not determined yet
+    if (isInstructor === undefined) {
+      console.log('LiveClasses: Skipping fetchCourses, isInstructor not determined');
+      return;
+    }
+    
     try {
-      const { data } = await courseService.listCoursesAdmin();
-      setCourses(data);
+      console.log('LiveClasses: Fetching courses, isInstructor:', isInstructor);
+      let coursesData: Course[] = [];
+      if (isInstructor) {
+        // Use instructor API
+        console.log('LiveClasses: Using instructor API');
+        const response = await getInstructorCourses();
+        coursesData = response.courses.map((c: any) => ({
+          id: c.id,
+          title: c.title,
+          description: c.description,
+          thumbnail: c.thumbnail,
+          price: c.price,
+          isFree: c.isFree,
+          isActive: c.isActive,
+          isPublished: c.isPublished,
+          approvalStatus: c.approvalStatus,
+          rating: c.rating,
+          totalStudents: c.totalStudents,
+          totalLessons: c.totalLessons,
+          category: c.category,
+          instructor: c.instructor,
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+        })) as Course[];
+      } else {
+        // Use admin API
+        console.log('LiveClasses: Using admin API');
+        const { data } = await courseService.listCoursesAdmin();
+        coursesData = data;
+      }
+      console.log('LiveClasses: Courses fetched:', coursesData.length);
+      setCourses(coursesData);
     } catch (error: any) {
       notify(error.message || 'Lỗi tải danh sách khóa học', 'error');
     }
