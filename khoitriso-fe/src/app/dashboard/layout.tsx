@@ -26,6 +26,18 @@ export default function DashboardLayout({
     }
   }, []);
 
+  useEffect(() => {
+    // Disable body scroll when in dashboard
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    
+    return () => {
+      // Re-enable scroll when leaving dashboard
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -39,8 +51,8 @@ export default function DashboardLayout({
 
   return (
     <SidebarProvider>
-      <div className="min-h-screen bg-gray-50">
-        <div className="flex h-screen">
+      <div className="h-screen bg-gray-50 overflow-hidden">
+        <div className="flex h-full">
           {/* Sidebar */}
           <div className="flex-shrink-0">
             <SidebarComponent />

@@ -426,6 +426,10 @@ Route::middleware('auth:sanctum')->group(function () {
         // Admin Lesson Assignments
         Route::get('admin/lessons/{lessonId}/assignments', [\App\Http\Controllers\AdminController::class, 'getLessonAssignments']);
         Route::post('admin/lessons/{lessonId}/assignments', [\App\Http\Controllers\AdminController::class, 'createLessonAssignment']);
+        Route::get('admin/assignments/{assignmentId}', [\App\Http\Controllers\AdminController::class, 'getAssignment']);
+        Route::put('admin/assignments/{assignmentId}', [\App\Http\Controllers\AdminController::class, 'updateAssignment']);
+        Route::post('admin/assignments/{assignmentId}/disable', [\App\Http\Controllers\AdminController::class, 'disableAssignment']);
+        Route::post('admin/assignments/{assignmentId}/restore', [\App\Http\Controllers\AdminController::class, 'restoreAssignment']);
         Route::post('admin/assignments/{assignmentId}/questions', [\App\Http\Controllers\AdminController::class, 'createAssignmentQuestion']);
         Route::get('admin/assignments/{assignmentId}/questions/template', [\App\Http\Controllers\AdminController::class, 'downloadAssignmentQuestionTemplate']);
         Route::post('admin/assignments/{assignmentId}/questions/import', [\App\Http\Controllers\AdminController::class, 'importAssignmentQuestionsFromWord']);

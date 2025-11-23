@@ -3689,7 +3689,29 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
             $assignments = \App\Models\Assignment::where('lesson_id', $lessonId)
                 ->with(['lesson:id,title'])
                 ->orderBy('created_at', 'desc')
-                ->get();
+                ->get()
+                ->map(function ($assignment) {
+                    return [
+                        'id' => $assignment->id,
+                        'lesson_id' => $assignment->lesson_id,
+                        'title' => $assignment->title,
+                        'description' => $assignment->description,
+                        'assignment_type' => $assignment->assignment_type,
+                        'max_score' => $assignment->max_score,
+                        'time_limit' => $assignment->time_limit,
+                        'max_attempts' => $assignment->max_attempts,
+                        'show_answers_after' => $assignment->show_answers_after,
+                        'due_date' => $assignment->due_date,
+                        'is_published' => $assignment->is_published,
+                        'passing_score' => $assignment->passing_score,
+                        'shuffle_questions' => $assignment->shuffle_questions,
+                        'shuffle_options' => $assignment->shuffle_options,
+                        'is_active' => $assignment->is_active ?? true,
+                        'created_at' => $assignment->created_at,
+                        'updated_at' => $assignment->updated_at,
+                        'lesson' => $assignment->lesson,
+                    ];
+                });
 
             return $this->success($assignments, 'Lấy danh sách bài tập thành công', $request);
 
@@ -3762,6 +3784,7 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
                 'passing_score' => $data['passingScore'] ?? null,
                 'shuffle_questions' => $shuffleQuestions,
                 'shuffle_options' => $shuffleOptions,
+                'is_active' => DB::raw('true'), // Default to active
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -3832,6 +3855,183 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
 
         } catch (\Exception $e) {
             \Log::error('Error in admin createLessonAssignment: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Disable assignment (Admin only)
+     * POST /api/admin/assignments/{assignmentId}/disable
+     */
+    public function disableAssignment(int $assignmentId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền vô hiệu hóa bài tập');
+            }
+
+            $assignment = \App\Models\Assignment::find($assignmentId);
+            if (!$assignment) {
+                return $this->notFound('Assignment');
+            }
+
+            // Use raw SQL for PostgreSQL boolean compatibility
+            DB::table('assignments')
+                ->where('id', $assignmentId)
+                ->update(['is_active' => DB::raw('false'), 'updated_at' => now()]);
+
+            $assignment->refresh();
+
+            return $this->success($assignment, 'Vô hiệu hóa bài tập thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin disableAssignment: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Restore assignment (Admin only)
+     * POST /api/admin/assignments/{assignmentId}/restore
+     */
+    public function restoreAssignment(int $assignmentId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền khôi phục bài tập');
+            }
+
+            $assignment = \App\Models\Assignment::find($assignmentId);
+            if (!$assignment) {
+                return $this->notFound('Assignment');
+            }
+
+            // Use raw SQL for PostgreSQL boolean compatibility
+            DB::table('assignments')
+                ->where('id', $assignmentId)
+                ->update(['is_active' => DB::raw('true'), 'updated_at' => now()]);
+
+            $assignment->refresh();
+
+            return $this->success($assignment, 'Khôi phục bài tập thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin restoreAssignment: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Get assignment details (Admin only)
+     * GET /api/admin/assignments/{assignmentId}
+     */
+    public function getAssignment(int $assignmentId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền xem chi tiết bài tập');
+            }
+
+            $assignment = \App\Models\Assignment::with(['lesson:id,title', 'questions.options'])
+                ->find($assignmentId);
+            
+            if (!$assignment) {
+                return $this->notFound('Assignment');
+            }
+
+            return $this->success($assignment, 'Lấy chi tiết bài tập thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin getAssignment: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Update assignment (Admin only)
+     * PUT /api/admin/assignments/{assignmentId}
+     */
+    public function updateAssignment(int $assignmentId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || $user->role !== 'admin') {
+                return $this->forbidden('Chỉ admin mới có quyền cập nhật bài tập');
+            }
+
+            $assignment = \App\Models\Assignment::find($assignmentId);
+            if (!$assignment) {
+                return $this->notFound('Assignment');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'title' => ['sometimes', 'required', 'string', 'max:200'],
+                'description' => ['sometimes', 'required', 'string'],
+                'assignmentType' => ['sometimes', 'required', 'integer', 'in:1,2,3'],
+                'maxScore' => ['sometimes', 'required', 'integer', 'min:1'],
+                'timeLimit' => ['nullable', 'integer', 'min:1'],
+                'maxAttempts' => ['sometimes', 'required', 'integer', 'min:1'],
+                'showAnswersAfter' => ['sometimes', 'required', 'integer', 'in:1,2,3'],
+                'dueDate' => ['nullable', 'date'],
+                'isPublished' => ['nullable', 'boolean'],
+                'passingScore' => ['nullable', 'numeric', 'min:0'],
+                'shuffleQuestions' => ['nullable', 'boolean'],
+                'shuffleOptions' => ['nullable', 'boolean'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+
+            // Build update array
+            $updateData = [];
+            if (isset($data['title'])) $updateData['title'] = $data['title'];
+            if (isset($data['description'])) $updateData['description'] = $data['description'];
+            if (isset($data['assignmentType'])) $updateData['assignment_type'] = $data['assignmentType'];
+            if (isset($data['maxScore'])) $updateData['max_score'] = $data['maxScore'];
+            if (isset($data['timeLimit'])) $updateData['time_limit'] = $data['timeLimit'];
+            if (isset($data['maxAttempts'])) $updateData['max_attempts'] = $data['maxAttempts'];
+            if (isset($data['showAnswersAfter'])) $updateData['show_answers_after'] = $data['showAnswersAfter'];
+            if (isset($data['dueDate'])) $updateData['due_date'] = $data['dueDate'];
+            if (isset($data['passingScore'])) $updateData['passing_score'] = $data['passingScore'];
+            
+            // Handle boolean fields for PostgreSQL
+            if (isset($data['isPublished'])) {
+                $updateData['is_published'] = $data['isPublished'] ? DB::raw('true') : DB::raw('false');
+            }
+            if (isset($data['shuffleQuestions'])) {
+                $updateData['shuffle_questions'] = $data['shuffleQuestions'] ? DB::raw('true') : DB::raw('false');
+            }
+            if (isset($data['shuffleOptions'])) {
+                $updateData['shuffle_options'] = $data['shuffleOptions'] ? DB::raw('true') : DB::raw('false');
+            }
+
+            $updateData['updated_at'] = now();
+
+            // Use raw SQL update for PostgreSQL boolean compatibility
+            DB::table('assignments')
+                ->where('id', $assignmentId)
+                ->update($updateData);
+
+            $assignment->refresh();
+
+            return $this->success($assignment, 'Cập nhật bài tập thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin updateAssignment: ' . $e->getMessage());
             \Log::error('Stack trace: ' . $e->getTraceAsString());
             return $this->internalError();
         }
@@ -3947,7 +4147,7 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
 
             $q = \App\Models\UserAssignmentAttempt::with(['user:id,name,email'])
                 ->where('assignment_id', $assignmentId)
-                ->where('is_completed', true);
+                ->where('is_completed', \DB::raw('true'));
 
             $total = $q->count();
             $attempts = $q->orderBy('submitted_at', 'desc')
@@ -4132,19 +4332,54 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
 
                 if ($answer) {
                     $pointsEarned = (float) $grade['pointsEarned'];
-                    $answer->points_earned = $pointsEarned;
-                    if (isset($grade['isCorrect'])) {
-                        $answer->is_correct = (bool) $grade['isCorrect'];
+                    $isCorrect = isset($grade['isCorrect']) ? (bool) $grade['isCorrect'] : null;
+                    
+                    // Use raw SQL to ensure boolean type for PostgreSQL
+                    if ($isCorrect !== null) {
+                        \DB::table('user_assignment_answers')
+                            ->where('id', $answer->id)
+                            ->update([
+                                'points_earned' => $pointsEarned,
+                                'is_correct' => \DB::raw($isCorrect ? 'true' : 'false'),
+                                'updated_at' => now(),
+                            ]);
+                    } else {
+                        \DB::table('user_assignment_answers')
+                            ->where('id', $answer->id)
+                            ->update([
+                                'points_earned' => $pointsEarned,
+                                'updated_at' => now(),
+                            ]);
                     }
-                    $answer->save();
                     $totalScore += $pointsEarned;
                 }
             }
 
             // Update attempt score
-            $attempt->score = $totalScore;
-            $attempt->is_passed = $assignment->passing_score ? ($totalScore >= $assignment->passing_score) : null;
-            $attempt->save();
+            $isPassed = $assignment->passing_score ? ($totalScore >= $assignment->passing_score) : null;
+            
+            // Use raw SQL to ensure boolean type for PostgreSQL
+            if ($isPassed !== null) {
+                \DB::table('user_assignment_attempts')
+                    ->where('id', $attemptId)
+                    ->update([
+                        'score' => $totalScore,
+                        'is_passed' => \DB::raw($isPassed ? 'true' : 'false'),
+                        'updated_at' => now(),
+                    ]);
+                // Refresh the attempt model
+                $attempt->refresh();
+            } else {
+                \DB::table('user_assignment_attempts')
+                    ->where('id', $attemptId)
+                    ->update([
+                        'score' => $totalScore,
+                        'is_passed' => \DB::raw('NULL'),
+                        'updated_at' => now(),
+                    ]);
+                // Refresh the attempt model
+                $attempt->refresh();
+            }
 
             return $this->success([
                 'attempt' => $attempt,

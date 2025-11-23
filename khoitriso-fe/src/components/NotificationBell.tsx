@@ -73,7 +73,22 @@ export default function NotificationBell() {
       const response = await httpClient.get('notifications?pageSize=10');
       
       if (response.ok && response.data) {
-        const data = response.data.data as NotificationResponse;
+        // Handle both response formats
+        let data: NotificationResponse;
+        if (response.data.data) {
+          // Nested data format
+          data = response.data.data as NotificationResponse;
+        } else if (response.data.notifications !== undefined) {
+          // Direct format
+          data = response.data as NotificationResponse;
+        } else {
+          // Fallback: try to extract from response
+          data = {
+            notifications: Array.isArray(response.data) ? response.data : [],
+            unreadCount: 0
+          };
+        }
+        
         const newUnreadCount = data.unreadCount || 0;
         
         // Trigger animation if unread count increased
@@ -85,9 +100,15 @@ export default function NotificationBell() {
         setPrevUnreadCount(newUnreadCount);
         setNotifications(data.notifications || []);
         setUnreadCount(newUnreadCount);
+      } else {
+        // Handle error response
+        console.warn('Failed to fetch notifications:', response.error || response.status);
+        // Don't show error to user, just silently fail
       }
     } catch (error) {
+      // Network error or other exception
       console.error('Error fetching notifications:', error);
+      // Silently fail - don't show error to user for notifications
     } finally {
       setLoading(false);
     }

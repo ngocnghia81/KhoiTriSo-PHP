@@ -10,7 +10,7 @@ class Assignment extends Model
     use HasFactory;
 
     protected $fillable = [
-        'lesson_id','title','description','assignment_type','max_score','time_limit','max_attempts','show_answers_after','due_date','is_published','passing_score','shuffle_questions','shuffle_options'
+        'lesson_id','title','description','assignment_type','max_score','time_limit','max_attempts','show_answers_after','due_date','is_published','passing_score','shuffle_questions','shuffle_options','is_active'
     ];
 
     protected $casts = [
@@ -18,6 +18,7 @@ class Assignment extends Model
         'due_date' => 'datetime',
         'shuffle_questions' => 'boolean',
         'shuffle_options' => 'boolean',
+        'is_active' => 'boolean',
     ];
 
     public function lesson()

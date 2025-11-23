@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { httpClient } from '@/lib/http-client';
 import Link from 'next/link';
+import { getAssignments, getMyAssignmentAttempts, Assignment, AssignmentAttempt } from '@/services/assignments';
+import { DocumentTextIcon, ClockIcon, TrophyIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 interface Material {
   id: number;
@@ -90,11 +92,13 @@ export default function CourseLearningPage() {
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'discussion' | 'notes'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'discussion' | 'notes' | 'assignments'>('overview');
   const [completedLessons, setCompletedLessons] = useState<Set<number>>(new Set());
   const [note, setNote] = useState('');
   const [notes, setNotes] = useState<Note[]>([]);
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [loadingAssignments, setLoadingAssignments] = useState(false);
   const [newQuestion, setNewQuestion] = useState('');
   const [videoRef, setVideoRef] = useState<HTMLVideoElement | null>(null);
   const [currentVideoTime, setCurrentVideoTime] = useState<number>(0);
@@ -103,6 +107,10 @@ export default function CourseLearningPage() {
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyContent, setReplyContent] = useState<string>('');
   const [expandedDiscussions, setExpandedDiscussions] = useState<Set<number>>(new Set());
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [selectedAssignmentForHistory, setSelectedAssignmentForHistory] = useState<Assignment | null>(null);
+  const [attemptHistory, setAttemptHistory] = useState<AssignmentAttempt[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     console.log('🟢 useEffect triggered');
@@ -206,6 +214,18 @@ export default function CourseLearningPage() {
   };
 
   const loadLessonData = async (lessonId: number) => {
+    // Load assignments from API
+    try {
+      setLoadingAssignments(true);
+      const assignmentsData = await getAssignments({ lessonId });
+      setAssignments(assignmentsData || []);
+    } catch (error) {
+      console.error('Error loading assignments:', error);
+      setAssignments([]);
+    } finally {
+      setLoadingAssignments(false);
+    }
+
     // Load notes from API
     try {
       console.log('Loading notes for lesson:', lessonId);
@@ -409,6 +429,36 @@ export default function CourseLearningPage() {
     } catch (error) {
       console.error('Lỗi khi lưu ghi chú:', error);
       alert('Có lỗi xảy ra khi lưu ghi chú. Vui lòng thử lại.');
+    }
+  };
+
+  const handleViewHistory = async (assignment: Assignment) => {
+    setSelectedAssignmentForHistory(assignment);
+    setShowHistoryModal(true);
+    await loadAttemptHistory(assignment.id);
+  };
+
+  const loadAttemptHistory = async (assignmentId: number) => {
+    try {
+      setLoadingHistory(true);
+      const response: any = await getMyAssignmentAttempts(assignmentId);
+      let attemptsData: AssignmentAttempt[] = [];
+      if (Array.isArray(response)) {
+        attemptsData = response;
+      } else if (response && response.data) {
+        if (Array.isArray(response.data)) {
+          attemptsData = response.data;
+        } else if (response.data.attempts && Array.isArray(response.data.attempts)) {
+          attemptsData = response.data.attempts;
+        }
+      } else if (response && (response as any).attempts && Array.isArray((response as any).attempts)) {
+        attemptsData = (response as any).attempts;
+      }
+      setAttemptHistory(attemptsData);
+    } catch (error: any) {
+      console.error('Error loading attempt history:', error);
+    } finally {
+      setLoadingHistory(false);
     }
   };
 
@@ -819,6 +869,20 @@ export default function CourseLearningPage() {
                 >
                   Ghi chú ({notes.length})
                 </button>
+                <button
+                  onClick={() => setActiveTab('assignments')}
+                  className={`pb-3 px-1 font-medium transition-colors border-b-2 ${
+                    activeTab === 'assignments'
+                      ? 'text-blue-600 border-blue-600'
+                      : 'text-gray-500 border-transparent hover:text-gray-700'
+                  }`}
+                >
+                  Bài tập ({assignments.filter(a => {
+                    if (a.isActive === false || a.is_active === false) return false;
+                    if (a.isPublished === false || a.is_published === false) return false;
+                    return true;
+                  }).length})
+                </button>
               </div>
             </div>
 
@@ -1150,6 +1214,115 @@ export default function CourseLearningPage() {
                     ))
                   )}
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'assignments' && (
+              <div>
+                {loadingAssignments ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                  </div>
+                ) : (() => {
+                  // Filter assignments: only show published and active ones
+                  // Default to showing if not explicitly false
+                  const visibleAssignments = assignments.filter((assignment) => {
+                    // Hide if explicitly inactive
+                    if (assignment.isActive === false || assignment.is_active === false) {
+                      return false;
+                    }
+                    
+                    // Hide if explicitly not published
+                    if (assignment.isPublished === false || assignment.is_published === false) {
+                      return false;
+                    }
+                    
+                    // Show by default (if undefined/null, treat as true)
+                    return true;
+                  });
+                  
+                  console.log('All assignments:', assignments);
+                  console.log('Visible assignments:', visibleAssignments);
+
+                  if (visibleAssignments.length === 0) {
+                    return (
+                      <p className="text-gray-500 text-center py-8">
+                        Chưa có bài tập nào cho bài học này.
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-4">
+                      {visibleAssignments.map((assignment) => {
+
+                      const timeLimit = assignment.timeLimit || assignment.time_limit || 0;
+                      const maxScore = assignment.maxScore || assignment.max_score || 0;
+                      const maxAttempts = assignment.maxAttempts || assignment.max_attempts || 0;
+
+                      return (
+                        <div
+                          key={assignment.id}
+                          className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow"
+                        >
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex-1">
+                              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                {assignment.title}
+                              </h3>
+                              {assignment.description && (
+                                <p className="text-gray-600 text-sm mb-4 line-clamp-2">
+                                  {assignment.description.replace(/<[^>]*>/g, '').substring(0, 150)}
+                                  {assignment.description.length > 150 ? '...' : ''}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm text-gray-600">
+                            {timeLimit > 0 && (
+                              <div className="flex items-center gap-2">
+                                <ClockIcon className="h-5 w-5 text-gray-400" />
+                                <span>{timeLimit} phút</span>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2">
+                              <DocumentTextIcon className="h-5 w-5 text-gray-400" />
+                              <span>{assignment.questions?.length || 0} câu</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <TrophyIcon className="h-5 w-5 text-gray-400" />
+                              <span>{maxScore} điểm</span>
+                            </div>
+                            {maxAttempts > 0 && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-400">Lần làm:</span>
+                                <span>{maxAttempts}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex gap-3">
+                            <Link
+                              href={`/courses/${courseId}/lessons/${currentLesson?.id}/assignments/${assignment.id}/do`}
+                              className="inline-flex items-center justify-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                            >
+                              Làm bài tập
+                            </Link>
+                            <button
+                              onClick={() => handleViewHistory(assignment)}
+                              className="inline-flex items-center justify-center px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium"
+                            >
+                              <HistoryIcon className="h-5 w-5 mr-2" />
+                              Xem lịch sử
+                            </button>
+                          </div>
+                        </div>
+                      );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 

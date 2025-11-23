@@ -6,6 +6,8 @@ import { ArrowLeftIcon, VideoCameraIcon, PlusIcon, ChatBubbleLeftRightIcon, XMar
 import { courseService, Course, Lesson, LessonDiscussion } from '@/services/courseService';
 import { getInstructorCourse } from '@/services/instructor';
 import { useToast } from '@/components/ToastProvider';
+import { getLessonAssignments, disableAssignment, restoreAssignment, getAssignmentAttempts, getAttemptDetails, gradeAttempt, Assignment, AssignmentAttempt } from '@/services/assignments';
+import { PencilIcon, EyeIcon, ClipboardDocumentCheckIcon } from '@heroicons/react/24/outline';
 
 export default function CourseDetailPage() {
   const router = useRouter();
@@ -21,10 +23,21 @@ export default function CourseDetailPage() {
   const [lessonDetails, setLessonDetails] = useState<Lesson | null>(null);
   const [discussions, setDiscussions] = useState<LessonDiscussion[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingLessonDetails, setLoadingLessonDetails] = useState(false);
   const [loadingDiscussions, setLoadingDiscussions] = useState(false);
+  const [loadingAssignments, setLoadingAssignments] = useState(false);
   const [isInstructor, setIsInstructor] = useState(false);
+  const [showAttemptsModal, setShowAttemptsModal] = useState(false);
+  const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
+  const [attempts, setAttempts] = useState<AssignmentAttempt[]>([]);
+  const [loadingAttempts, setLoadingAttempts] = useState(false);
+  const [showGradingModal, setShowGradingModal] = useState(false);
+  const [selectedAttempt, setSelectedAttempt] = useState<any>(null);
+  const [loadingAttemptDetails, setLoadingAttemptDetails] = useState(false);
+  const [grades, setGrades] = useState<Record<number, { pointsEarned: number; isCorrect?: boolean }>>({});
+  const [grading, setGrading] = useState(false);
 
   useEffect(() => {
     // Check user role
@@ -79,6 +92,7 @@ export default function CourseDetailPage() {
     setLessonDetails(lesson);
     setLoadingLessonDetails(true);
     setLoadingDiscussions(true);
+    setLoadingAssignments(true);
     
     try {
       // Fetch lesson details with materials
@@ -89,12 +103,155 @@ export default function CourseDetailPage() {
       // Fetch discussions
       const response = await courseService.getLessonDiscussions(lesson.id);
       setDiscussions(response.data || []);
+      
+      // Fetch assignments
+      const assignmentsData = await getLessonAssignments(lesson.id);
+      setAssignments(assignmentsData);
     } catch (error: any) {
       console.error('Error fetching lesson details:', error);
       notify(error.message || 'Lỗi tải thông tin bài học', 'error');
     } finally {
       setLoadingLessonDetails(false);
       setLoadingDiscussions(false);
+      setLoadingAssignments(false);
+    }
+  };
+
+  const handleDisableAssignment = async (assignmentId: number) => {
+    if (!confirm('Bạn có chắc chắn muốn vô hiệu hóa bài tập này?')) {
+      return;
+    }
+    try {
+      await disableAssignment(assignmentId);
+      notify('Vô hiệu hóa bài tập thành công', 'success');
+      // Refresh assignments
+      if (selectedLesson) {
+        const assignmentsData = await getLessonAssignments(selectedLesson.id);
+        setAssignments(assignmentsData);
+      }
+    } catch (error: any) {
+      notify(error.message || 'Lỗi vô hiệu hóa bài tập', 'error');
+    }
+  };
+
+  const handleViewAttempts = async (assignment: Assignment) => {
+    setSelectedAssignment(assignment);
+    setShowAttemptsModal(true);
+    await loadAttempts(assignment.id);
+  };
+
+  const loadAttempts = async (assignmentId: number) => {
+    try {
+      setLoadingAttempts(true);
+      const response: any = await getAssignmentAttempts(assignmentId);
+      // Handle different response structures
+      let attemptsData: AssignmentAttempt[] = [];
+      if (Array.isArray(response)) {
+        attemptsData = response;
+      } else if (response && response.data) {
+        if (Array.isArray(response.data)) {
+          attemptsData = response.data;
+        } else if (response.data.attempts && Array.isArray(response.data.attempts)) {
+          attemptsData = response.data.attempts;
+        }
+      } else if (response && (response as any).attempts && Array.isArray((response as any).attempts)) {
+        attemptsData = (response as any).attempts;
+      }
+      setAttempts(attemptsData);
+    } catch (error: any) {
+      console.error('Error loading attempts:', error);
+      notify(error.message || 'Lỗi tải danh sách bài nộp', 'error');
+    } finally {
+      setLoadingAttempts(false);
+    }
+  };
+
+  const handleViewAttemptDetails = async (attemptId: number) => {
+    try {
+      setLoadingAttemptDetails(true);
+      const response = await getAttemptDetails(attemptId);
+      // Handle different response structures
+      const attemptData = (response as any).data || response;
+      setSelectedAttempt(attemptData);
+      
+      // Initialize grades from existing answers
+      const initialGrades: Record<number, { pointsEarned: number; isCorrect?: boolean }> = {};
+      if (attemptData.questions) {
+        attemptData.questions.forEach((q: any) => {
+          if (q.answer) {
+            initialGrades[q.id] = {
+              pointsEarned: q.answer.pointsEarned || q.answer.points_earned || 0,
+              isCorrect: q.answer.isCorrect !== undefined ? q.answer.isCorrect : (q.answer.is_correct !== undefined ? q.answer.is_correct : undefined),
+            };
+          } else {
+            initialGrades[q.id] = {
+              pointsEarned: 0,
+            };
+          }
+        });
+      }
+      setGrades(initialGrades);
+      setShowGradingModal(true);
+    } catch (error: any) {
+      console.error('Error loading attempt details:', error);
+      notify(error.message || 'Lỗi tải chi tiết bài nộp', 'error');
+    } finally {
+      setLoadingAttemptDetails(false);
+    }
+  };
+
+  const handleGradeChange = (questionId: number, field: 'pointsEarned' | 'isCorrect', value: number | boolean) => {
+    setGrades(prev => ({
+      ...prev,
+      [questionId]: {
+        ...prev[questionId],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleSubmitGrading = async () => {
+    if (!selectedAttempt) return;
+    
+    try {
+      setGrading(true);
+      const gradesArray = Object.entries(grades).map(([questionId, grade]) => ({
+        questionId: parseInt(questionId),
+        pointsEarned: grade.pointsEarned,
+        isCorrect: grade.isCorrect,
+      }));
+
+      await gradeAttempt(selectedAttempt.attempt.id, {
+        grades: gradesArray,
+      });
+
+      notify('Chấm điểm thành công!', 'success');
+      setShowGradingModal(false);
+      if (selectedAssignment) {
+        await loadAttempts(selectedAssignment.id);
+      }
+    } catch (error: any) {
+      console.error('Error grading attempt:', error);
+      notify(error.message || 'Lỗi chấm điểm', 'error');
+    } finally {
+      setGrading(false);
+    }
+  };
+
+  const handleRestoreAssignment = async (assignmentId: number) => {
+    if (!confirm('Bạn có chắc chắn muốn khôi phục bài tập này?')) {
+      return;
+    }
+    try {
+      await restoreAssignment(assignmentId);
+      notify('Khôi phục bài tập thành công', 'success');
+      // Refresh assignments
+      if (selectedLesson) {
+        const assignmentsData = await getLessonAssignments(selectedLesson.id);
+        setAssignments(assignmentsData);
+      }
+    } catch (error: any) {
+      notify(error.message || 'Lỗi khôi phục bài tập', 'error');
     }
   };
 
@@ -301,34 +458,25 @@ export default function CourseDetailPage() {
                         Chỉnh sửa
                       </button>
                       {(lessonDetails.isActive !== false && lessonDetails.is_active !== false) ? (
-                        <>
-                          <button
-                            onClick={async () => {
-                              if (confirm('Bạn có chắc chắn muốn vô hiệu hóa bài học này?')) {
-                                try {
-                                  await courseService.deleteLesson(lessonDetails.id);
-                                  notify('Vô hiệu hóa bài học thành công', 'success');
-                                  await fetchCourse();
-                                  setSelectedLesson(null);
-                                  setLessonDetails(null);
-                                } catch (error: any) {
-                                  notify(error.message || 'Lỗi vô hiệu hóa bài học', 'error');
-                                }
+                        <button
+                          onClick={async () => {
+                            if (confirm('Bạn có chắc chắn muốn vô hiệu hóa bài học này?')) {
+                              try {
+                                await courseService.deleteLesson(lessonDetails.id);
+                                notify('Vô hiệu hóa bài học thành công', 'success');
+                                await fetchCourse();
+                                setSelectedLesson(null);
+                                setLessonDetails(null);
+                              } catch (error: any) {
+                                notify(error.message || 'Lỗi vô hiệu hóa bài học', 'error');
                               }
-                            }}
-                            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium flex items-center gap-2"
-                          >
-                            <TrashIcon className="h-5 w-5" />
-                            Vô hiệu hóa
-                          </button>
-                          <button
-                            onClick={() => router.push(`/dashboard/courses/${courseId}/lessons/${lessonDetails.id}/assignments/create`)}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium flex items-center gap-2"
-                          >
-                            <PlusIcon className="h-5 w-5" />
-                            Tạo bài tập
-                          </button>
-                        </>
+                            }
+                          }}
+                          className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium flex items-center gap-2"
+                        >
+                          <TrashIcon className="h-5 w-5" />
+                          Vô hiệu hóa
+                        </button>
                       ) : (
                         <button
                           onClick={async () => {
@@ -439,6 +587,106 @@ export default function CourseDetailPage() {
                   )}
                 </div>
 
+                {/* Assignments Section */}
+                <div className="bg-white rounded-lg shadow p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold flex items-center">
+                      <DocumentArrowUpIcon className="h-5 w-5 mr-2" />
+                      Bài tập ({assignments.length})
+                    </h3>
+                    {(lessonDetails.isActive !== false && lessonDetails.is_active !== false) && (
+                      <button
+                        onClick={() => router.push(`/dashboard/courses/${courseId}/lessons/${lessonDetails.id}/assignments/create`)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium flex items-center gap-2"
+                      >
+                        <PlusIcon className="h-5 w-5" />
+                        Tạo bài tập
+                      </button>
+                    )}
+                  </div>
+                  {loadingAssignments ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    </div>
+                  ) : assignments.length === 0 ? (
+                    <p className="text-gray-500 text-sm">Chưa có bài tập nào</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {assignments.map((assignment) => {
+                        const isInactive = assignment.isActive === false || assignment.is_active === false;
+                        return (
+                          <div
+                            key={assignment.id}
+                            className={`p-4 border rounded-lg ${
+                              isInactive
+                                ? 'border-red-300 bg-red-50'
+                                : 'border-gray-200 bg-white'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h4 className="font-medium text-gray-900">{assignment.title}</h4>
+                                  {isInactive && (
+                                    <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-semibold rounded">
+                                      Đã vô hiệu hóa
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-sm text-gray-600 mb-2">
+                                  <div dangerouslySetInnerHTML={{ __html: assignment.description.substring(0, 100) + (assignment.description.length > 100 ? '...' : '') }} />
+                                </div>
+                                <div className="flex items-center gap-4 text-xs text-gray-500">
+                                  <span>Điểm tối đa: {assignment.maxScore || assignment.max_score || 0}</span>
+                                  {assignment.timeLimit || assignment.time_limit ? (
+                                    <span>Thời gian: {assignment.timeLimit || assignment.time_limit} phút</span>
+                                  ) : null}
+                                  {assignment.maxAttempts || assignment.max_attempts ? (
+                                    <span>Số lần làm: {assignment.maxAttempts || assignment.max_attempts}</span>
+                                  ) : null}
+                                </div>
+                              </div>
+                              <div className="ml-4 flex gap-2">
+                                <button
+                                  onClick={() => handleViewAttempts(assignment)}
+                                  className="px-3 py-1.5 bg-purple-600 text-white rounded-md hover:bg-purple-700 text-sm font-medium flex items-center gap-1"
+                                >
+                                  <ClipboardDocumentCheckIcon className="h-4 w-4" />
+                                  Xem bài nộp
+                                </button>
+                                <button
+                                  onClick={() => router.push(`/dashboard/courses/${courseId}/lessons/${lessonDetails.id}/assignments/${assignment.id}/edit`)}
+                                  className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium flex items-center gap-1"
+                                >
+                                  <PencilIcon className="h-4 w-4" />
+                                  Chỉnh sửa
+                                </button>
+                                {isInactive ? (
+                                  <button
+                                    onClick={() => handleRestoreAssignment(assignment.id)}
+                                    className="px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium flex items-center gap-1"
+                                  >
+                                    <ArrowPathIcon className="h-4 w-4" />
+                                    Khôi phục
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleDisableAssignment(assignment.id)}
+                                    className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium flex items-center gap-1"
+                                  >
+                                    <TrashIcon className="h-4 w-4" />
+                                    Vô hiệu hóa
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {/* Q&A Section */}
                 <div className="bg-white rounded-lg shadow p-6">
                   <h3 className="text-lg font-semibold mb-4 flex items-center">
@@ -474,6 +722,309 @@ export default function CourseDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Attempts Modal */}
+      {showAttemptsModal && selectedAssignment && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Bài nộp: {selectedAssignment.title}
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowAttemptsModal(false);
+                    setSelectedAssignment(null);
+                    setAttempts([]);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6">
+              {loadingAttempts ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                </div>
+              ) : attempts.length === 0 ? (
+                <p className="text-gray-500 text-center py-8">Chưa có bài nộp nào</p>
+              ) : (
+                <div className="space-y-4">
+                  {attempts.map((attempt) => {
+                    const scoreValue = attempt.score !== undefined && attempt.score !== null 
+                      ? (typeof attempt.score === 'number' ? attempt.score : parseFloat(String(attempt.score)) || 0)
+                      : 0;
+                    const maxScore = selectedAssignment.maxScore || selectedAssignment.max_score || 0;
+                    const percentage = maxScore > 0 ? Math.round((scoreValue / maxScore) * 100) : 0;
+                    const isPassed = attempt.isPassed || attempt.is_passed || false;
+                    const submittedAt = attempt.submittedAt || attempt.submitted_at;
+                    const startedAt = attempt.startedAt || attempt.started_at;
+                    const attemptNumber = attempt.attemptNumber || attempt.attempt_number || 0;
+                    
+                    return (
+                      <div
+                        key={attempt.id}
+                        className={`border-2 rounded-lg p-4 ${
+                          isPassed
+                            ? 'border-green-200 bg-green-50'
+                            : 'border-gray-200 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between mb-4">
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900">
+                              Lần làm bài {attemptNumber}
+                            </h3>
+                            {(attempt as any).user && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                Học viên: {(attempt as any).user.name || (attempt as any).user.email || 'N/A'}
+                              </p>
+                            )}
+                            {submittedAt && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Nộp bài: {submittedAt ? new Date(submittedAt).toLocaleString('vi-VN') : 'Chưa nộp'}
+                              </p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <div className={`text-2xl font-bold ${
+                              isPassed ? 'text-green-600' : 'text-red-600'
+                            }`}>
+                              {scoreValue.toFixed(1)}
+                            </div>
+                            <div className="text-sm text-gray-600">/ {maxScore} điểm</div>
+                            <div className={`text-sm font-semibold mt-1 ${
+                              isPassed ? 'text-green-600' : 'text-red-600'
+                            }`}>
+                              {percentage}%
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleViewAttemptDetails(attempt.id)}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
+                          >
+                            Xem chi tiết & Chấm điểm
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grading Modal */}
+      {showGradingModal && selectedAttempt && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900">Chấm điểm bài nộp</h2>
+                <button
+                  onClick={() => {
+                    setShowGradingModal(false);
+                    setSelectedAttempt(null);
+                    setGrades({});
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+              </div>
+              {selectedAttempt.attempt && (selectedAttempt.attempt as any).user && (
+                <p className="text-sm text-gray-600 mt-2">
+                  Học viên: {(selectedAttempt.attempt as any).user.name || (selectedAttempt.attempt as any).user.email || 'N/A'}
+                </p>
+              )}
+            </div>
+            <div className="p-6">
+              {loadingAttemptDetails ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                </div>
+              ) : selectedAttempt.questions && selectedAttempt.questions.length > 0 ? (
+                <div className="space-y-6">
+                  {selectedAttempt.questions.map((question: any, index: number) => {
+                    const questionId = question.id;
+                    const questionType = question.questionType || question.question_type || 1;
+                    const isMultipleChoice = questionType === 1 || questionType === 2;
+                    const defaultPoints = question.defaultPoints || question.default_points || 0;
+                    const answer = question.answer;
+                    const currentGrade = grades[questionId] || { pointsEarned: 0 };
+                    
+                    return (
+                      <div key={questionId} className="border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="bg-blue-600 text-white px-3 py-1 rounded-full font-semibold text-sm">
+                                Câu {index + 1}
+                              </span>
+                              <span className="text-sm text-gray-500">
+                                ({defaultPoints} điểm)
+                              </span>
+                            </div>
+                            <div className="text-gray-900 mb-4" dangerouslySetInnerHTML={{ __html: question.questionContent || question.question_content || '' }} />
+                            
+                            {isMultipleChoice && question.options && question.options.length > 0 && (
+                              <div className="space-y-2 mb-4">
+                                <p className="text-sm font-medium text-gray-700 mb-2">Các lựa chọn:</p>
+                                {question.options.map((option: any, optIndex: number) => {
+                                  const isSelected = answer && (answer.optionId === option.id || answer.option_id === option.id);
+                                  const isCorrect = option.isCorrect || option.is_correct;
+                                  
+                                  return (
+                                    <div
+                                      key={option.id}
+                                      className={`p-3 rounded border-2 ${
+                                        isSelected
+                                          ? isCorrect
+                                            ? 'border-green-500 bg-green-50'
+                                            : 'border-red-500 bg-red-50'
+                                          : isCorrect
+                                          ? 'border-green-300 bg-green-50'
+                                          : 'border-gray-200 bg-gray-50'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium">
+                                          {String.fromCharCode(65 + optIndex)}.
+                                        </span>
+                                        <span className="flex-1" dangerouslySetInnerHTML={{ __html: option.content || option.optionContent || option.option_content || '' }} />
+                                        {isSelected && (
+                                          <span className={`ml-2 px-2 py-1 rounded text-xs font-semibold ${
+                                            isCorrect ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+                                          }`}>
+                                            {isCorrect ? '✓ Đúng (Đã chọn)' : '✗ Sai (Đã chọn)'}
+                                          </span>
+                                        )}
+                                        {!isSelected && isCorrect && (
+                                          <span className="ml-auto text-green-600 font-semibold">✓ Đáp án đúng</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                                {answer && !question.options.some((opt: any) => answer.optionId === opt.id || answer.option_id === opt.id) && (
+                                  <div className="mt-2 p-2 bg-yellow-50 border border-yellow-300 rounded">
+                                    <p className="text-sm text-yellow-800">
+                                      <strong>Lưu ý:</strong> Học viên chưa chọn đáp án cho câu hỏi này.
+                                    </p>
+                                  </div>
+                                )}
+                                {!answer && (
+                                  <div className="mt-2 p-2 bg-gray-50 border border-gray-300 rounded">
+                                    <p className="text-sm text-gray-600">
+                                      Học viên chưa trả lời câu hỏi này.
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            
+                            {!isMultipleChoice && (
+                              <div className="mb-4">
+                                {answer && (answer.answerText || answer.answer_text) ? (
+                                  <div className="p-4 bg-blue-50 rounded border-2 border-blue-300">
+                                    <p className="text-sm font-semibold text-blue-900 mb-2">📝 Câu trả lời của học viên:</p>
+                                    <div className="bg-white p-3 rounded border border-blue-200">
+                                      <p className="text-gray-900 whitespace-pre-wrap">{answer.answerText || answer.answer_text || ''}</p>
+                                    </div>
+                                    {answer.pointsEarned !== undefined && answer.pointsEarned !== null && (
+                                      <p className="text-xs text-blue-700 mt-2">
+                                        Điểm hiện tại: <strong>{answer.pointsEarned || answer.points_earned || 0}</strong> / {defaultPoints} điểm
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="p-3 bg-gray-50 rounded border border-gray-300">
+                                    <p className="text-sm text-gray-600">
+                                      Học viên chưa trả lời câu hỏi này.
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="border-t pt-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Điểm số
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                max={defaultPoints}
+                                step="0.1"
+                                value={currentGrade.pointsEarned}
+                                onChange={(e) => handleGradeChange(questionId, 'pointsEarned', parseFloat(e.target.value) || 0)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                              />
+                              <p className="text-xs text-gray-500 mt-1">Tối đa: {defaultPoints} điểm</p>
+                            </div>
+                            {!isMultipleChoice && (
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                  Đánh giá
+                                </label>
+                                <select
+                                  value={currentGrade.isCorrect === true ? 'correct' : currentGrade.isCorrect === false ? 'incorrect' : 'pending'}
+                                  onChange={(e) => {
+                                    const value = e.target.value === 'correct' ? true : e.target.value === 'incorrect' ? false : undefined;
+                                    handleGradeChange(questionId, 'isCorrect', value as boolean);
+                                  }}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                >
+                                  <option value="pending">Chưa chấm</option>
+                                  <option value="correct">Đúng</option>
+                                  <option value="incorrect">Sai</option>
+                                </select>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  <div className="border-t pt-4 flex justify-end gap-4">
+                    <button
+                      onClick={() => {
+                        setShowGradingModal(false);
+                        setSelectedAttempt(null);
+                        setGrades({});
+                      }}
+                      className="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+                    >
+                      Hủy
+                    </button>
+                    <button
+                      onClick={handleSubmitGrading}
+                      disabled={grading}
+                      className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {grading ? 'Đang lưu...' : 'Lưu điểm'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-gray-500 text-center py-8">Không có câu hỏi nào</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

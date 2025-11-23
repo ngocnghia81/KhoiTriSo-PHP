@@ -30,6 +30,8 @@ export interface Assignment {
   shuffle_questions?: boolean;
   shuffleOptions?: boolean;
   shuffle_options?: boolean;
+  isActive?: boolean;
+  is_active?: boolean;
   questions?: Question[];
 }
 
@@ -107,6 +109,11 @@ export async function startAssignment(id: number) {
 
 export async function submitAssignment(id: number, data: { attemptId: number; answers: any[] }) {
   const response = await api.post<{ data: AssignmentAttempt }>(`assignments/${id}/submit`, data);
+  return response.data;
+}
+
+export async function getMyAssignmentAttempts(id: number) {
+  const response = await api.get<{ data: { attempts: AssignmentAttempt[] } }>(`assignments/${id}/attempts`);
   return response.data;
 }
 
@@ -210,5 +217,38 @@ export async function gradeAttempt(attemptId: number, data: {
     maxScore: number;
     isPassed: boolean;
   } }>(`admin/attempts/${attemptId}/grade`, data);
+  return response.data;
+}
+
+export async function disableAssignment(assignmentId: number) {
+  const response = await api.post<{ data: Assignment }>(`admin/assignments/${assignmentId}/disable`);
+  return response.data;
+}
+
+export async function restoreAssignment(assignmentId: number) {
+  const response = await api.post<{ data: Assignment }>(`admin/assignments/${assignmentId}/restore`);
+  return response.data;
+}
+
+export async function getAssignmentAdmin(assignmentId: number) {
+  const response = await api.get<{ data: Assignment }>(`admin/assignments/${assignmentId}`);
+  return response.data;
+}
+
+export async function updateAssignment(assignmentId: number, data: {
+  title?: string;
+  description?: string;
+  assignmentType?: number;
+  maxScore?: number;
+  timeLimit?: number;
+  maxAttempts?: number;
+  showAnswersAfter?: number;
+  dueDate?: string;
+  isPublished?: boolean;
+  passingScore?: number;
+  shuffleQuestions?: boolean;
+  shuffleOptions?: boolean;
+}) {
+  const response = await api.put<{ data: Assignment }>(`admin/assignments/${assignmentId}`, data);
   return response.data;
 }

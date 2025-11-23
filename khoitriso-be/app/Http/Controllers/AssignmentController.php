@@ -16,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Assignment Controller
@@ -297,12 +298,23 @@ class AssignmentController extends BaseController
                 return $this->error(MessageCode::VALIDATION_ERROR, 'Max attempts reached', null, 400);
             }
             
-            $attempt = UserAssignmentAttempt::create([
+            // Create attempt with proper boolean handling for PostgreSQL
+            // Use raw SQL with explicit boolean casting
+            $result = DB::selectOne("
+                INSERT INTO user_assignment_attempts (
+                    assignment_id, user_id, attempt_number, is_completed, created_at, updated_at
+                ) VALUES (
+                    :assignment_id, :user_id, :attempt_number, false::boolean, :created_at, :updated_at
+                ) RETURNING id
+            ", [
                 'assignment_id' => $id,
                 'user_id' => $request->user()->id,
                 'attempt_number' => $num,
-                'is_completed' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
+            
+            $attempt = UserAssignmentAttempt::find($result->id);
             
             return $this->success($attempt);
 
@@ -359,8 +371,9 @@ class AssignmentController extends BaseController
                 $earned = 0;
                 
                 if ($q->question_type === 1 || $q->question_type === 2) {
-                    $opt = $ans['optionId'] 
-                        ? QuestionOption::where('id', $ans['optionId'])->where('question_id', $qid)->first() 
+                    $optionId = $ans['optionId'] ?? null;
+                    $opt = $optionId 
+                        ? QuestionOption::where('id', $optionId)->where('question_id', $qid)->first() 
                         : null;
                     $isCorrect = $opt ? (bool) $opt->is_correct : false;
                     $earned = $isCorrect ? (float) ($opt->points_value ?? $q->default_points) : 0;
@@ -372,21 +385,111 @@ class AssignmentController extends BaseController
                 
                 $score += $earned;
                 
-                UserAssignmentAnswer::updateOrCreate([
-                    'attempt_id' => $attempt->id,
-                    'question_id' => $qid,
-                ], [
-                    'option_id' => $ans['optionId'] ?? null,
-                    'answer_text' => $ans['answerText'] ?? null,
-                    'is_correct' => $isCorrect,
-                    'points_earned' => $earned,
-                ]);
+                // Use raw SQL for proper PostgreSQL boolean handling
+                $existing = DB::table('user_assignment_answers')
+                    ->where('attempt_id', $attempt->id)
+                    ->where('question_id', $qid)
+                    ->first();
+                
+                $optionId = $ans['optionId'] ?? null;
+                $answerText = $ans['answerText'] ?? null;
+                
+                if ($existing) {
+                    // Update existing answer
+                    if ($isCorrect !== null) {
+                        $isCorrectValue = $isCorrect ? 'true' : 'false';
+                        DB::statement("
+                            UPDATE user_assignment_answers 
+                            SET option_id = :option_id,
+                                answer_text = :answer_text,
+                                is_correct = {$isCorrectValue}::boolean,
+                                points_earned = :points_earned,
+                                updated_at = :updated_at
+                            WHERE id = :id
+                        ", [
+                            'id' => $existing->id,
+                            'option_id' => $optionId,
+                            'answer_text' => $answerText,
+                            'points_earned' => $earned,
+                            'updated_at' => now(),
+                        ]);
+                    } else {
+                        DB::statement("
+                            UPDATE user_assignment_answers 
+                            SET option_id = :option_id,
+                                answer_text = :answer_text,
+                                is_correct = NULL,
+                                points_earned = :points_earned,
+                                updated_at = :updated_at
+                            WHERE id = :id
+                        ", [
+                            'id' => $existing->id,
+                            'option_id' => $optionId,
+                            'answer_text' => $answerText,
+                            'points_earned' => $earned,
+                            'updated_at' => now(),
+                        ]);
+                    }
+                } else {
+                    // Insert new answer
+                    if ($isCorrect !== null) {
+                        $isCorrectValue = $isCorrect ? 'true' : 'false';
+                        DB::statement("
+                            INSERT INTO user_assignment_answers (
+                                attempt_id, question_id, option_id, answer_text, 
+                                is_correct, points_earned, created_at, updated_at
+                            ) VALUES (
+                                :attempt_id, :question_id, :option_id, :answer_text,
+                                {$isCorrectValue}::boolean, :points_earned, :created_at, :updated_at
+                            )
+                        ", [
+                            'attempt_id' => $attempt->id,
+                            'question_id' => $qid,
+                            'option_id' => $optionId,
+                            'answer_text' => $answerText,
+                            'points_earned' => $earned,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    } else {
+                        DB::statement("
+                            INSERT INTO user_assignment_answers (
+                                attempt_id, question_id, option_id, answer_text, 
+                                is_correct, points_earned, created_at, updated_at
+                            ) VALUES (
+                                :attempt_id, :question_id, :option_id, :answer_text,
+                                NULL, :points_earned, :created_at, :updated_at
+                            )
+                        ", [
+                            'attempt_id' => $attempt->id,
+                            'question_id' => $qid,
+                            'option_id' => $optionId,
+                            'answer_text' => $answerText,
+                            'points_earned' => $earned,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    }
+                }
             }
             
-            $attempt->score = $score;
-            $attempt->is_completed = true;
-            $attempt->submitted_at = now();
-            $attempt->save();
+            // Update attempt with proper boolean handling for PostgreSQL
+            DB::statement("
+                UPDATE user_assignment_attempts 
+                SET score = :score,
+                    is_completed = true::boolean,
+                    submitted_at = :submitted_at,
+                    updated_at = :updated_at
+                WHERE id = :id
+            ", [
+                'id' => $attempt->id,
+                'score' => $score,
+                'submitted_at' => now(),
+                'updated_at' => now(),
+            ]);
+            
+            // Reload attempt to return updated data
+            $attempt = UserAssignmentAttempt::find($attempt->id);
 
             return $this->success($attempt);
 
