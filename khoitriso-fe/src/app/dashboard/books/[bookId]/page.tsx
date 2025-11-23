@@ -581,8 +581,8 @@ export default function BookDetailPage() {
                           </div>
                         )}
 
-                        {/* Chỉ hiển thị "Giải thích" nếu không có "Lời giải" */}
-                        {question.explanation_content && !question.solution && (
+                        {/* Hiển thị "Giải thích" nếu có (chỉ cho tự luận) */}
+                        {question.question_type === 2 && question.explanation_content && (
                           <div className="mb-4 p-3 bg-blue-50 rounded border border-blue-200">
                             <div className="text-sm font-medium text-blue-900 mb-1">Giải thích:</div>
                             <div className="text-sm text-blue-800">
@@ -591,6 +591,7 @@ export default function BookDetailPage() {
                           </div>
                         )}
 
+                        {/* Hiển thị "Lời giải" nếu có */}
                         {question.solution && (
                           <div className="p-3 bg-purple-50 rounded border border-purple-200">
                             <div className="text-sm font-medium text-purple-900 mb-2">Lời giải:</div>

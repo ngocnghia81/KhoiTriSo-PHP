@@ -30,7 +30,8 @@ export default function CreateQuestionsPage() {
     type: 'multiple_choice' | 'essay';
     options?: Array<{ id: string | number; text: string; isCorrect: boolean }>;
     correctAnswer?: string;
-    explanation: string;
+    explanation?: string; // Giải thích (chỉ cho tự luận)
+    solution?: string; // Lời giải (cho cả trắc nghiệm và tự luận)
     solutionVideo?: string;
     solutionType?: 'text' | 'video' | 'latex';
     isExisting?: boolean; // Flag to mark existing questions
@@ -111,9 +112,10 @@ export default function CreateQuestionsPage() {
             isCorrect: opt.is_correct !== undefined ? opt.is_correct : (opt.isCorrect !== undefined ? opt.isCorrect : false),
           })) || [],
           correctAnswer: q.correct_answer || q.correctAnswer || '',
-          // Ưu tiên explanation_content (từ question) trước explanation (từ solution)
-          // Vì explanation_content là "Giải thích", còn solution là "Lời giải"
-          explanation: q.explanation_content || q.explanationContent || q.explanation || q.solution?.content || '',
+          // Giải thích (chỉ cho tự luận) - lấy từ explanation_content
+          explanation: q.explanation_content || q.explanationContent || '',
+          // Lời giải (cho cả trắc nghiệm và tự luận) - lấy từ solution
+          solution: q.solution?.content || q.solution?.latex_content || '',
           solutionVideo: q.solution?.video_url || q.solution?.videoUrl || q.solution_video || '',
           solutionType: (q.solution?.type === 1 ? 'video' : (q.solution?.type === 3 ? 'latex' : 'text') || 
                         (q.solution_type === 1 ? 'video' : (q.solution_type === 3 ? 'latex' : 'text')) || 'text') as 'text' | 'video' | 'latex',
@@ -140,7 +142,7 @@ export default function CreateQuestionsPage() {
         { id: `opt-${Date.now()}-1`, text: '', isCorrect: false },
         { id: `opt-${Date.now()}-2`, text: '', isCorrect: false },
       ],
-      explanation: '',
+      solution: '',
       solutionType: 'text' as const,
     };
     setQuestions([...questions, newQuestion]);
@@ -186,16 +188,17 @@ export default function CreateQuestionsPage() {
       id: string;
       content: string;
       type: 'multiple_choice' | 'essay';
-      explanation: string;
+      solution: string;
       solutionType: 'text' | 'video' | 'latex';
       isExisting: boolean;
       options?: Array<{ id: string; text: string; isCorrect: boolean }>;
       correctAnswer?: string;
+      explanation?: string;
     } = {
       id: `q-${Date.now()}-${Math.random()}`,
       content: sample.content,
       type: sample.type as 'multiple_choice' | 'essay',
-      explanation: sample.explanation || '',
+      solution: sample.explanation || '',
       solutionType: 'text' as const,
       isExisting: false,
     };
@@ -274,7 +277,10 @@ export default function CreateQuestionsPage() {
           text: opt.text,
           isCorrect: opt.isCorrect,
         })) : undefined,
-        explanation: q.solutionType === 'video' ? undefined : (q.explanation || undefined),
+        // Giải thích chỉ cho tự luận
+        explanation: q.type === 'essay' ? (q.explanation || undefined) : undefined,
+        // Lời giải cho cả trắc nghiệm và tự luận
+        solution: q.solutionType === 'video' ? undefined : (q.solution || undefined),
         correctAnswer: q.type === 'essay' ? q.correctAnswer : undefined,
         solutionVideo: q.solutionType === 'video' ? q.solutionVideo : undefined,
         solutionType: q.solutionType || 'text',
@@ -378,7 +384,8 @@ export default function CreateQuestionsPage() {
                           text: opt.text || opt.option_content || opt.content || '',
                           isCorrect: opt.is_correct || opt.isCorrect || false,
                         })) || [],
-                        explanation: q.explanation || q.explanation_content || '',
+                        explanation: q.explanation_content || q.explanation || '',
+                        solution: q.solution?.content || q.solution?.latex_content || q.solution || '',
                         correctAnswer: q.correct_answer || q.correctAnswer,
                         solutionVideo: q.solution_video || q.solutionVideo,
                         solutionType: ((q.solution_type === 1 ? 'video' : (q.solution_type === 3 ? 'latex' : 'text')) || 'text') as 'text' | 'video' | 'latex',
@@ -535,6 +542,22 @@ export default function CreateQuestionsPage() {
                         </div>
                       )}
 
+                      {/* Giải thích - chỉ cho tự luận */}
+                      {question.type === 'essay' && (
+                        <div className="mb-4">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Giải thích (tùy chọn)
+                          </label>
+                          <MathEditor
+                            value={question.explanation || ''}
+                            onChange={(value) => updateQuestion(qIndex, 'explanation', value)}
+                            placeholder="Nhập giải thích cho câu hỏi tự luận (tùy chọn). Sử dụng công cụ bên dưới để chèn công thức toán học."
+                            rows={3}
+                            showPreview={showPreview}
+                          />
+                        </div>
+                      )}
+
                       {/* Solution Type */}
                       <div className="mb-4">
                         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -551,11 +574,11 @@ export default function CreateQuestionsPage() {
                         </select>
                       </div>
 
-                      {/* Explanation/Solution */}
+                      {/* Lời giải - cho cả trắc nghiệm và tự luận */}
                       {question.solutionType === 'video' ? (
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Video giải thích
+                            Video lời giải
                           </label>
                           <SolutionVideoUpload
                             questionIndex={qIndex}
@@ -569,15 +592,15 @@ export default function CreateQuestionsPage() {
                       ) : (
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            {question.solutionType === 'latex' ? 'Lời giải LaTeX' : 'Giải thích'}
+                            {question.solutionType === 'latex' ? 'Lời giải LaTeX' : 'Lời giải'}
                           </label>
                           <MathEditor
-                            value={question.explanation}
-                            onChange={(value) => updateQuestion(qIndex, 'explanation', value)}
+                            value={question.solution || ''}
+                            onChange={(value) => updateQuestion(qIndex, 'solution', value)}
                             placeholder={
                               question.solutionType === 'latex'
                                 ? 'Nhập lời giải bằng LaTeX (tùy chọn)'
-                                : 'Giải thích đáp án (tùy chọn). Sử dụng công cụ bên dưới để chèn công thức toán học.'
+                                : 'Nhập lời giải (tùy chọn). Sử dụng công cụ bên dưới để chèn công thức toán học.'
                             }
                             rows={3}
                             showPreview={showPreview}

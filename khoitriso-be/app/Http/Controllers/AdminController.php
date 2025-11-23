@@ -2175,7 +2175,8 @@ class AdminController extends BaseController
                 'questions.*.options' => ['required_if:questions.*.type,multiple_choice', 'array', 'min:2'],
                 'questions.*.options.*.text' => ['required_with:questions.*.options', 'string'],
                 'questions.*.options.*.isCorrect' => ['required_with:questions.*.options', 'boolean'],
-                'questions.*.explanation' => ['nullable', 'string'],
+                'questions.*.explanation' => ['nullable', 'string'], // Giải thích (chỉ cho tự luận)
+                'questions.*.solution' => ['nullable', 'string'], // Lời giải (cho cả trắc nghiệm và tự luận)
                 'questions.*.correctAnswer' => ['nullable', 'string'],
                 'questions.*.solutionVideo' => ['nullable', 'string', 'url'],
                 'questions.*.solutionType' => ['nullable', 'string', 'in:text,video,latex'],
@@ -2249,13 +2250,13 @@ class AdminController extends BaseController
                             'created_by' => $user->name ?? $user->email,
                         ]);
                         $hasSolution = true;
-                    } elseif ($solutionType === 'latex' && !empty($questionData['explanation'])) {
+                    } elseif ($solutionType === 'latex' && !empty($questionData['solution'])) {
                         // LaTeX solution
                         \App\Models\BookQuestionSolution::create([
                             'question_id' => $question->id,
                             'solution_type' => 3, // LaTeX
-                            'content' => (string) $questionData['explanation'],
-                            'latex_content' => (string) $questionData['explanation'],
+                            'content' => (string) $questionData['solution'],
+                            'latex_content' => (string) $questionData['solution'],
                             'video_url' => null,
                             'image_url' => null,
                             'order_index' => 1,
@@ -2263,12 +2264,12 @@ class AdminController extends BaseController
                             'created_by' => $user->name ?? $user->email,
                         ]);
                         $hasSolution = true;
-                    } elseif ($solutionType === 'text' && !empty($questionData['explanation'])) {
+                    } elseif ($solutionType === 'text' && !empty($questionData['solution'])) {
                         // Text solution
                         \App\Models\BookQuestionSolution::create([
                             'question_id' => $question->id,
                             'solution_type' => 2, // Text
-                            'content' => (string) $questionData['explanation'],
+                            'content' => (string) $questionData['solution'],
                             'latex_content' => null,
                             'video_url' => null,
                             'image_url' => null,
@@ -2279,14 +2280,10 @@ class AdminController extends BaseController
                         $hasSolution = true;
                     }
                     
-                    // Set explanation_content in question if provided
-                    // For essay questions, explanation_content should always be set if explanation is provided
-                    // For multiple choice, explanation_content is set if solutionType is not video
-                    if (!empty($questionData['explanation'])) {
-                        if ($questionData['type'] === 'essay' || $solutionType !== 'video') {
-                            $question->explanation_content = (string) $questionData['explanation'];
-                            $question->save();
-                        }
+                    // Set explanation_content in question if provided (chỉ cho tự luận)
+                    if (!empty($questionData['explanation']) && $questionData['type'] === 'essay') {
+                        $question->explanation_content = (string) $questionData['explanation'];
+                        $question->save();
                     }
 
                     $createdQuestions[] = [
