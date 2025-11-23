@@ -51,6 +51,8 @@ export interface Lesson {
   is_free?: boolean;
   isPublished?: boolean;
   is_published?: boolean;
+  isActive?: boolean;
+  is_active?: boolean;
   materials?: LessonMaterial[];
   course?: {
     id: number;
@@ -249,13 +251,24 @@ export const courseService = {
   },
 
   /**
-   * Delete lesson (Admin only)
+   * Delete lesson (Admin only) - Soft delete
    * DELETE /api/admin/lessons/{id}
    */
   deleteLesson: async (id: number): Promise<void> => {
     const response = await api.delete<ApiResponse<null>>(`/admin/lessons/${id}`);
     if (!response.success) {
       throw new Error(response.message || 'Failed to delete lesson');
+    }
+  },
+
+  /**
+   * Restore lesson (Admin only)
+   * POST /api/admin/lessons/{id}/restore
+   */
+  restoreLesson: async (id: number): Promise<void> => {
+    const response = await api.post<ApiResponse<null>>(`/admin/lessons/${id}/restore`);
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to restore lesson');
     }
   },
 

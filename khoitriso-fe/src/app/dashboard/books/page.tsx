@@ -325,9 +325,9 @@ export default function BooksPage() {
       resetBookForm();
       fetchBooks();
       
+      // Redirect to book detail page to create chapter
       if (newBook.id) {
-        setSelectedBookId(newBook.id);
-        setShowCreateChapterModal(true);
+        router.push(`/dashboard/books/${newBook.id}`);
       }
     } catch (error: any) {
       console.error('Error creating book:', error);

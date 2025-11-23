@@ -10,7 +10,11 @@ class BookChapter extends Model
     use HasFactory;
 
     protected $fillable = [
-        'book_id','title','description','order_index'
+        'book_id','title','description','order_index','is_active'
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
     ];
 
     public function book()

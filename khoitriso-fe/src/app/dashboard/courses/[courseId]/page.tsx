@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeftIcon, VideoCameraIcon, PlusIcon, ChatBubbleLeftRightIcon, XMarkIcon, DocumentArrowUpIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, VideoCameraIcon, PlusIcon, ChatBubbleLeftRightIcon, XMarkIcon, DocumentArrowUpIcon, TrashIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { courseService, Course, Lesson, LessonDiscussion } from '@/services/courseService';
 import { getInstructorCourse } from '@/services/instructor';
 import { useToast } from '@/components/ToastProvider';
@@ -75,6 +75,8 @@ export default function CourseDetailPage() {
 
   const handleLessonClick = async (lesson: Lesson) => {
     setSelectedLesson(lesson);
+    // Set lesson details immediately with the lesson data we have
+    setLessonDetails(lesson);
     setLoadingLessonDetails(true);
     setLoadingDiscussions(true);
     
@@ -210,17 +212,30 @@ export default function CourseDetailPage() {
                 {lessons.length === 0 ? (
                   <p className="text-gray-500 text-sm">Chưa có bài học nào</p>
                 ) : (
-                  lessons.map((lesson) => (
+                  lessons.map((lesson) => {
+                    const isInactive = lesson.isActive === false || lesson.is_active === false;
+                    return (
                     <button
                       key={lesson.id}
                       onClick={() => handleLessonClick(lesson)}
                       className={`w-full text-left p-3 rounded-lg border transition ${
                         selectedLesson?.id === lesson.id
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                          ? isInactive
+                            ? 'border-red-500 bg-red-50'
+                            : 'border-blue-500 bg-blue-50'
+                          : isInactive
+                            ? 'border-red-300 bg-red-50/50 hover:border-red-400 hover:bg-red-100'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                       }`}
                     >
-                      <div className="font-medium text-gray-900">{lesson.title}</div>
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium text-gray-900">{lesson.title}</div>
+                        {isInactive && (
+                          <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-semibold rounded">
+                            Đã vô hiệu hóa
+                          </span>
+                        )}
+                      </div>
                       {lesson.description && (
                         <div 
                           className="text-xs text-gray-500 mt-1 line-clamp-2 prose prose-xs max-w-none"
@@ -235,7 +250,8 @@ export default function CourseDetailPage() {
                         </div>
                       )}
                     </button>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -254,7 +270,14 @@ export default function CourseDetailPage() {
                 <div className="bg-white rounded-lg shadow p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
-                      <h2 className="text-2xl font-semibold mb-2">{lessonDetails.title}</h2>
+                      <div className="flex items-center gap-3 mb-2">
+                        <h2 className="text-2xl font-semibold">{lessonDetails.title}</h2>
+                        {(lessonDetails.isActive === false || lessonDetails.is_active === false) && (
+                          <span className="px-3 py-1 bg-red-100 text-red-800 text-sm font-semibold rounded">
+                            Đã vô hiệu hóa
+                          </span>
+                        )}
+                      </div>
                       {lessonDetails.description && (
                         <div 
                           className="prose prose-sm max-w-none text-gray-600 mb-4"
@@ -277,13 +300,61 @@ export default function CourseDetailPage() {
                       >
                         Chỉnh sửa
                       </button>
-                      <button
-                        onClick={() => router.push(`/dashboard/courses/${courseId}/lessons/${lessonDetails.id}/assignments/create`)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium flex items-center gap-2"
-                      >
-                        <PlusIcon className="h-5 w-5" />
-                        Tạo bài tập
-                      </button>
+                      {(lessonDetails.isActive !== false && lessonDetails.is_active !== false) ? (
+                        <>
+                          <button
+                            onClick={async () => {
+                              if (confirm('Bạn có chắc chắn muốn vô hiệu hóa bài học này?')) {
+                                try {
+                                  await courseService.deleteLesson(lessonDetails.id);
+                                  notify('Vô hiệu hóa bài học thành công', 'success');
+                                  await fetchCourse();
+                                  setSelectedLesson(null);
+                                  setLessonDetails(null);
+                                } catch (error: any) {
+                                  notify(error.message || 'Lỗi vô hiệu hóa bài học', 'error');
+                                }
+                              }
+                            }}
+                            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium flex items-center gap-2"
+                          >
+                            <TrashIcon className="h-5 w-5" />
+                            Vô hiệu hóa
+                          </button>
+                          <button
+                            onClick={() => router.push(`/dashboard/courses/${courseId}/lessons/${lessonDetails.id}/assignments/create`)}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium flex items-center gap-2"
+                          >
+                            <PlusIcon className="h-5 w-5" />
+                            Tạo bài tập
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            if (confirm('Bạn có chắc chắn muốn khôi phục bài học này?')) {
+                              try {
+                                await courseService.restoreLesson(lessonDetails.id);
+                                notify('Khôi phục bài học thành công', 'success');
+                                await fetchCourse();
+                                // Refresh lesson details
+                                const updatedLessons = (course as any)?.lessons || lessons;
+                                const updatedLesson = updatedLessons.find((l: Lesson) => l.id === lessonDetails.id);
+                                if (updatedLesson) {
+                                  setSelectedLesson(updatedLesson);
+                                  setLessonDetails(updatedLesson);
+                                }
+                              } catch (error: any) {
+                                notify(error.message || 'Lỗi khôi phục bài học', 'error');
+                              }
+                            }
+                          }}
+                          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium flex items-center gap-2"
+                        >
+                          <ArrowPathIcon className="h-5 w-5" />
+                          Khôi phục
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

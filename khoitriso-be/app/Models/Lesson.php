@@ -10,12 +10,13 @@ class Lesson extends Model
     use HasFactory;
 
     protected $fillable = [
-        'course_id','title','description','lesson_order','video_url','video_duration','content_text','static_page_path','is_published','is_free'
+        'course_id','title','description','lesson_order','video_url','video_duration','content_text','static_page_path','is_published','is_free','is_active'
     ];
 
     protected $casts = [
         'is_published' => 'boolean',
         'is_free' => 'boolean',
+        'is_active' => 'boolean',
     ];
 
     public function course()

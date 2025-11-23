@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeftIcon, BookOpenIcon, QuestionMarkCircleIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, PlusIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { bookService } from '@/services/bookService';
 import { getInstructorBook } from '@/services/instructor';
 import { useToast } from '@/components/ToastProvider';
@@ -15,6 +15,8 @@ interface BookChapterDetail {
   description: string;
   order_index: number;
   question_count?: number;
+  isActive?: boolean;
+  is_active?: boolean;
 }
 
 interface QuestionDetail {
@@ -55,6 +57,12 @@ export default function BookDetailPage() {
   const [loading, setLoading] = useState(true);
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [isInstructor, setIsInstructor] = useState(false);
+  const [showEditChapterModal, setShowEditChapterModal] = useState(false);
+  const [editChapterForm, setEditChapterForm] = useState({
+    title: '',
+    description: '',
+    orderIndex: '',
+  });
 
   useEffect(() => {
     // Check user role
@@ -135,6 +143,8 @@ export default function BookDetailPage() {
         description: ch.description,
         order_index: ch.order_index || ch.orderIndex || 0,
         question_count: ch.question_count || ch.questionCount,
+        isActive: ch.isActive !== undefined ? ch.isActive : (ch.is_active !== undefined ? ch.is_active : true),
+        is_active: ch.is_active !== undefined ? ch.is_active : (ch.isActive !== undefined ? ch.isActive : true),
       })));
     } catch (error: any) {
       console.error('Error fetching chapters:', error);
@@ -356,17 +366,30 @@ export default function BookDetailPage() {
                 {chapters.length === 0 ? (
                   <p className="text-gray-500 text-sm">Chưa có chương nào</p>
                 ) : (
-                  chapters.map((chapter) => (
+                  chapters.map((chapter) => {
+                    const isInactive = chapter.isActive === false || chapter.is_active === false;
+                    return (
                     <button
                       key={chapter.id}
                       onClick={() => handleChapterClick(chapter)}
                       className={`w-full text-left p-3 rounded-lg border transition ${
                         selectedChapter?.id === chapter.id
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                          ? isInactive
+                            ? 'border-red-500 bg-red-50'
+                            : 'border-blue-500 bg-blue-50'
+                          : isInactive
+                            ? 'border-red-300 bg-red-50/50 hover:border-red-400 hover:bg-red-100'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                       }`}
                     >
-                      <div className="font-medium text-gray-900">{chapter.title}</div>
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium text-gray-900">{chapter.title}</div>
+                        {isInactive && (
+                          <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-semibold rounded">
+                            Đã vô hiệu hóa
+                          </span>
+                        )}
+                      </div>
                       {chapter.description && (
                         <div 
                           className="text-xs text-gray-500 mt-1 line-clamp-2 prose prose-xs max-w-none"
@@ -381,7 +404,8 @@ export default function BookDetailPage() {
                         </div>
                       )}
                     </button>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -392,13 +416,82 @@ export default function BookDetailPage() {
             {selectedChapter ? (
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-2xl font-semibold">{selectedChapter.title}</h2>
-                  <button
-                    onClick={() => router.push(`/dashboard/books/${bookId}/chapters/${selectedChapter.id}/questions/create`)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
-                  >
-                    + Thêm câu hỏi
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-2xl font-semibold">{selectedChapter.title}</h2>
+                    {(selectedChapter.isActive === false || selectedChapter.is_active === false) && (
+                      <span className="px-3 py-1 bg-red-100 text-red-800 text-sm font-semibold rounded">
+                        Đã vô hiệu hóa
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setEditChapterForm({
+                          title: selectedChapter.title,
+                          description: selectedChapter.description,
+                          orderIndex: String(selectedChapter.order_index),
+                        });
+                        setShowEditChapterModal(true);
+                      }}
+                      className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm font-medium flex items-center gap-2"
+                    >
+                      <PencilIcon className="h-4 w-4" />
+                      Chỉnh sửa
+                    </button>
+                    {(selectedChapter.isActive !== false && selectedChapter.is_active !== false) ? (
+                      <button
+                        onClick={async () => {
+                          if (confirm('Bạn có chắc chắn muốn vô hiệu hóa chương này?')) {
+                            try {
+                              await bookService.deleteChapter(bookId, selectedChapter.id);
+                              notify('Vô hiệu hóa chương thành công', 'success');
+                              await fetchChapters();
+                              setSelectedChapter(null);
+                            } catch (error: any) {
+                              notify(error.message || 'Lỗi vô hiệu hóa chương', 'error');
+                            }
+                          }
+                        }}
+                        className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm font-medium flex items-center gap-2"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                        Vô hiệu hóa
+                      </button>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          if (confirm('Bạn có chắc chắn muốn khôi phục chương này?')) {
+                            try {
+                              await bookService.restoreChapter(bookId, selectedChapter.id);
+                              notify('Khôi phục chương thành công', 'success');
+                              await fetchChapters();
+                              // Refresh selected chapter
+                              const updatedChapters = await bookService.getChapters(bookId);
+                              const updatedChapter = updatedChapters.find((ch: any) => ch.id === selectedChapter.id);
+                              if (updatedChapter) {
+                                setSelectedChapter({
+                                  id: updatedChapter.id,
+                                  title: updatedChapter.title,
+                                  description: updatedChapter.description,
+                                  order_index: updatedChapter.order_index || updatedChapter.orderIndex || 0,
+                                  question_count: updatedChapter.question_count || updatedChapter.questionCount,
+                                  isActive: updatedChapter.isActive !== undefined ? updatedChapter.isActive : (updatedChapter.is_active !== undefined ? updatedChapter.is_active : true),
+                                  is_active: updatedChapter.is_active !== undefined ? updatedChapter.is_active : (updatedChapter.isActive !== undefined ? updatedChapter.isActive : true),
+                                });
+                              }
+                            } catch (error: any) {
+                              notify(error.message || 'Lỗi khôi phục chương', 'error');
+                            }
+                          }
+                        }}
+                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm font-medium flex items-center gap-2"
+                      >
+                        <ArrowPathIcon className="h-4 w-4" />
+                        Khôi phục
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {selectedChapter.description && (
                   <div 
@@ -414,7 +507,18 @@ export default function BookDetailPage() {
                     ))}
                   </div>
                 ) : questions.length === 0 ? (
-                  <p className="text-gray-500 text-center py-8">Chưa có câu hỏi nào</p>
+                  <div className="text-center py-8">
+                    <p className="text-gray-500 mb-4">Chưa có câu hỏi nào</p>
+                    {(selectedChapter.isActive !== false && selectedChapter.is_active !== false) && (
+                      <button
+                        onClick={() => router.push(`/dashboard/books/${bookId}/chapters/${selectedChapter.id}/questions/create`)}
+                        className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium flex items-center gap-2 mx-auto"
+                      >
+                        <PlusIcon className="h-5 w-5" />
+                        Thêm câu hỏi đầu tiên
+                      </button>
+                    )}
+                  </div>
                 ) : (
                   <div className="space-y-6">
                     <h3 className="text-lg font-semibold flex items-center">
@@ -491,6 +595,17 @@ export default function BookDetailPage() {
                         )}
                       </div>
                     ))}
+                    {(selectedChapter.isActive !== false && selectedChapter.is_active !== false) && (
+                      <div className="mt-6 pt-6 border-t border-gray-200">
+                        <button
+                          onClick={() => router.push(`/dashboard/books/${bookId}/chapters/${selectedChapter.id}/questions/create`)}
+                          className="w-full px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium flex items-center justify-center gap-2"
+                        >
+                          <PlusIcon className="h-5 w-5" />
+                          Thêm câu hỏi
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -503,6 +618,86 @@ export default function BookDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Edit Chapter Modal */}
+      {showEditChapterModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <h3 className="text-2xl font-bold mb-4">Chỉnh sửa chương</h3>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                if (!selectedChapter) return;
+                try {
+                  await bookService.updateChapter(bookId, selectedChapter.id, {
+                    title: editChapterForm.title,
+                    description: editChapterForm.description,
+                    orderIndex: editChapterForm.orderIndex ? parseInt(editChapterForm.orderIndex) : undefined,
+                  });
+                  notify('Cập nhật chương thành công', 'success');
+                  setShowEditChapterModal(false);
+                  await fetchChapters();
+                  // Refresh selected chapter
+                  const updatedChapter = chapters.find(c => c.id === selectedChapter.id);
+                  if (updatedChapter) {
+                    setSelectedChapter(updatedChapter);
+                  }
+                } catch (error: any) {
+                  notify(error.message || 'Lỗi cập nhật chương', 'error');
+                }
+              }}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tiêu đề *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editChapterForm.title}
+                      onChange={(e) => setEditChapterForm({ ...editChapterForm, title: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Mô tả *</label>
+                    <textarea
+                      required
+                      rows={4}
+                      value={editChapterForm.description}
+                      onChange={(e) => setEditChapterForm({ ...editChapterForm, description: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Thứ tự</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={editChapterForm.orderIndex}
+                      onChange={(e) => setEditChapterForm({ ...editChapterForm, orderIndex: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditChapterModal(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  >
+                    Cập nhật
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

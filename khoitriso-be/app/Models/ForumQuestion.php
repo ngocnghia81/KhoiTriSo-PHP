@@ -10,7 +10,7 @@ class ForumQuestion extends Eloquent
     protected $collection = 'forum_questions';
 
     protected $fillable = [
-        'title', 'content', 'author', 'category', 'tags', 'views', 'votes', 'answers', 'isSolved'
+        'title', 'content', 'author', 'user_id', 'category', 'tags', 'views', 'votes', 'answers', 'isSolved', 'created_at', 'updated_at'
     ];
 
     protected $casts = [

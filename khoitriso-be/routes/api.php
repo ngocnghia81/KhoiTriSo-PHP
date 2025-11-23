@@ -393,6 +393,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('admin/books/{id}', [\App\Http\Controllers\AdminController::class, 'updateBook']);
         Route::delete('admin/books/{id}', [\App\Http\Controllers\AdminController::class, 'deleteBook']);
         Route::post('admin/books/{bookId}/chapters', [\App\Http\Controllers\AdminController::class, 'createChapter']);
+        Route::put('admin/books/{bookId}/chapters/{chapterId}', [\App\Http\Controllers\AdminController::class, 'updateChapter']);
+        Route::delete('admin/books/{bookId}/chapters/{chapterId}', [\App\Http\Controllers\AdminController::class, 'deleteChapter']);
+        Route::post('admin/books/{bookId}/chapters/{chapterId}/restore', [\App\Http\Controllers\AdminController::class, 'restoreChapter']);
         Route::get('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'getChapterQuestions']);
         Route::post('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'createChapterQuestions']);
         Route::get('admin/books/{bookId}/chapters/{chapterId}/questions/template', [\App\Http\Controllers\AdminController::class, 'downloadQuestionTemplate']);
@@ -409,6 +412,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('admin/courses/{courseId}/lessons', [\App\Http\Controllers\AdminController::class, 'createLesson']);
         Route::put('admin/lessons/{id}', [\App\Http\Controllers\AdminController::class, 'updateLesson']);
         Route::delete('admin/lessons/{id}', [\App\Http\Controllers\AdminController::class, 'deleteLesson']);
+        Route::post('admin/lessons/{id}/restore', [\App\Http\Controllers\AdminController::class, 'restoreLesson']);
 
         // Admin Lesson Materials
         Route::post('admin/lessons/{lessonId}/materials', [\App\Http\Controllers\AdminController::class, 'uploadLessonMaterial']);
@@ -446,22 +450,25 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('analytics/instructor/{id}', [\App\Http\Controllers\AnalyticsController::class, 'instructor']);
     });
 
-    // Forum (MongoDB-backed)
-    Route::prefix('forum-api')->group(function () {
+    // Forum (MongoDB-backed) - Public routes
+    Route::prefix('forum')->group(function () {
         Route::get('questions', [\App\Http\Controllers\ForumController::class, 'list']);
         Route::get('questions/{id}', [\App\Http\Controllers\ForumController::class, 'get']);
+        Route::get('tags', [\App\Http\Controllers\ForumController::class, 'tags']);
+        Route::get('questions/{id}/answers', [\App\Http\Controllers\ForumController::class, 'listAnswers']);
+    });
+
+    // Forum - Authenticated routes
+    Route::middleware(['auth:sanctum'])->prefix('forum')->group(function () {
         Route::post('questions', [\App\Http\Controllers\ForumController::class, 'create']);
         Route::put('questions/{id}', [\App\Http\Controllers\ForumController::class, 'update']);
         Route::delete('questions/{id}', [\App\Http\Controllers\ForumController::class, 'delete']);
         Route::post('questions/{id}/vote', [\App\Http\Controllers\ForumController::class, 'vote']);
 
-        Route::get('questions/{id}/answers', [\App\Http\Controllers\ForumController::class, 'listAnswers']);
         Route::post('questions/{id}/answers', [\App\Http\Controllers\ForumController::class, 'addAnswer']);
         Route::put('questions/{id}/answers/{answerId}', [\App\Http\Controllers\ForumController::class, 'updateAnswer']);
         Route::delete('questions/{id}/answers/{answerId}', [\App\Http\Controllers\ForumController::class, 'deleteAnswer']);
         Route::post('questions/{id}/answers/{answerId}/vote', [\App\Http\Controllers\ForumController::class, 'voteAnswer']);
         Route::post('questions/{id}/answers/{answerId}/accept', [\App\Http\Controllers\ForumController::class, 'acceptAnswer']);
-
-        Route::get('tags', [\App\Http\Controllers\ForumController::class, 'tags']);
     });
 });

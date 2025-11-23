@@ -129,6 +129,10 @@ const navigation = [
         ],
     },
     {
+        name: "Diễn đàn",
+        href: "/forum",
+    },
+    {
         name: "Đơn hàng",
         href: "/orders",
         requireAuth: true,

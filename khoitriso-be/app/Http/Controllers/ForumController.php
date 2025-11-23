@@ -87,7 +87,13 @@ class ForumController extends BaseController
             }
 
             $validated = $validator->validated();
-            $author = ['name' => auth()->user()->username ?? 'Thành viên'];
+            $user = auth()->user();
+            $author = [
+                'id' => $user->id ?? null,
+                'name' => $user->name ?? $user->username ?? 'Thành viên',
+                'email' => $user->email ?? null,
+                'avatar' => $user->avatar ?? null,
+            ];
             
             $doc = ForumQuestion::create([
                 'title' => $validated['title'],
@@ -95,10 +101,13 @@ class ForumController extends BaseController
                 'tags' => $validated['tags'] ?? [],
                 'category' => $validated['category'] ?? ['name' => 'Tổng quát', 'slug' => 'general'],
                 'author' => $author,
+                'user_id' => $user->id ?? null,
                 'views' => 0,
                 'votes' => 0,
                 'answers' => [],
                 'isSolved' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
             
             return $this->success($doc);
@@ -200,14 +209,22 @@ class ForumController extends BaseController
                 return $this->error(MessageCode::VALIDATION_ERROR, 'Content is required');
             }
             
+            $user = auth()->user();
             $answers = $q->answers ?? [];
             $newAnswer = [
                 '_id' => (string) Str::uuid(),
                 'content' => $content,
-                'author' => ['name' => auth()->user()->username ?? 'Thành viên'],
+                'author' => [
+                    'id' => $user->id ?? null,
+                    'name' => $user->name ?? $user->username ?? 'Thành viên',
+                    'email' => $user->email ?? null,
+                    'avatar' => $user->avatar ?? null,
+                ],
+                'user_id' => $user->id ?? null,
                 'votes' => 0,
                 'isAccepted' => false,
                 'createdAt' => now(),
+                'updatedAt' => now(),
             ];
             $answers[] = $newAnswer;
             

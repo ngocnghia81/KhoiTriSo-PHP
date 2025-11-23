@@ -1582,6 +1582,7 @@ class AdminController extends BaseController
                 'title' => $data['title'],
                 'description' => $data['description'],
                 'order_index' => $orderIndex,
+                'is_active' => true,
                 'created_by' => $user->name ?? $user->email,
             ]);
 
@@ -1596,6 +1597,182 @@ class AdminController extends BaseController
 
         } catch (\Exception $e) {
             \Log::error('Error in admin createChapter: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Update chapter (Admin only)
+     * PUT /api/admin/books/{bookId}/chapters/{chapterId}
+     */
+    public function updateChapter(int $bookId, int $chapterId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || ($user->role !== 'admin' && $user->role !== 'instructor')) {
+                return $this->forbidden('Chỉ admin và giảng viên mới có quyền cập nhật chương');
+            }
+
+            $chapter = BookChapter::with('book')->find($chapterId);
+            if (!$chapter) {
+                return $this->notFound('Chapter');
+            }
+
+            if ($chapter->book_id !== $bookId) {
+                return $this->error(MessageCode::VALIDATION_ERROR, 'Chương không thuộc sách này', null, 400, $request);
+            }
+
+            // Check if instructor owns the book
+            if ($user->role === 'instructor') {
+                if (!$chapter->book || $chapter->book->author_id !== $user->id) {
+                    return $this->forbidden('Bạn không có quyền cập nhật chương này');
+                }
+            }
+
+            $validator = Validator::make($request->all(), [
+                'title' => ['sometimes', 'required', 'string', 'max:200'],
+                'description' => ['sometimes', 'required', 'string'],
+                'orderIndex' => ['nullable', 'integer', 'min:1'],
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+
+            // If orderIndex is being changed, check for conflicts
+            if (isset($data['orderIndex']) && $data['orderIndex'] != $chapter->order_index) {
+                $existingChapter = BookChapter::where('book_id', $bookId)
+                    ->where('id', '!=', $chapterId)
+                    ->where('order_index', $data['orderIndex'])
+                    ->first();
+                if ($existingChapter) {
+                    return $this->error(
+                        MessageCode::VALIDATION_ERROR,
+                        "Thứ tự chương {$data['orderIndex']} đã tồn tại. Vui lòng chọn thứ tự khác.",
+                        null,
+                        400,
+                        $request
+                    );
+                }
+            }
+
+            $chapter->fill([
+                'title' => $data['title'] ?? $chapter->title,
+                'description' => $data['description'] ?? $chapter->description,
+                'order_index' => $data['orderIndex'] ?? $chapter->order_index,
+                'updated_by' => $user->name ?? $user->email,
+            ])->save();
+
+            return $this->success([
+                'id' => $chapter->id,
+                'bookId' => $chapter->book_id,
+                'title' => $chapter->title,
+                'description' => $chapter->description,
+                'orderIndex' => $chapter->order_index,
+                'updatedAt' => is_string($chapter->updated_at) ? $chapter->updated_at : $chapter->updated_at->toISOString(),
+            ], 'Cập nhật chương thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin updateChapter: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Delete chapter (Admin only) - Soft delete
+     * DELETE /api/admin/books/{bookId}/chapters/{chapterId}
+     */
+    public function deleteChapter(int $bookId, int $chapterId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || ($user->role !== 'admin' && $user->role !== 'instructor')) {
+                return $this->forbidden('Chỉ admin và giảng viên mới có quyền vô hiệu hóa chương');
+            }
+
+            $chapter = BookChapter::with('book')->find($chapterId);
+            if (!$chapter) {
+                return $this->notFound('Chapter');
+            }
+
+            if ($chapter->book_id !== $bookId) {
+                return $this->error(MessageCode::VALIDATION_ERROR, 'Chương không thuộc sách này', null, 400, $request);
+            }
+
+            // Check if instructor owns the book
+            if ($user->role === 'instructor') {
+                if (!$chapter->book || $chapter->book->author_id !== $user->id) {
+                    return $this->forbidden('Bạn không có quyền vô hiệu hóa chương này');
+                }
+            }
+
+            // Soft delete: set is_active = false (use direct update with raw SQL for PostgreSQL boolean)
+            \DB::table('book_chapters')
+                ->where('id', $chapterId)
+                ->update([
+                    'is_active' => \DB::raw('false'),
+                    'updated_at' => now(),
+                    'updated_by' => $user->name ?? $user->email,
+                ]);
+
+            return $this->success(null, 'Vô hiệu hóa chương thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin deleteChapter: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Restore chapter (Admin only) - Set is_active = true
+     * POST /api/admin/books/{bookId}/chapters/{chapterId}/restore
+     */
+    public function restoreChapter(int $bookId, int $chapterId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || ($user->role !== 'admin' && $user->role !== 'instructor')) {
+                return $this->forbidden('Chỉ admin và giảng viên mới có quyền khôi phục chương');
+            }
+
+            $chapter = BookChapter::with('book')->find($chapterId);
+            if (!$chapter) {
+                return $this->notFound('Chapter');
+            }
+
+            if ($chapter->book_id !== $bookId) {
+                return $this->error(MessageCode::VALIDATION_ERROR, 'Chương không thuộc sách này', null, 400, $request);
+            }
+
+            // Check if instructor owns the book
+            if ($user->role === 'instructor') {
+                if (!$chapter->book || $chapter->book->author_id !== $user->id) {
+                    return $this->forbidden('Bạn không có quyền khôi phục chương này');
+                }
+            }
+
+            // Restore: set is_active = true
+            \DB::table('book_chapters')
+                ->where('id', $chapterId)
+                ->update([
+                    'is_active' => \DB::raw('true'),
+                    'updated_at' => now(),
+                    'updated_by' => $user->name ?? $user->email,
+                ]);
+
+            return $this->success(null, 'Khôi phục chương thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin restoreChapter: ' . $e->getMessage());
             \Log::error('Stack trace: ' . $e->getTraceAsString());
             return $this->internalError();
         }
@@ -2933,11 +3110,11 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
             $sql = "
                 INSERT INTO lessons (
                     course_id, title, description, video_url, video_duration, 
-                    content_text, lesson_order, static_page_path, is_free, is_published, 
+                    content_text, lesson_order, static_page_path, is_free, is_published, is_active,
                     created_at, updated_at
                 ) VALUES (
                     :course_id, :title, :description, :video_url, :video_duration,
-                    :content_text, :lesson_order, :static_page_path, :is_free::boolean, :is_published::boolean,
+                    :content_text, :lesson_order, :static_page_path, :is_free::boolean, :is_published::boolean, true::boolean,
                     NOW(), NOW()
                 ) RETURNING id
             ";
@@ -3044,26 +3221,90 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
     {
         try {
             $user = $request->user();
-            if (!$user || $user->role !== 'admin') {
-                return $this->forbidden('Chỉ admin mới có quyền xóa bài học');
+            if (!$user || ($user->role !== 'admin' && $user->role !== 'instructor')) {
+                return $this->forbidden('Chỉ admin và giảng viên mới có quyền vô hiệu hóa bài học');
             }
 
-            $lesson = \App\Models\Lesson::find($id);
+            $lesson = \App\Models\Lesson::with('course')->find($id);
             if (!$lesson) {
                 return $this->notFound('Lesson');
             }
 
-            $courseId = $lesson->course_id;
-            $lesson->delete();
+            // Check if instructor owns the course
+            if ($user->role === 'instructor') {
+                if (!$lesson->course || $lesson->course->instructor_id !== $user->id) {
+                    return $this->forbidden('Bạn không có quyền vô hiệu hóa bài học này');
+                }
+            }
 
-            // Update course total_lessons
-            $totalLessons = \App\Models\Lesson::where('course_id', $courseId)->count();
-            Course::where('id', $courseId)->update(['total_lessons' => $totalLessons]);
+            // Soft delete: set is_active = false (use direct update with raw SQL for PostgreSQL boolean)
+            \DB::table('lessons')
+                ->where('id', $id)
+                ->update([
+                    'is_active' => \DB::raw('false'),
+                    'updated_at' => now(),
+                    'updated_by' => $user->name ?? $user->email,
+                ]);
 
-            return $this->success(null, 'Xóa bài học thành công', $request);
+            // Update course total_lessons (only count active lessons)
+            $totalLessons = \App\Models\Lesson::where('course_id', $lesson->course_id)
+                ->whereRaw('is_active = true')
+                ->count();
+            Course::where('id', $lesson->course_id)->update(['total_lessons' => $totalLessons]);
+
+            return $this->success(null, 'Vô hiệu hóa bài học thành công', $request);
 
         } catch (\Exception $e) {
             \Log::error('Error in admin deleteLesson: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Restore lesson (Admin only) - Set is_active = true
+     * POST /api/admin/lessons/{id}/restore
+     */
+    public function restoreLesson(int $id, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || ($user->role !== 'admin' && $user->role !== 'instructor')) {
+                return $this->forbidden('Chỉ admin và giảng viên mới có quyền khôi phục bài học');
+            }
+
+            $lesson = \App\Models\Lesson::with('course')->find($id);
+            if (!$lesson) {
+                return $this->notFound('Lesson');
+            }
+
+            // Check if instructor owns the course
+            if ($user->role === 'instructor') {
+                if (!$lesson->course || $lesson->course->instructor_id !== $user->id) {
+                    return $this->forbidden('Bạn không có quyền khôi phục bài học này');
+                }
+            }
+
+            // Restore: set is_active = true
+            \DB::table('lessons')
+                ->where('id', $id)
+                ->update([
+                    'is_active' => \DB::raw('true'),
+                    'updated_at' => now(),
+                    'updated_by' => $user->name ?? $user->email,
+                ]);
+
+            // Update course total_lessons (only count active lessons)
+            $totalLessons = \App\Models\Lesson::where('course_id', $lesson->course_id)
+                ->whereRaw('is_active = true')
+                ->count();
+            Course::where('id', $lesson->course_id)->update(['total_lessons' => $totalLessons]);
+
+            return $this->success(null, 'Khôi phục bài học thành công', $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin restoreLesson: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
             return $this->internalError();
         }
     }

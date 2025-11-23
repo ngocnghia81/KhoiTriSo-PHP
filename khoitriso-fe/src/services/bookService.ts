@@ -254,6 +254,51 @@ export const bookService = {
   },
 
   /**
+   * Update chapter for book (Admin only)
+   * PUT /api/admin/books/{bookId}/chapters/{chapterId}
+   */
+  updateChapter: async (bookId: number, chapterId: number, data: {
+    title?: string;
+    description?: string;
+    orderIndex?: number;
+  }): Promise<BookChapter> => {
+    const response = await api.put<ApiResponse<BookChapter>>(
+      `/admin/books/${bookId}/chapters/${chapterId}`,
+      data
+    );
+    if (response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response.message || 'Failed to update chapter');
+  },
+
+  /**
+   * Delete chapter for book (Admin only) - Soft delete
+   * DELETE /api/admin/books/{bookId}/chapters/{chapterId}
+   */
+  deleteChapter: async (bookId: number, chapterId: number): Promise<void> => {
+    const response = await api.delete<ApiResponse<null>>(
+      `/admin/books/${bookId}/chapters/${chapterId}`
+    );
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to delete chapter');
+    }
+  },
+
+  /**
+   * Restore chapter for book (Admin only)
+   * POST /api/admin/books/{bookId}/chapters/{chapterId}/restore
+   */
+  restoreChapter: async (bookId: number, chapterId: number): Promise<void> => {
+    const response = await api.post<ApiResponse<null>>(
+      `/admin/books/${bookId}/chapters/${chapterId}/restore`
+    );
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to restore chapter');
+    }
+  },
+
+  /**
    * List books for admin with filters, search, and pagination
    * GET /api/admin/books
    */
