@@ -389,6 +389,19 @@ export const bookService = {
   },
 
   /**
+   * Delete all questions for chapter (Admin only)
+   * DELETE /api/admin/books/{bookId}/chapters/{chapterId}/questions
+   */
+  deleteChapterQuestions: async (bookId: number, chapterId: number): Promise<void> => {
+    const response = await api.delete<ApiResponse<{ deletedCount: number }>>(
+      `/admin/books/${bookId}/chapters/${chapterId}/questions`
+    );
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to delete chapter questions');
+    }
+  },
+
+  /**
    * Create questions for chapter
    * POST /api/admin/books/{bookId}/chapters/{chapterId}/questions
    */

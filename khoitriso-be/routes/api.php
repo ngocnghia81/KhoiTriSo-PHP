@@ -396,9 +396,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('admin/books/{bookId}/chapters/{chapterId}', [\App\Http\Controllers\AdminController::class, 'updateChapter']);
         Route::delete('admin/books/{bookId}/chapters/{chapterId}', [\App\Http\Controllers\AdminController::class, 'deleteChapter']);
         Route::post('admin/books/{bookId}/chapters/{chapterId}/restore', [\App\Http\Controllers\AdminController::class, 'restoreChapter']);
-        Route::get('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'getChapterQuestions']);
-        Route::post('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'createChapterQuestions']);
-        Route::get('admin/books/{bookId}/chapters/{chapterId}/questions/template', [\App\Http\Controllers\AdminController::class, 'downloadQuestionTemplate']);
+            Route::get('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'getChapterQuestions']);
+            Route::post('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'createChapterQuestions']);
+            Route::delete('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'deleteChapterQuestions']);
+            Route::get('admin/books/{bookId}/chapters/{chapterId}/questions/template', [\App\Http\Controllers\AdminController::class, 'downloadQuestionTemplate']);
         Route::post('admin/books/{bookId}/chapters/{chapterId}/questions/import', [\App\Http\Controllers\AdminController::class, 'importQuestionsFromWord']);
 
         // Admin Courses Management

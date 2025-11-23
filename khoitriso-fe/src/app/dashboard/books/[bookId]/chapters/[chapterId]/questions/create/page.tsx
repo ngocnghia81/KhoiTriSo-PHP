@@ -258,6 +258,12 @@ export default function CreateQuestionsPage() {
 
     setLoading(true);
     try {
+      // Xóa tất cả câu hỏi cũ trước khi tạo mới (để tránh duplicate)
+      const hasExistingQuestions = questions.some(q => q.isExisting);
+      if (hasExistingQuestions) {
+        await bookService.deleteChapterQuestions(bookId, chapterId);
+      }
+
       // Tạo các câu hỏi cho chương này (bao gồm cả câu hỏi mới và câu hỏi đã chỉnh sửa)
       const questionsData = questions.map(q => ({
         content: q.content,

@@ -2319,6 +2319,52 @@ class AdminController extends BaseController
     }
 
     /**
+     * Delete all questions for a chapter (Admin only)
+     * DELETE /api/admin/books/{bookId}/chapters/{chapterId}/questions
+     */
+    public function deleteChapterQuestions(int $bookId, int $chapterId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || ($user->role !== 'admin' && $user->role !== 'instructor')) {
+                return $this->forbidden('Chỉ admin và giảng viên mới có quyền xóa câu hỏi');
+            }
+
+            // Verify chapter exists and belongs to book
+            $chapter = BookChapter::where('id', $chapterId)
+                ->where('book_id', $bookId)
+                ->first();
+            
+            if (!$chapter) {
+                return $this->notFound('Chapter');
+            }
+
+            // Check if instructor owns the book
+            if ($user->role === 'instructor') {
+                if (!$chapter->book || $chapter->book->author_id !== $user->id) {
+                    return $this->forbidden('Bạn không có quyền xóa câu hỏi của chương này');
+                }
+            }
+
+            // Soft delete all questions for this chapter (context_type = 2 for book_chapter)
+            $deletedCount = \DB::table('questions')
+                ->where('context_type', 2)
+                ->where('context_id', $chapterId)
+                ->update([
+                    'is_active' => \DB::raw('false'),
+                    'updated_at' => now(),
+                ]);
+
+            return $this->success(['deletedCount' => $deletedCount], "Đã xóa {$deletedCount} câu hỏi", $request);
+
+        } catch (\Exception $e) {
+            \Log::error('Error in admin deleteChapterQuestions: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
      * Download Word template for questions (Admin only)
      * GET /api/admin/books/{bookId}/chapters/{chapterId}/questions/template
      */
