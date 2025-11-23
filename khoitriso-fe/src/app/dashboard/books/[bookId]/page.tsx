@@ -6,6 +6,7 @@ import { ArrowLeftIcon, BookOpenIcon, QuestionMarkCircleIcon, PencilIcon, TrashI
 import { bookService } from '@/services/bookService';
 import { getInstructorBook } from '@/services/instructor';
 import { useToast } from '@/components/ToastProvider';
+import RichTextEditor from '@/components/RichTextEditor';
 import { BlockMath, InlineMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
 
@@ -651,7 +652,7 @@ export default function BookDetailPage() {
               <form onSubmit={async (e) => {
                 e.preventDefault();
                 if (!bookId) return;
-                if (!createChapterForm.title || !createChapterForm.description) {
+                if (!createChapterForm.title || !createChapterForm.description || !createChapterForm.description.trim()) {
                   notify('Vui lòng điền đầy đủ thông tin', 'error');
                   return;
                 }
@@ -686,12 +687,10 @@ export default function BookDetailPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Mô tả *</label>
-                    <textarea
-                      required
-                      rows={4}
+                    <RichTextEditor
                       value={createChapterForm.description}
-                      onChange={(e) => setCreateChapterForm({ ...createChapterForm, description: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      onChange={(value) => setCreateChapterForm({ ...createChapterForm, description: value })}
+                      placeholder="Nhập mô tả chương..."
                     />
                   </div>
                   <div>
@@ -773,12 +772,10 @@ export default function BookDetailPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Mô tả *</label>
-                    <textarea
-                      required
-                      rows={4}
+                    <RichTextEditor
                       value={editChapterForm.description}
-                      onChange={(e) => setEditChapterForm({ ...editChapterForm, description: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      onChange={(value) => setEditChapterForm({ ...editChapterForm, description: value })}
+                      placeholder="Nhập mô tả chương..."
                     />
                   </div>
                   <div>
