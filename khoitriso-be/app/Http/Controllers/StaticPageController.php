@@ -75,7 +75,7 @@ class StaticPageController extends BaseController
                 'content' => $data['content'],
                 'template' => $data['template'] ?? 'default',
                 'is_published' => $data['isPublished'] ?? false,
-                'is_active' => true,
+                'is_active' => \DB::raw('true'),
             ]);
 
             return $this->success($page, 201);

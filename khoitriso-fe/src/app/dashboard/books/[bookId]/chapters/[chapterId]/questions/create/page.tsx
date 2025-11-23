@@ -7,6 +7,7 @@ import { bookService } from '@/services/bookService';
 import { getInstructorBook } from '@/services/instructor';
 import { useToast } from '@/components/ToastProvider';
 import MathEditor from '@/components/MathEditor';
+import MathQuestionEditor from '@/components/MathQuestionEditor';
 import SampleQuestionsButton from '@/components/SampleQuestionsButton';
 import SolutionVideoUpload from '@/components/SolutionVideoUpload';
 import WordTemplateDownload from '@/components/WordTemplateDownload';
@@ -457,18 +458,15 @@ export default function CreateQuestionsPage() {
 
                       {/* Question Content */}
                       <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Nội dung câu hỏi *
-                        </label>
-                        <MathEditor
+                        <MathQuestionEditor
                           value={question.content}
                           onChange={(value) => {
                             updateQuestion(qIndex, 'content', value);
                             setCurrentQuestionIndex(qIndex);
                           }}
-                          placeholder="Nhập nội dung câu hỏi. Sử dụng công cụ bên dưới để chèn công thức toán học."
-                          rows={4}
-                          showPreview={showPreview}
+                          placeholder="Nhập nội dung câu hỏi. Sử dụng các nút trên toolbar để thêm công thức toán học..."
+                          height={200}
+                          label="Nội dung câu hỏi *"
                         />
                       </div>
 
@@ -492,7 +490,7 @@ export default function CreateQuestionsPage() {
                                 }}
                                 className="mt-2"
                               />
-                              <MathEditor
+                              <MathQuestionEditor
                                 value={option.text}
                                 onChange={(value) => {
                                   const updated = [...questions];
@@ -502,8 +500,7 @@ export default function CreateQuestionsPage() {
                                   }
                                 }}
                                 placeholder={`Lựa chọn ${optIndex + 1}`}
-                                rows={2}
-                                showPreview={showPreview}
+                                height={150}
                               />
                               {question.options && question.options.length > 2 && (
                                 <button
@@ -545,15 +542,12 @@ export default function CreateQuestionsPage() {
                       {/* Giải thích - chỉ cho tự luận */}
                       {question.type === 'essay' && (
                         <div className="mb-4">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Giải thích (tùy chọn)
-                          </label>
-                          <MathEditor
+                          <MathQuestionEditor
                             value={question.explanation || ''}
                             onChange={(value) => updateQuestion(qIndex, 'explanation', value)}
-                            placeholder="Nhập giải thích cho câu hỏi tự luận (tùy chọn). Sử dụng công cụ bên dưới để chèn công thức toán học."
-                            rows={3}
-                            showPreview={showPreview}
+                            placeholder="Nhập giải thích cho câu hỏi tự luận (tùy chọn). Sử dụng các nút trên toolbar để thêm công thức toán học."
+                            height={200}
+                            label="Giải thích (tùy chọn)"
                           />
                         </div>
                       )}
@@ -591,19 +585,12 @@ export default function CreateQuestionsPage() {
                         </div>
                       ) : (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            {question.solutionType === 'latex' ? 'Lời giải LaTeX' : 'Lời giải'}
-                          </label>
-                          <MathEditor
+                          <MathQuestionEditor
                             value={question.solution || ''}
                             onChange={(value) => updateQuestion(qIndex, 'solution', value)}
-                            placeholder={
-                              question.solutionType === 'latex'
-                                ? 'Nhập lời giải bằng LaTeX (tùy chọn)'
-                                : 'Nhập lời giải (tùy chọn). Sử dụng công cụ bên dưới để chèn công thức toán học.'
-                            }
-                            rows={3}
-                            showPreview={showPreview}
+                            placeholder="Nhập lời giải (tùy chọn). Sử dụng các nút trên toolbar để thêm công thức toán học, phân số, căn..."
+                            height={250}
+                            label={question.solutionType === 'latex' ? 'Lời giải LaTeX' : 'Lời giải'}
                           />
                         </div>
                       )}

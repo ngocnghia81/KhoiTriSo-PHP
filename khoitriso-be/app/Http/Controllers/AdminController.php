@@ -1401,7 +1401,7 @@ class AdminController extends BaseController
                 'approval_status' => 1, // Approved by default for admin
                 'is_published' => true, // Auto-publish for admin
                 'language' => (string) ($data['language'] ?? 'vi'),
-                'is_active' => true, // Will be cast by model
+                'is_active' => \DB::raw('true'),
                 'created_by' => (string) ($user->name ?? $user->email),
             ];
             
@@ -1582,7 +1582,7 @@ class AdminController extends BaseController
                 'title' => $data['title'],
                 'description' => $data['description'],
                 'order_index' => $orderIndex,
-                'is_active' => true,
+                'is_active' => \DB::raw('true'),
                 'created_by' => $user->name ?? $user->email,
             ]);
 
@@ -3861,7 +3861,7 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
                 'default_points' => $data['defaultPoints'] ?? 10.0,
                 'explanation_content' => $data['explanationContent'] ?? '',
                 'order_index' => $orderIndex,
-                'is_active' => true,
+                'is_active' => \DB::raw('true'),
             ]);
 
             // Create options for multiple choice and true/false questions

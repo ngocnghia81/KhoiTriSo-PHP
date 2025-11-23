@@ -123,7 +123,7 @@ class CourseController extends BaseController
                 'static_page_path' => $data['staticPagePath'],
                 'instructor_id' => $user->id,
                 'approval_status' => $approvalStatus,
-                'is_active' => true,
+                'is_active' => \DB::raw('true'),
                 'is_published' => $isPublished,
             ]);
             
