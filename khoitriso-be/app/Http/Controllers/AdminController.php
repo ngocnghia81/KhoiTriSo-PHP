@@ -2279,10 +2279,14 @@ class AdminController extends BaseController
                         $hasSolution = true;
                     }
                     
-                    // Also set explanation_content in question if provided
-                    if (!empty($questionData['explanation']) && $solutionType !== 'video') {
-                        $question->explanation_content = (string) $questionData['explanation'];
-                        $question->save();
+                    // Set explanation_content in question if provided
+                    // For essay questions, explanation_content should always be set if explanation is provided
+                    // For multiple choice, explanation_content is set if solutionType is not video
+                    if (!empty($questionData['explanation'])) {
+                        if ($questionData['type'] === 'essay' || $solutionType !== 'video') {
+                            $question->explanation_content = (string) $questionData['explanation'];
+                            $question->save();
+                        }
                     }
 
                     $createdQuestions[] = [

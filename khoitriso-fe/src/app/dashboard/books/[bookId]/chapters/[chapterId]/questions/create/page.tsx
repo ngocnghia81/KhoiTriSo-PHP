@@ -111,7 +111,9 @@ export default function CreateQuestionsPage() {
             isCorrect: opt.is_correct !== undefined ? opt.is_correct : (opt.isCorrect !== undefined ? opt.isCorrect : false),
           })) || [],
           correctAnswer: q.correct_answer || q.correctAnswer || '',
-          explanation: q.explanation || q.explanation_content || q.explanationContent || '',
+          // Ưu tiên explanation_content (từ question) trước explanation (từ solution)
+          // Vì explanation_content là "Giải thích", còn solution là "Lời giải"
+          explanation: q.explanation_content || q.explanationContent || q.explanation || q.solution?.content || '',
           solutionVideo: q.solution?.video_url || q.solution?.videoUrl || q.solution_video || '',
           solutionType: (q.solution?.type === 1 ? 'video' : (q.solution?.type === 3 ? 'latex' : 'text') || 
                         (q.solution_type === 1 ? 'video' : (q.solution_type === 3 ? 'latex' : 'text')) || 'text') as 'text' | 'video' | 'latex',
