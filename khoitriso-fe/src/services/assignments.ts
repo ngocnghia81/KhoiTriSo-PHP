@@ -161,6 +161,27 @@ export async function getAssignmentAttempts(assignmentId: number, params?: { pag
   return response;
 }
 
+export async function createAssignmentQuestions(assignmentId: number, data: {
+  questions: Array<{
+    content: string;
+    type: 'multiple_choice' | 'essay';
+    options?: Array<{ text: string; isCorrect: boolean }>;
+    explanation?: string;
+    correctAnswer?: string;
+    solutionVideo?: string;
+    solutionType?: 'text' | 'video' | 'latex';
+    defaultPoints?: number;
+  }>;
+  isBatchInsert?: boolean;
+}) {
+  const response = await api.post<{ data: {
+    assignment: Assignment;
+    questions: Question[];
+    totalQuestions: number;
+  } }>(`assignments/${assignmentId}/questions`, data);
+  return response.data;
+}
+
 export async function getAttemptDetails(attemptId: number) {
   const response = await api.get<{ data: {
     attempt: AssignmentAttempt;

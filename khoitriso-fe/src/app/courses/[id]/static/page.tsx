@@ -98,7 +98,9 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
       };
     }
     
-    const course = courseResponse.data as Course;
+    // Extract course data from API response
+    const responseData = courseResponse.data as any;
+    const course = (responseData?.data || responseData) as Course;
     const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     
     // Try to get static page content
@@ -148,7 +150,15 @@ export default async function CourseStaticPage({ params }: { params: { id: strin
   let course: Course | null = null;
   let staticPage: StaticPage | null = null;
   
+  // Note: In development mode, this will fetch from backend at runtime.
+  // In production build (npm run build), this data is fetched at build time
+  // and embedded into static HTML, so backend is not needed at runtime.
+  const isProduction = process.env.NODE_ENV === 'production';
+  
   try {
+    if (!isProduction) {
+      console.log('[DEV MODE] Fetching course data from backend...');
+    }
     // Fetch course data
     const courseResponse = await httpClient.get(`courses/${params.id}`);
     
@@ -156,7 +166,9 @@ export default async function CourseStaticPage({ params }: { params: { id: strin
       notFound();
     }
     
-    course = courseResponse.data as Course;
+    // Extract course data from API response
+    const responseData = courseResponse.data as any;
+    course = (responseData?.data || responseData) as Course;
     
     if (!course || !course.id) {
       notFound();

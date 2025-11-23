@@ -9,6 +9,8 @@ use App\Models\Book;
 use App\Models\BookChapter;
 use App\Models\Order;
 use App\Models\Notification;
+use App\Models\CourseEnrollment;
+use App\Mail\AssignmentCreated;
 use App\Mail\InstructorAccountCreated;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -2977,13 +2979,20 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
     {
         try {
             $user = $request->user();
-            if (!$user || $user->role !== 'admin') {
-                return $this->forbidden('Chỉ admin mới có quyền cập nhật bài học');
+            if (!$user || ($user->role !== 'admin' && $user->role !== 'instructor')) {
+                return $this->forbidden('Chỉ admin và giảng viên mới có quyền cập nhật bài học');
             }
 
-            $lesson = \App\Models\Lesson::find($id);
+            $lesson = \App\Models\Lesson::with('course')->find($id);
             if (!$lesson) {
                 return $this->notFound('Lesson');
+            }
+
+            // Check if instructor owns the course
+            if ($user->role === 'instructor') {
+                if (!$lesson->course || $lesson->course->instructor_id !== $user->id) {
+                    return $this->forbidden('Bạn không có quyền cập nhật bài học này');
+                }
             }
 
             $validator = Validator::make($request->all(), [
@@ -3434,6 +3443,66 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
                 'shuffle_questions' => $data['shuffleQuestions'] ?? false,
                 'shuffle_options' => $data['shuffleOptions'] ?? false,
             ]);
+
+            // Send notifications to enrolled students
+            try {
+                $lesson = \App\Models\Lesson::with('course')->find($lessonId);
+                if ($lesson && $lesson->course) {
+                    // Get all enrolled students for this course
+                    $enrollments = CourseEnrollment::where('course_id', $lesson->course->id)
+                        ->whereRaw('is_active = true')
+                        ->with('user:id,name,email')
+                        ->get();
+
+                    // Create notifications for each enrolled student
+                    $notifications = [];
+                    $assignmentTypeNames = [
+                        1 => 'Quiz',
+                        2 => 'Homework',
+                        3 => 'Exam',
+                        4 => 'Practice',
+                    ];
+                    $assignmentTypeName = $assignmentTypeNames[$data['assignmentType']] ?? 'Bài tập';
+
+                    foreach ($enrollments as $enrollment) {
+                        if ($enrollment->user) {
+                            $notifications[] = [
+                                'user_id' => $enrollment->user->id,
+                                'title' => 'Bài tập mới: ' . $assignment->title,
+                                'message' => "Giảng viên đã tạo {$assignmentTypeName} mới cho bài học \"{$lesson->title}\" trong khóa học \"{$lesson->course->title}\"",
+                                'type' => 3, // Assignment type
+                                'action_url' => "/assignments/{$assignment->id}",
+                                'priority' => 3, // High priority
+                                'created_at' => now(),
+                                'updated_at' => now(),
+                            ];
+                        }
+                    }
+
+                    // Bulk insert notifications and send emails
+                    if (!empty($notifications)) {
+                        Notification::insert($notifications);
+                        \Log::info("Sent {$assignmentTypeName} notification to " . count($notifications) . " students for assignment {$assignment->id}");
+                        
+                        // Send emails to enrolled students
+                        foreach ($enrollments as $enrollment) {
+                            if ($enrollment->user && $enrollment->user->email) {
+                                try {
+                                    Mail::to($enrollment->user->email)->send(
+                                        new AssignmentCreated($assignment, $lesson, $lesson->course, $enrollment->user->name ?? $enrollment->user->email)
+                                    );
+                                } catch (\Exception $emailError) {
+                                    // Log email error but don't fail the process
+                                    \Log::error("Error sending assignment email to {$enrollment->user->email}: " . $emailError->getMessage());
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                // Log error but don't fail the assignment creation
+                \Log::error('Error sending assignment notifications: ' . $e->getMessage());
+            }
 
             return $this->success($assignment, 'Tạo bài tập thành công', $request);
 

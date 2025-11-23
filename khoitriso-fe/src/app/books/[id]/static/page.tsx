@@ -96,7 +96,9 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
       };
     }
     
-    const book = bookResponse.data as Book;
+    // Extract book data from API response
+    const responseData = bookResponse.data as any;
+    const book = (responseData?.data || responseData) as Book;
     const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     
     // Try to get static page content
@@ -146,7 +148,15 @@ export default async function BookStaticPage({ params }: { params: { id: string 
   let book: Book | null = null;
   let staticPage: StaticPage | null = null;
   
+  // Note: In development mode, this will fetch from backend at runtime.
+  // In production build (npm run build), this data is fetched at build time
+  // and embedded into static HTML, so backend is not needed at runtime.
+  const isProduction = process.env.NODE_ENV === 'production';
+  
   try {
+    if (!isProduction) {
+      console.log('[DEV MODE] Fetching book data from backend...');
+    }
     // Fetch book data
     const bookResponse = await httpClient.get(`books/${params.id}`);
     
@@ -154,7 +164,9 @@ export default async function BookStaticPage({ params }: { params: { id: string 
       notFound();
     }
     
-    book = bookResponse.data as Book;
+    // Extract book data from API response
+    const responseData = bookResponse.data as any;
+    book = (responseData?.data || responseData) as Book;
     
     if (!book || !book.id) {
       notFound();

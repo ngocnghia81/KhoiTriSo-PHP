@@ -252,21 +252,40 @@ export default function CourseDetailPage() {
               <div className="space-y-6">
                 {/* Lesson Header */}
                 <div className="bg-white rounded-lg shadow p-6">
-                  <h2 className="text-2xl font-semibold mb-2">{lessonDetails.title}</h2>
-                  {lessonDetails.description && (
-                    <div 
-                      className="prose prose-sm max-w-none text-gray-600 mb-4"
-                      dangerouslySetInnerHTML={{ __html: lessonDetails.description }}
-                    />
-                  )}
-                  {(lessonDetails.videoDuration || lessonDetails.video_duration) && (
-                    <div className="text-sm text-gray-500">
-                      Thời lượng: {(() => {
-                        const duration = lessonDetails.videoDuration || lessonDetails.video_duration || 0;
-                        return `${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}`;
-                      })()}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <h2 className="text-2xl font-semibold mb-2">{lessonDetails.title}</h2>
+                      {lessonDetails.description && (
+                        <div 
+                          className="prose prose-sm max-w-none text-gray-600 mb-4"
+                          dangerouslySetInnerHTML={{ __html: lessonDetails.description }}
+                        />
+                      )}
+                      {(lessonDetails.videoDuration || lessonDetails.video_duration) && (
+                        <div className="text-sm text-gray-500">
+                          Thời lượng: {(() => {
+                            const duration = lessonDetails.videoDuration || lessonDetails.video_duration || 0;
+                            return `${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, '0')}`;
+                          })()}
+                        </div>
+                      )}
                     </div>
-                  )}
+                    <div className="ml-4 flex gap-2">
+                      <button
+                        onClick={() => router.push(`/dashboard/courses/${courseId}/lessons/${lessonDetails.id}/edit`)}
+                        className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm font-medium flex items-center gap-2"
+                      >
+                        Chỉnh sửa
+                      </button>
+                      <button
+                        onClick={() => router.push(`/dashboard/courses/${courseId}/lessons/${lessonDetails.id}/assignments/create`)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium flex items-center gap-2"
+                      >
+                        <PlusIcon className="h-5 w-5" />
+                        Tạo bài tập
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Video */}

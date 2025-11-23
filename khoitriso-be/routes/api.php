@@ -213,6 +213,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('assignments/{id}/start', [\App\Http\Controllers\AssignmentController::class, 'start']);
     Route::post('assignments/{id}/submit', [\App\Http\Controllers\AssignmentController::class, 'submit']);
     Route::get('assignments/{id}/attempts', [\App\Http\Controllers\AssignmentController::class, 'attempts']);
+    Route::post('assignments/{assignmentId}/questions', [\App\Http\Controllers\AssignmentController::class, 'createAssignmentQuestions']);
 
     // Unified questions
     Route::get('questions', [\App\Http\Controllers\QuestionController::class, 'index']);
@@ -421,6 +422,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('admin/lessons/{lessonId}/assignments', [\App\Http\Controllers\AdminController::class, 'getLessonAssignments']);
         Route::post('admin/lessons/{lessonId}/assignments', [\App\Http\Controllers\AdminController::class, 'createLessonAssignment']);
         Route::post('admin/assignments/{assignmentId}/questions', [\App\Http\Controllers\AdminController::class, 'createAssignmentQuestion']);
+        Route::get('admin/assignments/{assignmentId}/questions/template', [\App\Http\Controllers\AdminController::class, 'downloadAssignmentQuestionTemplate']);
+        Route::post('admin/assignments/{assignmentId}/questions/import', [\App\Http\Controllers\AdminController::class, 'importAssignmentQuestionsFromWord']);
         Route::get('admin/assignments/{assignmentId}/attempts', [\App\Http\Controllers\AdminController::class, 'getAssignmentAttempts']);
         Route::get('admin/attempts/{attemptId}', [\App\Http\Controllers\AdminController::class, 'getAttemptDetails']);
         Route::post('admin/attempts/{attemptId}/grade', [\App\Http\Controllers\AdminController::class, 'gradeAttempt']);

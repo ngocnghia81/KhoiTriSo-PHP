@@ -8,9 +8,14 @@ use App\Models\Question;
 use App\Models\QuestionOption;
 use App\Models\UserAssignmentAttempt;
 use App\Models\UserAssignmentAnswer;
+use App\Models\Notification;
+use App\Models\CourseEnrollment;
+use App\Models\Lesson;
+use App\Mail\AssignmentCreated;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * Assignment Controller
@@ -124,6 +129,66 @@ class AssignmentController extends BaseController
                 'shuffle_questions' => $data['shuffleQuestions'],
                 'shuffle_options' => $data['shuffleOptions'],
             ]);
+
+            // Send notifications to enrolled students
+            try {
+                $lesson = Lesson::with('course')->find($data['lessonId']);
+                if ($lesson && $lesson->course) {
+                    // Get all enrolled students for this course
+                    $enrollments = CourseEnrollment::where('course_id', $lesson->course->id)
+                        ->whereRaw('is_active = true')
+                        ->with('user:id,name,email')
+                        ->get();
+
+                    // Create notifications for each enrolled student
+                    $notifications = [];
+                    foreach ($enrollments as $enrollment) {
+                        if ($enrollment->user) {
+                            $assignmentTypeNames = [
+                                1 => 'Quiz',
+                                2 => 'Homework',
+                                3 => 'Exam',
+                                4 => 'Practice',
+                            ];
+                            $assignmentTypeName = $assignmentTypeNames[$data['assignmentType']] ?? 'Bài tập';
+
+                            $notifications[] = [
+                                'user_id' => $enrollment->user->id,
+                                'title' => 'Bài tập mới: ' . $a->title,
+                                'message' => "Giảng viên đã tạo {$assignmentTypeName} mới cho bài học \"{$lesson->title}\" trong khóa học \"{$lesson->course->title}\"",
+                                'type' => 3, // Assignment type
+                                'action_url' => "/assignments/{$a->id}",
+                                'priority' => 3, // High priority
+                                'created_at' => now(),
+                                'updated_at' => now(),
+                            ];
+                        }
+                    }
+
+                    // Bulk insert notifications and send emails
+                    if (!empty($notifications)) {
+                        Notification::insert($notifications);
+                        \Log::info("Sent {$assignmentTypeName} notification to " . count($notifications) . " students for assignment {$a->id}");
+                        
+                        // Send emails to enrolled students
+                        foreach ($enrollments as $enrollment) {
+                            if ($enrollment->user && $enrollment->user->email) {
+                                try {
+                                    Mail::to($enrollment->user->email)->send(
+                                        new AssignmentCreated($a, $lesson, $lesson->course, $enrollment->user->name ?? $enrollment->user->email)
+                                    );
+                                } catch (\Exception $emailError) {
+                                    // Log email error but don't fail the process
+                                    \Log::error("Error sending assignment email to {$enrollment->user->email}: " . $emailError->getMessage());
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                // Log error but don't fail the assignment creation
+                \Log::error('Error sending assignment notifications: ' . $e->getMessage());
+            }
             
             return $this->success($a);
 
@@ -347,6 +412,233 @@ class AssignmentController extends BaseController
 
         } catch (\Exception $e) {
             \Log::error('Error in assignment attempts: ' . $e->getMessage());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Create assignment with questions (BatchInsert from Word or Create single question)
+     * Implements Azota scoring rules
+     * POST /api/assignments/{assignmentId}/questions
+     */
+    public function createAssignmentQuestions(int $assignmentId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return $this->unauthorized();
+            }
+
+            $assignment = Assignment::find($assignmentId);
+            if (!$assignment) {
+                return $this->notFound('Assignment');
+            }
+
+            $validator = Validator::make($request->all(), [
+                'questions' => ['required', 'array', 'min:1'],
+                'questions.*.content' => ['required', 'string'],
+                'questions.*.type' => ['required', 'string', 'in:multiple_choice,essay'],
+                'questions.*.options' => ['required_if:questions.*.type,multiple_choice', 'array', 'min:2'],
+                'questions.*.options.*.text' => ['required_with:questions.*.options', 'string'],
+                'questions.*.options.*.isCorrect' => ['required_with:questions.*.options', 'boolean'],
+                'questions.*.explanation' => ['nullable', 'string'],
+                'questions.*.correctAnswer' => ['nullable', 'string'],
+                'questions.*.solutionVideo' => ['nullable', 'string', 'url'],
+                'questions.*.solutionType' => ['nullable', 'string', 'in:text,video,latex'],
+                'questions.*.defaultPoints' => ['nullable', 'numeric', 'min:0'], // For BatchInsert
+                'isBatchInsert' => ['nullable', 'boolean'], // true for Word import, false for single add
+            ]);
+
+            if ($validator->fails()) {
+                $errors = [];
+                foreach ($validator->errors()->toArray() as $field => $messages) {
+                    $errors[] = ['field' => $field, 'messages' => $messages];
+                }
+                return $this->validationError($errors);
+            }
+
+            $data = $validator->validated();
+            $isBatchInsert = $data['isBatchInsert'] ?? false;
+
+            \DB::beginTransaction();
+
+            try {
+                // Get existing questions for this assignment
+                $existingQuestions = Question::where('context_type', 1)
+                    ->where('context_id', $assignmentId)
+                    ->get();
+
+                // Azota Points array: [10%, 25%, 50%, 100%]
+                $azotaPoints = [0.1, 0.25, 0.5, 1.0];
+
+                // Prepare questions data
+                $questionsToCreate = [];
+                foreach ($data['questions'] as $index => $questionData) {
+                    // Count correct options for True-False calculation
+                    $correctOptionsCount = 0;
+                    if ($questionData['type'] === 'multiple_choice' && isset($questionData['options'])) {
+                        $correctOptionsCount = count(array_filter($questionData['options'], fn($opt) => $opt['isCorrect']));
+                    }
+
+                    $questionsToCreate[] = [
+                        'data' => $questionData,
+                        'correctOptionsCount' => $correctOptionsCount,
+                        'defaultPoints' => $questionData['defaultPoints'] ?? null,
+                    ];
+                }
+
+                // Azota Rule 3 & 4: Check if all questions have or don't have defaultPoints
+                $hasDefaultPoints = array_filter($questionsToCreate, fn($q) => $q['defaultPoints'] !== null);
+                $allHaveDefaultPoints = count($hasDefaultPoints) === count($questionsToCreate);
+                $allDontHaveDefaultPoints = count($hasDefaultPoints) === 0;
+
+                if ($isBatchInsert) {
+                    // BatchInsert: All must have or all must not have defaultPoints
+                    if (!$allHaveDefaultPoints && !$allDontHaveDefaultPoints) {
+                        \DB::rollBack();
+                        return $this->validationError([[
+                            'field' => 'questions',
+                            'messages' => ['Tất cả câu hỏi phải có HOẶC đều không có DefaultPoints']
+                        ]]);
+                    }
+
+                    if ($allDontHaveDefaultPoints) {
+                        // Auto-calculate defaultPoints so total = 10
+                        $totalQuestions = count($questionsToCreate) + $existingQuestions->count();
+                        if ($totalQuestions > 0) {
+                            $defaultPointsPerQuestion = 10.0 / $totalQuestions;
+                            foreach ($questionsToCreate as &$q) {
+                                $q['defaultPoints'] = $defaultPointsPerQuestion;
+                            }
+                        }
+                    } else {
+                        // Check if total = 10
+                        $totalPoints = array_sum(array_column($questionsToCreate, 'defaultPoints'));
+                        $existingTotal = $existingQuestions->sum('default_points');
+                        if (abs($totalPoints + $existingTotal - 10.0) > 0.01) {
+                            \DB::rollBack();
+                            return $this->validationError([[
+                                'field' => 'questions',
+                                'messages' => ['Tổng điểm phải bằng 10. Hiện tại: ' . ($totalPoints + $existingTotal)]
+                            ]]);
+                        }
+                    }
+                } else {
+                    // Create (single question): Ignore defaultPoints input, recalculate all
+                    // Remove defaultPoints from input
+                    foreach ($questionsToCreate as &$q) {
+                        $q['defaultPoints'] = null;
+                    }
+
+                    // Recalculate defaultPoints for all questions (existing + new) so total = 10
+                    $totalQuestions = count($questionsToCreate) + $existingQuestions->count();
+                    if ($totalQuestions > 0) {
+                        $defaultPointsPerQuestion = 10.0 / $totalQuestions;
+                        
+                        // Update existing questions
+                        foreach ($existingQuestions as $existingQ) {
+                            $existingQ->default_points = $defaultPointsPerQuestion;
+                            $existingQ->save();
+                        }
+
+                        // Set for new questions
+                        foreach ($questionsToCreate as &$q) {
+                            $q['defaultPoints'] = $defaultPointsPerQuestion;
+                        }
+                    }
+                }
+
+                // Create questions
+                $createdQuestions = [];
+                foreach ($questionsToCreate as $index => $qData) {
+                    $questionData = $qData['data'];
+                    $defaultPoints = $qData['defaultPoints'];
+                    $correctOptionsCount = $qData['correctOptionsCount'];
+
+                    // Get next order index
+                    $maxOrder = Question::where('context_type', 1)
+                        ->where('context_id', $assignmentId)
+                        ->max('order_index');
+                    $orderIndex = ($maxOrder ?? 0) + 1;
+
+                    // Calculate points array based on correct options count
+                    // Azota Points array: [10%, 25%, 50%, 100%] for 1, 2, 3, 4 correct options
+                    // True-False: Điểm = DefaultPoints × Points[Số options đúng - 1]
+                    $pointsArray = [];
+                    for ($i = 0; $i < 4; $i++) {
+                        // i = 0 -> 1 correct option -> 10% (azotaPoints[0])
+                        // i = 1 -> 2 correct options -> 25% (azotaPoints[1])
+                        // i = 2 -> 3 correct options -> 50% (azotaPoints[2])
+                        // i = 3 -> 4 correct options -> 100% (azotaPoints[3])
+                        if ($correctOptionsCount > 0 && $correctOptionsCount <= 4) {
+                            $pointsArray[] = $defaultPoints * $azotaPoints[$correctOptionsCount - 1];
+                        } else {
+                            // Default to full points if no correct options or more than 4
+                            $pointsArray[] = $defaultPoints;
+                        }
+                    }
+
+                    // Create question
+                    $question = Question::create([
+                        'context_type' => 1, // assignment
+                        'context_id' => $assignmentId,
+                        'question_content' => (string) $questionData['content'],
+                        'question_type' => $questionData['type'] === 'multiple_choice' ? 1 : 2,
+                        'difficulty_level' => 2, // Default medium
+                        'points' => json_encode($pointsArray),
+                        'default_points' => $defaultPoints,
+                        'explanation_content' => $questionData['explanation'] ?? null,
+                        'order_index' => $orderIndex,
+                        'is_active' => \DB::raw('true'),
+                        'created_by' => $user->name ?? $user->email,
+                    ]);
+
+                    // Create options for multiple choice
+                    if ($questionData['type'] === 'multiple_choice' && isset($questionData['options'])) {
+                        foreach ($questionData['options'] as $optIndex => $optionData) {
+                            // Calculate points_value based on Azota rule
+                            // For correct option: use points from array based on total correct options count
+                            $pointsValue = 0.0;
+                            if ($optionData['isCorrect']) {
+                                // True-False: Điểm = DefaultPoints × Points[Số options đúng - 1]
+                                if ($correctOptionsCount > 0 && $correctOptionsCount <= 4) {
+                                    $pointsValue = $defaultPoints * $azotaPoints[$correctOptionsCount - 1];
+                                } else {
+                                    $pointsValue = $defaultPoints;
+                                }
+                            }
+
+                            QuestionOption::create([
+                                'question_id' => $question->id,
+                                'option_content' => (string) $optionData['text'],
+                                'is_correct' => \DB::raw($optionData['isCorrect'] ? 'true' : 'false'),
+                                'order_index' => $optIndex + 1,
+                                'points_value' => $pointsValue,
+                                'created_by' => $user->name ?? $user->email,
+                            ]);
+                        }
+                    }
+
+                    $createdQuestions[] = $question;
+                }
+
+                \DB::commit();
+
+                return $this->success([
+                    'assignment' => $assignment,
+                    'questions' => $createdQuestions,
+                    'totalQuestions' => $existingQuestions->count() + count($createdQuestions),
+                ], 'Tạo câu hỏi thành công', $request);
+
+            } catch (\Exception $e) {
+                \DB::rollBack();
+                \Log::error('Error in createAssignmentQuestions: ' . $e->getMessage());
+                \Log::error('Stack trace: ' . $e->getTraceAsString());
+                return $this->internalError();
+            }
+
+        } catch (\Exception $e) {
+            \Log::error('Error in createAssignmentQuestions: ' . $e->getMessage());
             return $this->internalError();
         }
     }
