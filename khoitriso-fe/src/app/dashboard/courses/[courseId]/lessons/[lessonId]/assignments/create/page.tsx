@@ -37,7 +37,10 @@ export default function CreateAssignmentPage() {
     passingScore: '',
     shuffleQuestions: false,
     shuffleOptions: true,
+    maxScore: 10, // Default max score
   });
+
+  const [pointsMode, setPointsMode] = useState<'manual' | 'auto'>('auto'); // 'manual' = tự nhập, 'auto' = chia đều
 
   const [questions, setQuestions] = useState<Array<{
     id: string;
@@ -123,8 +126,58 @@ export default function CreateAssignmentPage() {
   };
 
   const removeQuestion = (index: number) => {
-    setQuestions(questions.filter((_, i) => i !== index));
+    const newQuestions = questions.filter((_, i) => i !== index);
+    setQuestions(newQuestions);
+    // Recalculate points if in auto mode
+    if (pointsMode === 'auto' && newQuestions.length > 0) {
+      const pointsPerQuestion = assignmentForm.maxScore / newQuestions.length;
+      const updated = newQuestions.map(q => ({
+        ...q,
+        defaultPoints: parseFloat(pointsPerQuestion.toFixed(2))
+      }));
+      setQuestions(updated);
+    }
   };
+
+  // Handle points mode change
+  const handlePointsModeChange = (mode: 'manual' | 'auto') => {
+    setPointsMode(mode);
+    if (mode === 'auto') {
+      // Chia đều điểm
+      if (questions.length > 0) {
+        const pointsPerQuestion = assignmentForm.maxScore / questions.length;
+        const updated = questions.map(q => ({
+          ...q,
+          defaultPoints: parseFloat(pointsPerQuestion.toFixed(2))
+        }));
+        setQuestions(updated);
+      }
+    } else {
+      // Tự nhập - xóa tất cả defaultPoints
+      const updated = questions.map(q => ({
+        ...q,
+        defaultPoints: undefined
+      }));
+      setQuestions(updated);
+    }
+  };
+
+  // Recalculate points when questions count changes (auto mode)
+  useEffect(() => {
+    if (pointsMode === 'auto' && questions.length > 0) {
+      const pointsPerQuestion = assignmentForm.maxScore / questions.length;
+      const expectedPoints = parseFloat(pointsPerQuestion.toFixed(2));
+      // Only update if points don't match
+      const needsUpdate = questions.some(q => Math.abs((q.defaultPoints || 0) - expectedPoints) > 0.01);
+      if (needsUpdate) {
+        const updated = questions.map(q => ({
+          ...q,
+          defaultPoints: expectedPoints
+        }));
+        setQuestions(updated);
+      }
+    }
+  }, [questions.length, assignmentForm.maxScore, pointsMode]);
 
   const updateQuestion = (index: number, field: string, value: any) => {
     const updated = [...questions];
@@ -218,7 +271,7 @@ export default function CreateAssignmentPage() {
         description: assignmentForm.description,
         lessonId: lessonId,
         assignmentType: assignmentForm.assignmentType,
-        maxScore: 10, // Always 10 for Azota
+        maxScore: assignmentForm.maxScore || 10,
         timeLimit: assignmentForm.timeLimit ? parseInt(assignmentForm.timeLimit) : undefined,
         maxAttempts: assignmentForm.maxAttempts,
         showAnswersAfter: assignmentForm.showAnswersAfter,
@@ -371,6 +424,36 @@ export default function CreateAssignmentPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Tổng điểm tối đa <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    value={assignmentForm.maxScore}
+                    onChange={(e) => {
+                      const newMaxScore = parseFloat(e.target.value) || 10;
+                      setAssignmentForm({ ...assignmentForm, maxScore: newMaxScore });
+                      // Recalculate points if in auto mode
+                      if (pointsMode === 'auto' && questions.length > 0) {
+                        const pointsPerQuestion = newMaxScore / questions.length;
+                        const updated = questions.map(q => ({
+                          ...q,
+                          defaultPoints: parseFloat(pointsPerQuestion.toFixed(2))
+                        }));
+                        setQuestions(updated);
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="10"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Tổng điểm tối đa của bài tập (mặc định: 10 điểm)
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Hiển thị đáp án và điểm
                   </label>
                   <select
@@ -459,6 +542,48 @@ export default function CreateAssignmentPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Points Mode Toggle */}
+              {questions.length > 0 && (
+                <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Chế độ điểm
+                      </label>
+                      <p className="text-xs text-gray-500">
+                        {pointsMode === 'auto' 
+                          ? `Điểm sẽ được chia đều: ${assignmentForm.maxScore} điểm / ${questions.length} câu = ${(assignmentForm.maxScore / questions.length).toFixed(2)} điểm/câu`
+                          : 'Tự nhập điểm cho từng câu hỏi'}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handlePointsModeChange('auto')}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                          pointsMode === 'auto'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        Chia đều điểm
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handlePointsModeChange('manual')}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                          pointsMode === 'manual'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        Tự nhập điểm
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Word Import Section - Will be available after creating assignment */}
               <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
@@ -645,19 +770,28 @@ export default function CreateAssignmentPage() {
                         {/* Default Points (for BatchInsert) */}
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Điểm mặc định (tùy chọn - chỉ dùng khi import từ Word)
+                            Điểm mặc định {pointsMode === 'auto' && `(${(assignmentForm.maxScore / questions.length).toFixed(2)} điểm/câu - tự động chia đều)`}
                           </label>
                           <input
                             type="number"
                             min="0"
                             step="0.01"
                             value={question.defaultPoints || ''}
-                            onChange={(e) => updateQuestion(qIndex, 'defaultPoints', e.target.value ? parseFloat(e.target.value) : undefined)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="Để trống để tự động tính"
+                            onChange={(e) => {
+                              if (pointsMode === 'manual') {
+                                updateQuestion(qIndex, 'defaultPoints', e.target.value ? parseFloat(e.target.value) : undefined);
+                              }
+                            }}
+                            disabled={pointsMode === 'auto'}
+                            className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                              pointsMode === 'auto' ? 'bg-gray-100 cursor-not-allowed' : ''
+                            }`}
+                            placeholder={pointsMode === 'auto' ? 'Tự động chia đều' : 'Nhập điểm cho câu hỏi này'}
                           />
                           <p className="text-xs text-gray-500 mt-1">
-                            Nếu tất cả câu hỏi đều có điểm mặc định, tổng điểm phải = 10. Nếu không có, hệ thống sẽ tự động tính.
+                            {pointsMode === 'auto' 
+                              ? `Điểm được chia đều từ tổng ${assignmentForm.maxScore} điểm. Tổng điểm tất cả câu hỏi = ${questions.reduce((sum, q) => sum + (q.defaultPoints || 0), 0).toFixed(2)}.`
+                              : 'Nếu tất cả câu hỏi đều có điểm mặc định, tổng điểm phải = ' + assignmentForm.maxScore + '. Nếu không có, hệ thống sẽ tự động tính.'}
                           </p>
                         </div>
 
