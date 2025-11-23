@@ -25,14 +25,15 @@ export default function CreateQuestionsPage() {
 
   const [chapter, setChapter] = useState<any>(null);
   const [questions, setQuestions] = useState<Array<{
-    id: string;
+    id: string | number; // Can be string for new questions or number for existing questions
     content: string;
     type: 'multiple_choice' | 'essay';
-    options?: Array<{ id: string; text: string; isCorrect: boolean }>;
+    options?: Array<{ id: string | number; text: string; isCorrect: boolean }>;
     correctAnswer?: string;
     explanation: string;
     solutionVideo?: string;
     solutionType?: 'text' | 'video' | 'latex';
+    isExisting?: boolean; // Flag to mark existing questions
   }>>([]);
 
   const [showPreview, setShowPreview] = useState(true);
@@ -60,6 +61,7 @@ export default function CreateQuestionsPage() {
       router.push('/dashboard/books');
     } else {
       fetchChapter();
+      fetchExistingQuestions();
     }
   }, [bookId, chapterId, router, isInstructor]);
 
@@ -75,7 +77,7 @@ export default function CreateQuestionsPage() {
         // Use admin API
         book = await bookService.getBookAdmin(bookId);
       }
-      const chapterData = book.chapters?.find((ch: any) => ch.id === chapterId);
+      const chapterData = (book as any).chapters?.find((ch: any) => ch.id === chapterId);
       if (chapterData) {
         setChapter(chapterData);
       } else {
@@ -88,6 +90,42 @@ export default function CreateQuestionsPage() {
       router.push(`/dashboard/books/${bookId}`);
     } finally {
       setLoadingChapter(false);
+    }
+  };
+
+  const fetchExistingQuestions = async () => {
+    if (!bookId || !chapterId) return;
+    try {
+      // Fetch existing questions using admin endpoint
+      const questionsData = await bookService.getChapterQuestions(bookId, chapterId, true);
+      
+      if (questionsData && questionsData.length > 0) {
+        // Map existing questions to form format
+        const formattedQuestions = questionsData.map((q: any) => ({
+          id: q.id, // Use actual question ID from database
+          content: q.content || q.question_content || q.questionContent || '',
+          type: ((q.type === 1 || q.type === 'multiple_choice') ? 'multiple_choice' : 'essay') as 'multiple_choice' | 'essay',
+          options: q.options?.map((opt: any) => ({
+            id: opt.id, // Use actual option ID from database
+            text: opt.content || opt.option_content || opt.optionContent || '',
+            isCorrect: opt.is_correct !== undefined ? opt.is_correct : (opt.isCorrect !== undefined ? opt.isCorrect : false),
+          })) || [],
+          correctAnswer: q.correct_answer || q.correctAnswer || '',
+          explanation: q.explanation || q.explanation_content || q.explanationContent || '',
+          solutionVideo: q.solution?.video_url || q.solution?.videoUrl || q.solution_video || '',
+          solutionType: (q.solution?.type === 1 ? 'video' : (q.solution?.type === 3 ? 'latex' : 'text') || 
+                        (q.solution_type === 1 ? 'video' : (q.solution_type === 3 ? 'latex' : 'text')) || 'text') as 'text' | 'video' | 'latex',
+          isExisting: true, // Mark as existing question
+        }));
+        
+        setQuestions(formattedQuestions);
+      }
+    } catch (error: any) {
+      console.error('Error fetching existing questions:', error);
+      // Don't show error if no questions exist yet
+      if (error.response?.status !== 404) {
+        notify('Lỗi tải câu hỏi đã có', 'error');
+      }
     }
   };
 
@@ -142,12 +180,22 @@ export default function CreateQuestionsPage() {
   };
 
   const addQuestionFromSample = (sample: SampleQuestion) => {
-    const newQuestion: any = {
+    const newQuestion: {
+      id: string;
+      content: string;
+      type: 'multiple_choice' | 'essay';
+      explanation: string;
+      solutionType: 'text' | 'video' | 'latex';
+      isExisting: boolean;
+      options?: Array<{ id: string; text: string; isCorrect: boolean }>;
+      correctAnswer?: string;
+    } = {
       id: `q-${Date.now()}-${Math.random()}`,
       content: sample.content,
-      type: sample.type,
+      type: sample.type as 'multiple_choice' | 'essay',
       explanation: sample.explanation || '',
       solutionType: 'text' as const,
+      isExisting: false,
     };
 
     if (sample.type === 'multiple_choice' && sample.options) {
@@ -210,11 +258,14 @@ export default function CreateQuestionsPage() {
 
     setLoading(true);
     try {
-      // Tạo các câu hỏi cho chương này
+      // Tạo các câu hỏi cho chương này (bao gồm cả câu hỏi mới và câu hỏi đã chỉnh sửa)
       const questionsData = questions.map(q => ({
         content: q.content,
         type: q.type,
-        options: q.type === 'multiple_choice' ? q.options : undefined,
+        options: q.type === 'multiple_choice' ? q.options?.map(opt => ({
+          text: opt.text,
+          isCorrect: opt.isCorrect,
+        })) : undefined,
         explanation: q.solutionType === 'video' ? undefined : (q.explanation || undefined),
         correctAnswer: q.type === 'essay' ? q.correctAnswer : undefined,
         solutionVideo: q.solutionType === 'video' ? q.solutionVideo : undefined,
@@ -223,11 +274,22 @@ export default function CreateQuestionsPage() {
 
       await bookService.createChapterQuestions(bookId, chapterId, questionsData);
 
-      notify('Tạo câu hỏi thành công!', 'success');
+      const existingCount = questions.filter(q => q.isExisting).length;
+      const newCount = questions.filter(q => !q.isExisting).length;
+      let message = 'Cập nhật câu hỏi thành công!';
+      if (newCount > 0 && existingCount > 0) {
+        message = `Đã cập nhật ${existingCount} câu hỏi và thêm ${newCount} câu hỏi mới!`;
+      } else if (newCount > 0) {
+        message = `Đã thêm ${newCount} câu hỏi mới!`;
+      } else if (existingCount > 0) {
+        message = `Đã cập nhật ${existingCount} câu hỏi!`;
+      }
+      
+      notify(message, 'success');
       router.push(`/dashboard/books/${bookId}`);
     } catch (error: any) {
-      console.error('Error creating questions:', error);
-      notify(error.message || 'Lỗi tạo câu hỏi', 'error');
+      console.error('Error creating/updating questions:', error);
+      notify(error.message || 'Lỗi cập nhật câu hỏi', 'error');
     } finally {
       setLoading(false);
     }
@@ -302,7 +364,7 @@ export default function CreateQuestionsPage() {
                       const formattedQuestions = importedQuestions.map((q: any) => ({
                         id: `q-${Date.now()}-${Math.random()}`,
                         content: q.content || q.question_content || '',
-                        type: q.type === 1 || q.type === 'multiple_choice' ? 'multiple_choice' : 'essay',
+                        type: ((q.type === 1 || q.type === 'multiple_choice') ? 'multiple_choice' : 'essay') as 'multiple_choice' | 'essay',
                         options: q.options?.map((opt: any, idx: number) => ({
                           id: `opt-${Date.now()}-${idx}`,
                           text: opt.text || opt.option_content || opt.content || '',
@@ -311,7 +373,8 @@ export default function CreateQuestionsPage() {
                         explanation: q.explanation || q.explanation_content || '',
                         correctAnswer: q.correct_answer || q.correctAnswer,
                         solutionVideo: q.solution_video || q.solutionVideo,
-                        solutionType: q.solution_type === 1 ? 'video' : (q.solution_type === 3 ? 'latex' : 'text') || 'text',
+                        solutionType: ((q.solution_type === 1 ? 'video' : (q.solution_type === 3 ? 'latex' : 'text')) || 'text') as 'text' | 'video' | 'latex',
+                        isExisting: false,
                       }));
                       setQuestions([...questions, ...formattedQuestions]);
                       notify(`Đã import ${formattedQuestions.length} câu hỏi từ file Word!`, 'success');
@@ -332,7 +395,14 @@ export default function CreateQuestionsPage() {
                   {questions.map((question, qIndex) => (
                     <div key={question.id} className="border border-gray-200 rounded-lg p-4">
                       <div className="flex items-start justify-between mb-4">
-                        <h3 className="font-medium text-gray-900">Câu hỏi {qIndex + 1}</h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-medium text-gray-900">Câu hỏi {qIndex + 1}</h3>
+                          {question.isExisting && (
+                            <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded">
+                              Đã có
+                            </span>
+                          )}
+                        </div>
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -343,7 +413,11 @@ export default function CreateQuestionsPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => removeQuestion(qIndex)}
+                            onClick={() => {
+                              if (confirm('Bạn có chắc chắn muốn xóa câu hỏi này?')) {
+                                removeQuestion(qIndex);
+                              }
+                            }}
                             className="text-sm text-red-600 hover:text-red-900"
                           >
                             Xóa
@@ -504,6 +578,17 @@ export default function CreateQuestionsPage() {
                       )}
                     </div>
                   ))}
+                  {/* Nút thêm câu hỏi ở cuối danh sách */}
+                  <div className="mt-6 pt-6 border-t border-gray-200">
+                    <button
+                      type="button"
+                      onClick={addQuestion}
+                      className="w-full px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium flex items-center justify-center gap-2"
+                    >
+                      <span className="text-lg">+</span>
+                      Thêm câu hỏi
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

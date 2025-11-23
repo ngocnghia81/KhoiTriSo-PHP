@@ -580,7 +580,8 @@ export default function BookDetailPage() {
                           </div>
                         )}
 
-                        {question.explanation_content && (
+                        {/* Chỉ hiển thị "Giải thích" nếu không có "Lời giải" */}
+                        {question.explanation_content && !question.solution && (
                           <div className="mb-4 p-3 bg-blue-50 rounded border border-blue-200">
                             <div className="text-sm font-medium text-blue-900 mb-1">Giải thích:</div>
                             <div className="text-sm text-blue-800">
