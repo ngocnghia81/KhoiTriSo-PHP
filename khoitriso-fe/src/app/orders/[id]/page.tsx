@@ -97,6 +97,7 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Fetch order data
   useEffect(() => {
     const fetchOrder = async () => {
       const token = localStorage.getItem('token');
@@ -109,7 +110,9 @@ export default function OrderDetailPage() {
         const response = await httpClient.get(`orders/${params.id}`);
 
         if (response.ok && response.data) {
-          setOrder(response.data as Order);
+          // Backend returns order directly, not wrapped in { success: true, data: ... }
+          const orderData = (response.data as any).data || response.data;
+          setOrder(orderData as Order);
         } else {
           router.push('/orders');
         }
@@ -124,19 +127,39 @@ export default function OrderDetailPage() {
     if (params.id) {
       fetchOrder();
     }
+  }, [params.id, router]);
 
-    // Check for VNPay callback status in URL
+  // Handle VNPay callback status in URL
+  useEffect(() => {
+    if (loading) return;
+
     const urlParams = new URLSearchParams(window.location.search);
     const status = urlParams.get('status');
     const message = urlParams.get('message');
     
     if (status === 'success') {
-      // Show success message
-      setTimeout(() => {
-        alert('Thanh toán thành công!');
-        // Clean URL
-        window.history.replaceState({}, '', window.location.pathname);
-      }, 500);
+      // Refresh order data to get updated status
+      const refreshOrder = async () => {
+        try {
+          const response = await httpClient.get(`orders/${params.id}`);
+          if (response.ok && response.data) {
+            // Backend returns order directly, not wrapped in { success: true, data: ... }
+            const orderData = (response.data as any).data || response.data;
+            setOrder(orderData as Order);
+          }
+        } catch (error) {
+          console.error('Error refreshing order:', error);
+        }
+      };
+      
+      refreshOrder().then(() => {
+        // Show success message after data is refreshed
+        setTimeout(() => {
+          alert('Thanh toán thành công!');
+          // Clean URL
+          window.history.replaceState({}, '', window.location.pathname);
+        }, 500);
+      });
     } else if (status === 'error' && message) {
       // Show error message
       setTimeout(() => {
@@ -145,7 +168,8 @@ export default function OrderDetailPage() {
         window.history.replaceState({}, '', window.location.pathname);
       }, 500);
     }
-  }, [params.id, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, params.id]);
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('vi-VN', {

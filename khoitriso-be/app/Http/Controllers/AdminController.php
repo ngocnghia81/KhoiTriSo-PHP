@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use PhpOffice\PhpWord\PhpWord;
+use PhpOffice\PhpWord\IOFactory;
 
 /**
  * Admin Controller
@@ -2120,6 +2122,466 @@ class AdminController extends BaseController
 
         } catch (\Exception $e) {
             \Log::error('Error in admin createChapterQuestions: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->internalError();
+        }
+    }
+
+    /**
+     * Download Word template for questions (Admin only)
+     * GET /api/admin/books/{bookId}/chapters/{chapterId}/questions/template
+     */
+    public function downloadQuestionTemplate(int $bookId, int $chapterId, Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (!$user || ($user->role !== 'admin' && $user->role !== 'instructor')) {
+                return $this->forbidden('Chỉ admin và giảng viên mới có quyền tải file mẫu');
+            }
+
+            // Verify chapter exists and belongs to book
+            $chapter = BookChapter::where('id', $chapterId)
+                ->where('book_id', $bookId)
+                ->first();
+            
+            if (!$chapter) {
+                return $this->notFound('Chapter');
+            }
+
+            // Instead of using PhpWord, create a simple RTF file
+            // RTF is more compatible with Word 2016
+            $rtfContent = '{\\rtf1\\ansi\\deff0
+{\\fonttbl{\\f0\\fnil\\fcharset0 Arial;}}
+{\\colortbl ;\\red0\\green0\\blue0;}
+\\viewkind4\\uc1\\pard\\cf1\\f0\\fs24
+
+{\\b\\fs32 MAU FILE TAO CAU HOI CHO CHUONG SACH}\\par
+\\par
+
+{\\b\\fs28 HUONG DAN SU DUNG:}\\par
+\\par
+1. Moi cau hoi bat dau bang dong "Cau X:" (X la so thu tu)\\par
+2. Co 4 loai:\\par
+   - [TIEU DE]: Chi la tieu de, khong phai cau hoi (Loai 0)\\par
+   - [TRAC NGHIEM]: Cau hoi trac nghiem 1 dap an dung (Loai 1)\\par
+   - [NHIEU DAP AN]: Cau hoi trac nghiem nhieu dap an dung (Loai 2)\\par
+   - [TU LUAN]: Cau hoi tu luan (Loai 3)\\par
+3. Noi dung cau hoi viet ngay sau loai cau hoi\\par
+4. Voi cau trac nghiem (Loai 1 va 2):\\par
+   - Moi lua chon bat dau bang "A.", "B.", "C.", "D.", ...\\par
+   - Danh dau dap an dung bang dau * o TRUOC lua chon: "*A. ..."\\par
+   - Vi du: "*A. Dap an dung" hoac "A. Dap an sai"\\par
+5. Voi cau tu luan:\\par
+   - Dap an mau (neu co) viet sau dong "Dap an:"\\par
+6. Giai thich (neu co) viet sau dong "Giai thich:"\\par
+\\par
+\\par
+
+{\\b\\fs28 VI DU:}\\par
+\\par
+{\\b Cau 0:}\\par
+[TIEU DE]\\par
+Chuong 1: Dai so co ban\\par
+\\par
+{\\b Cau 1:}\\par
+[TRAC NGHIEM]\\par
+Tinh gia tri cua bieu thuc: 2x + 3 khi x = 5\\par
+*A. 13\\par
+B. 10\\par
+C. 15\\par
+D. 20\\par
+Giai thich: Thay x = 5 vao bieu thuc ta co 2(5) + 3 = 13\\par
+\\par
+{\\b Cau 2:}\\par
+[NHIEU DAP AN]\\par
+Chon cac so nguyen to trong cac so sau:\\par
+*A. 2\\par
+B. 4\\par
+*C. 5\\par
+D. 6\\par
+*E. 7\\par
+Giai thich: So nguyen to la so chi chia het cho 1 va chinh no\\par
+\\par
+{\\b Cau 3:}\\par
+[TU LUAN]\\par
+Giai phuong trinh: x^2 - 5x + 6 = 0\\par
+Dap an: x = 2 hoac x = 3\\par
+Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
+\\par
+\\par
+{\\b --- BAT DAU DIEN CAU HOI CUA BAN TAI DAY ---}\\par
+\\par
+\\par
+}';
+
+            // Save RTF file
+            $tempDir = sys_get_temp_dir();
+            if (!is_writable($tempDir)) {
+                $tempDir = storage_path('app/temp');
+                if (!is_dir($tempDir)) {
+                    mkdir($tempDir, 0755, true);
+                }
+            }
+            
+            $tempFile = $tempDir . DIRECTORY_SEPARATOR . 'question_template_' . uniqid() . '.rtf';
+            
+            try {
+                // Write RTF content to file
+                file_put_contents($tempFile, $rtfContent);
+                
+                // Verify file was created
+                if (!file_exists($tempFile) || filesize($tempFile) === 0) {
+                    throw new \Exception('RTF file was not created properly');
+                }
+                
+                \Log::info("RTF template created: {$tempFile}, size: " . filesize($tempFile) . " bytes");
+
+                // Return file as download
+                $fileName = "Mau_Cau_Hoi_Chuong_{$chapterId}.rtf";
+                
+                return response()->download($tempFile, $fileName, [
+                    'Content-Type' => 'application/rtf',
+                ])->deleteFileAfterSend(true);
+                
+            } catch (\Exception $e) {
+                \Log::error('Error creating RTF file: ' . $e->getMessage());
+                if (isset($tempFile) && file_exists($tempFile)) {
+                    @unlink($tempFile);
+                }
+                return $this->error('Không thể tạo file mẫu: ' . $e->getMessage(), 500);
+            }
+
+        } catch (\Exception $e) {
+            \Log::error('Error in downloadQuestionTemplate: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return $this->error('Lỗi khi tạo file mẫu: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Import questions from Word file (Admin only)
+     * POST /api/admin/books/{bookId}/chapters/{chapterId}/questions/import
+     */
+    public function importQuestionsFromWord(int $bookId, int $chapterId, Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user || ($user->role !== 'admin' && $user->role !== 'instructor')) {
+                return $this->forbidden('Chỉ admin và giảng viên mới có quyền import câu hỏi');
+            }
+
+            // Verify chapter exists
+            $chapter = BookChapter::where('id', $chapterId)
+                ->where('book_id', $bookId)
+                ->first();
+            
+            if (!$chapter) {
+                return $this->notFound('Chapter');
+            }
+
+            // Validate file - support DOCX, DOC, and RTF
+            $validator = Validator::make($request->all(), [
+                'file' => ['required', 'file', 'mimes:docx,doc,rtf', 'max:10240'], // Max 10MB
+            ]);
+
+            if ($validator->fails()) {
+                return $this->validationError($validator->errors()->toArray());
+            }
+
+            $file = $request->file('file');
+            $filePath = $file->getRealPath();
+
+            // Load Word document
+            try {
+                $phpWord = IOFactory::load($filePath);
+            } catch (\Exception $e) {
+                return $this->error('Không thể đọc file Word. Vui lòng kiểm tra định dạng file.', 400);
+            }
+
+            // Parse questions from document
+            $questions = [];
+            $currentQuestion = null;
+            $currentType = null;
+            $questionNumber = 0;
+
+            foreach ($phpWord->getSections() as $section) {
+                foreach ($section->getElements() as $element) {
+                    if (method_exists($element, 'getText')) {
+                        $text = trim($element->getText());
+                        
+                        if (empty($text) || strpos($text, '---') !== false || strpos($text, 'HƯỚNG DẪN') !== false) {
+                            continue; // Skip instructions and separators
+                        }
+
+                        // Check if this is a question header - support both "Câu 1:" and "Câu 1."
+                        if (preg_match('/^Câu\s+(\d+)[:\.]?\s*/i', $text, $matches)) {
+                            // Save previous question if exists
+                            if ($currentQuestion) {
+                                // Clean up _in_explanation flag before saving
+                                unset($currentQuestion['_in_explanation']);
+                                $questions[] = $currentQuestion;
+                            }
+                            
+                            $questionNumber = (int)$matches[1];
+                            $currentQuestion = [
+                                'content' => '',
+                                'type' => null,
+                                'options' => [],
+                                'explanation' => '',
+                                'correctAnswer' => '',
+                            ];
+                            $currentType = null;
+                            
+                            // Extract question content from same line if present
+                            $remainingText = preg_replace('/^Câu\s+(\d+)[:\.]?\s*/i', '', $text);
+                            if (!empty(trim($remainingText))) {
+                                $currentQuestion['content'] = trim($remainingText);
+                            }
+                        }
+                        // Check question type
+                        elseif (preg_match('/\[TIÊU\s*ĐỀ\]/i', $text)) {
+                            if ($currentQuestion) {
+                                $currentQuestion['type'] = 'title'; // Loại 0
+                                $currentType = 'title';
+                            }
+                        }
+                        elseif (preg_match('/\[TRẮC\s*NGHIỆM\]/i', $text)) {
+                            if ($currentQuestion) {
+                                $currentQuestion['type'] = 'multiple_choice_single'; // Loại 1
+                                $currentType = 'multiple_choice_single';
+                            }
+                        }
+                        elseif (preg_match('/\[NHIỀU\s*ĐÁP\s*ÁN\]/i', $text)) {
+                            if ($currentQuestion) {
+                                $currentQuestion['type'] = 'multiple_choice_multiple'; // Loại 2
+                                $currentType = 'multiple_choice_multiple';
+                            }
+                        }
+                        elseif (preg_match('/\[TỰ\s*LUẬN\]/i', $text)) {
+                            if ($currentQuestion) {
+                                $currentQuestion['type'] = 'essay'; // Loại 3
+                                $currentType = 'essay';
+                            }
+                        }
+                        // Check for options (A., B., C., D., etc.) with * prefix for correct answer
+                        // Support both formats: "*A. text" and "A. text"
+                        elseif (preg_match('/^(\*)?\s*([A-Z])\.\s*(.+)$/i', $text, $optMatches)) {
+                            if ($currentQuestion && ($currentType === 'multiple_choice_single' || $currentType === 'multiple_choice_multiple')) {
+                                $isCorrect = !empty($optMatches[1]) && trim($optMatches[1]) === '*';
+                                $optionText = trim($optMatches[3]);
+                                $currentQuestion['options'][] = [
+                                    'text' => $optionText,
+                                    'isCorrect' => $isCorrect,
+                                ];
+                            }
+                        }
+                        // Check for answer
+                        elseif (preg_match('/^Đáp\s*án:/i', $text, $ansMatches)) {
+                            $answerText = preg_replace('/^Đáp\s*án:\s*/i', '', $text);
+                            if ($currentQuestion && $currentType === 'essay') {
+                                $currentQuestion['correctAnswer'] = trim($answerText);
+                            }
+                        }
+                        // Check for explanation - support both "Giải thích:" and "Lời giải"
+                        elseif (preg_match('/^(Giải\s*thích|Lời\s*giải):/i', $text, $expMatches)) {
+                            $explanationText = preg_replace('/^(Giải\s*thích|Lời\s*giải):\s*/i', '', $text);
+                            if ($currentQuestion) {
+                                $currentQuestion['explanation'] = trim($explanationText);
+                            }
+                        }
+                        // Also check for standalone "Lời giải" on its own line (common format)
+                        elseif (preg_match('/^(Lời\s*giải)$/i', $text)) {
+                            // Mark that we're in explanation mode - next lines are explanation
+                            if ($currentQuestion) {
+                                $currentQuestion['_in_explanation'] = true;
+                            }
+                        }
+                        // Otherwise, add to question content or explanation
+                        else {
+                            // If we're in explanation mode, add to explanation
+                            if ($currentQuestion && !empty($currentQuestion['_in_explanation'])) {
+                                if (!empty($currentQuestion['explanation'])) {
+                                    $currentQuestion['explanation'] .= ' ';
+                                }
+                                $currentQuestion['explanation'] .= $text;
+                            }
+                            elseif ($currentQuestion && $currentType === null) {
+                                // Still determining type, add to content
+                                if (!empty($currentQuestion['content'])) {
+                                    $currentQuestion['content'] .= ' ';
+                                }
+                                $currentQuestion['content'] .= $text;
+                            } elseif ($currentQuestion && $currentType === 'title') {
+                                // For title type, content is the title text
+                                if (!empty($currentQuestion['content'])) {
+                                    $currentQuestion['content'] .= ' ';
+                                }
+                                $currentQuestion['content'] .= $text;
+                            } elseif ($currentQuestion && $currentType === 'essay' && empty($currentQuestion['correctAnswer'])) {
+                                // Add to content if not yet set answer
+                                if (!empty($currentQuestion['content'])) {
+                                    $currentQuestion['content'] .= ' ';
+                                }
+                                $currentQuestion['content'] .= $text;
+                            } elseif ($currentQuestion && ($currentType === 'multiple_choice_single' || $currentType === 'multiple_choice_multiple') && empty($currentQuestion['options'])) {
+                                // Add to content if no options yet
+                                if (!empty($currentQuestion['content'])) {
+                                    $currentQuestion['content'] .= ' ';
+                                }
+                                $currentQuestion['content'] .= $text;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Save last question
+            if ($currentQuestion) {
+                $questions[] = $currentQuestion;
+            }
+
+            // Validate and create questions
+            if (empty($questions)) {
+                return $this->error('Không tìm thấy câu hỏi nào trong file. Vui lòng kiểm tra định dạng file.', 400);
+            }
+
+            $createdQuestions = [];
+            \DB::beginTransaction();
+
+            try {
+                foreach ($questions as $index => $questionData) {
+                    // Skip title type (loại 0) - chỉ là tiêu đề, không phải câu hỏi
+                    if ($questionData['type'] === 'title') {
+                        continue;
+                    }
+
+                    // Validate question
+                    if (empty($questionData['content'])) {
+                        continue; // Skip invalid questions
+                    }
+
+                    // Determine question type if not set
+                    if (!$questionData['type']) {
+                        if (!empty($questionData['options'])) {
+                            // Count correct answers
+                            $correctCount = count(array_filter($questionData['options'], function($opt) {
+                                return $opt['isCorrect'] ?? false;
+                            }));
+                            $questionData['type'] = $correctCount > 1 ? 'multiple_choice_multiple' : 'multiple_choice_single';
+                        } else {
+                            $questionData['type'] = 'essay';
+                        }
+                    }
+
+                    // Validate multiple choice questions
+                    if (($questionData['type'] === 'multiple_choice_single' || $questionData['type'] === 'multiple_choice_multiple')) {
+                        if (empty($questionData['options']) || count($questionData['options']) < 2) {
+                            continue; // Skip invalid multiple choice
+                        }
+                        
+                        // Validate at least one correct answer
+                        $hasCorrect = false;
+                        foreach ($questionData['options'] as $opt) {
+                            if ($opt['isCorrect'] ?? false) {
+                                $hasCorrect = true;
+                                break;
+                            }
+                        }
+                        if (!$hasCorrect) {
+                            continue; // Skip if no correct answer
+                        }
+                    }
+
+                    // Get next order index
+                    $maxOrder = \App\Models\Question::where('context_type', 2)
+                        ->where('context_id', $chapterId)
+                        ->max('order_index');
+                    $orderIndex = ($maxOrder ?? 0) + 1;
+
+                    // Map question type to database value
+                    // 1 = multiple choice (single or multiple), 2 = essay
+                    $dbQuestionType = ($questionData['type'] === 'multiple_choice_single' || $questionData['type'] === 'multiple_choice_multiple') ? 1 : 2;
+
+                    // Create question
+                    $question = \App\Models\Question::create([
+                        'context_type' => 2,
+                        'context_id' => $chapterId,
+                        'question_content' => $questionData['content'],
+                        'question_type' => $dbQuestionType,
+                        'difficulty_level' => 2,
+                        'points' => json_encode([]),
+                        'default_points' => 1.0,
+                        'explanation_content' => $questionData['explanation'] ?? null,
+                        'order_index' => $orderIndex,
+                        'is_active' => \DB::raw('true'),
+                        'created_by' => $user->name ?? $user->email,
+                    ]);
+
+                    // Create options for multiple choice (both single and multiple)
+                    if (($questionData['type'] === 'multiple_choice_single' || $questionData['type'] === 'multiple_choice_multiple') && !empty($questionData['options'])) {
+                        foreach ($questionData['options'] as $optIndex => $optionData) {
+                            \App\Models\QuestionOption::create([
+                                'question_id' => $question->id,
+                                'option_content' => $optionData['text'],
+                                'is_correct' => \DB::raw($optionData['isCorrect'] ? 'true' : 'false'),
+                                'order_index' => $optIndex + 1,
+                                'points_value' => $optionData['isCorrect'] ? 1.0 : 0.0,
+                                'created_by' => $user->name ?? $user->email,
+                            ]);
+                        }
+                    }
+
+                    // Create solution if provided
+                    if (!empty($questionData['explanation'])) {
+                        \App\Models\BookQuestionSolution::create([
+                            'question_id' => $question->id,
+                            'solution_type' => 2, // Text
+                            'content' => $questionData['explanation'],
+                            'latex_content' => null,
+                            'video_url' => null,
+                            'image_url' => null,
+                            'order_index' => 1,
+                            'is_active' => \DB::raw('true'),
+                            'created_by' => $user->name ?? $user->email,
+                        ]);
+                    }
+
+                    // Determine type string for response
+                    $typeString = 'essay';
+                    if ($question->question_type === 1) {
+                        $typeString = $questionData['type'] === 'multiple_choice_multiple' 
+                            ? 'multiple_choice_multiple' 
+                            : 'multiple_choice_single';
+                    }
+
+                    $createdQuestions[] = [
+                        'id' => $question->id,
+                        'content' => $question->question_content,
+                        'type' => $typeString,
+                    ];
+                }
+
+                // Update book total_questions
+                $totalQuestions = \App\Models\Question::where('context_type', 2)
+                    ->whereIn('context_id', BookChapter::where('book_id', $bookId)->pluck('id'))
+                    ->count();
+                
+                Book::where('id', $bookId)->update(['total_questions' => $totalQuestions]);
+
+                \DB::commit();
+
+                return $this->success([
+                    'questions' => $createdQuestions,
+                    'count' => count($createdQuestions),
+                ], "Đã import " . count($createdQuestions) . " câu hỏi từ file Word", $request);
+
+            } catch (\Exception $e) {
+                \DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Exception $e) {
+            \Log::error('Error in importQuestionsFromWord: ' . $e->getMessage());
             \Log::error('Stack trace: ' . $e->getTraceAsString());
             return $this->internalError();
         }

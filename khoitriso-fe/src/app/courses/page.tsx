@@ -463,9 +463,14 @@ export default function CoursesPage() {
                         </Link>
                       </h3>
 
-                      <p className="text-gray-600 text-sm mb-4 line-clamp-2">
-                        {course.description}
-                      </p>
+                      <div 
+                        className="text-gray-600 text-sm mb-4 line-clamp-2 prose prose-sm max-w-none"
+                        dangerouslySetInnerHTML={{ 
+                          __html: course.description 
+                            ? course.description.replace(/<[^>]*>/g, '').substring(0, 150) + (course.description.replace(/<[^>]*>/g, '').length > 150 ? '...' : '')
+                            : '' 
+                        }}
+                      />
 
                       <div className="flex items-center mb-4">
                         <Link

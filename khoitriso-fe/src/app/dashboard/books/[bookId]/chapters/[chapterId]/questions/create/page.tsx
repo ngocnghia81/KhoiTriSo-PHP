@@ -9,6 +9,8 @@ import { useToast } from '@/components/ToastProvider';
 import MathEditor from '@/components/MathEditor';
 import SampleQuestionsButton from '@/components/SampleQuestionsButton';
 import SolutionVideoUpload from '@/components/SolutionVideoUpload';
+import WordTemplateDownload from '@/components/WordTemplateDownload';
+import WordImport from '@/components/WordImport';
 import { sampleQuestions, SampleQuestion } from '@/data/sampleQuestions';
 import 'katex/dist/katex.min.css';
 // @ts-ignore - react-katex doesn't have type definitions
@@ -277,6 +279,48 @@ export default function CreateQuestionsPage() {
                     + Thêm câu hỏi
                   </button>
                 </div>
+              </div>
+
+              {/* Word Import Section */}
+              <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-gray-700">Import từ file Word</h3>
+                  {bookId && chapterId && (
+                    <WordTemplateDownload
+                      bookId={bookId}
+                      chapterId={chapterId}
+                      chapterTitle={chapter?.title}
+                    />
+                  )}
+                </div>
+                {bookId && chapterId && (
+                  <WordImport
+                    bookId={bookId}
+                    chapterId={chapterId}
+                    onImportSuccess={(importedQuestions) => {
+                      // Convert imported questions to our format
+                      const formattedQuestions = importedQuestions.map((q: any) => ({
+                        id: `q-${Date.now()}-${Math.random()}`,
+                        content: q.content || q.question_content || '',
+                        type: q.type === 1 || q.type === 'multiple_choice' ? 'multiple_choice' : 'essay',
+                        options: q.options?.map((opt: any, idx: number) => ({
+                          id: `opt-${Date.now()}-${idx}`,
+                          text: opt.text || opt.option_content || opt.content || '',
+                          isCorrect: opt.is_correct || opt.isCorrect || false,
+                        })) || [],
+                        explanation: q.explanation || q.explanation_content || '',
+                        correctAnswer: q.correct_answer || q.correctAnswer,
+                        solutionVideo: q.solution_video || q.solutionVideo,
+                        solutionType: q.solution_type === 1 ? 'video' : (q.solution_type === 3 ? 'latex' : 'text') || 'text',
+                      }));
+                      setQuestions([...questions, ...formattedQuestions]);
+                      notify(`Đã import ${formattedQuestions.length} câu hỏi từ file Word!`, 'success');
+                    }}
+                    onError={(error) => {
+                      notify(error, 'error');
+                    }}
+                  />
+                )}
               </div>
 
               {questions.length === 0 ? (

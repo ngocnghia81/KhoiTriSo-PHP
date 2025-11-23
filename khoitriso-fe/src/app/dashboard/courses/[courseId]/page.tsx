@@ -176,7 +176,12 @@ export default function CourseDetailPage() {
             )}
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">{course.title}</h1>
-              <p className="text-gray-600 mb-4">{course.description}</p>
+              {course.description && (
+                <div 
+                  className="prose prose-sm max-w-none text-gray-600 mb-4"
+                  dangerouslySetInnerHTML={{ __html: course.description }}
+                />
+              )}
               <div className="flex flex-wrap gap-4 text-sm text-gray-500">
                 {course.category && <span>Danh mục: {course.category.name}</span>}
                 {course.instructor && <span>Giảng viên: {course.instructor.name}</span>}
@@ -216,9 +221,14 @@ export default function CourseDetailPage() {
                       }`}
                     >
                       <div className="font-medium text-gray-900">{lesson.title}</div>
-                      <div className="text-xs text-gray-500 mt-1 line-clamp-2">
-                        {lesson.description}
-                      </div>
+                      {lesson.description && (
+                        <div 
+                          className="text-xs text-gray-500 mt-1 line-clamp-2 prose prose-xs max-w-none"
+                          dangerouslySetInnerHTML={{ 
+                            __html: lesson.description.replace(/<[^>]*>/g, '').substring(0, 100) + (lesson.description.replace(/<[^>]*>/g, '').length > 100 ? '...' : '')
+                          }}
+                        />
+                      )}
                       {lesson.videoDuration && (
                         <div className="text-xs text-blue-600 mt-1">
                           {Math.floor(lesson.videoDuration / 60)}:{(lesson.videoDuration % 60).toString().padStart(2, '0')}
@@ -243,7 +253,12 @@ export default function CourseDetailPage() {
                 {/* Lesson Header */}
                 <div className="bg-white rounded-lg shadow p-6">
                   <h2 className="text-2xl font-semibold mb-2">{lessonDetails.title}</h2>
-                  <div className="text-gray-600 mb-4">{lessonDetails.description}</div>
+                  {lessonDetails.description && (
+                    <div 
+                      className="prose prose-sm max-w-none text-gray-600 mb-4"
+                      dangerouslySetInnerHTML={{ __html: lessonDetails.description }}
+                    />
+                  )}
                   {(lessonDetails.videoDuration || lessonDetails.video_duration) && (
                     <div className="text-sm text-gray-500">
                       Thời lượng: {(() => {

@@ -427,11 +427,10 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
           <div className="p-8">
             {activeTab === 'description' && (
               <div className="prose prose-lg max-w-none">
-                <div dangerouslySetInnerHTML={{ 
-                  __html: book.description
-                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\n/g, '<br/>')
-                }} />
+                <div 
+                  className="rich-text-content"
+                  dangerouslySetInnerHTML={{ __html: book.description }}
+                />
                 
                 <div className="mt-8">
                   <h3 className="text-xl font-semibold text-gray-900 mb-4">

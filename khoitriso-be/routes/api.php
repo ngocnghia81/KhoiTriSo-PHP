@@ -393,6 +393,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('admin/books/{bookId}/chapters', [\App\Http\Controllers\AdminController::class, 'createChapter']);
         Route::get('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'getChapterQuestions']);
         Route::post('admin/books/{bookId}/chapters/{chapterId}/questions', [\App\Http\Controllers\AdminController::class, 'createChapterQuestions']);
+        Route::get('admin/books/{bookId}/chapters/{chapterId}/questions/template', [\App\Http\Controllers\AdminController::class, 'downloadQuestionTemplate']);
+        Route::post('admin/books/{bookId}/chapters/{chapterId}/questions/import', [\App\Http\Controllers\AdminController::class, 'importQuestionsFromWord']);
 
         // Admin Courses Management
         Route::get('admin/courses/{id}', [\App\Http\Controllers\AdminController::class, 'getCourse']);

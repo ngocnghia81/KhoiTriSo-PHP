@@ -2,155 +2,121 @@
 
 ## 1.1. Tóm tắt hệ thống
 
-Hệ thống Khởi Trí Số (Digital Learning Platform) là một nền tảng giáo dục trực tuyến toàn diện, được thiết kế để quản lý và phân phối các khóa học trực tuyến và sách điện tử một cách hiệu quả. Hệ thống tích hợp giao diện người dùng hiện đại (Frontend) và hệ thống xử lý nghiệp vụ mạnh mẽ (Backend), sử dụng công nghệ tiên tiến như Laravel 12+ (PHP 8.2+), Next.js 15+ (React), PostgreSQL, và Cloudflare Workers để cung cấp một nền tảng học tập linh hoạt, bảo mật và có khả năng mở rộng cao. Hệ thống hỗ trợ các chức năng cốt lõi như quản lý khóa học, bài giảng video, tài liệu học tập, hệ thống câu hỏi và đánh giá, quản lý người dùng với phân quyền đa cấp, thanh toán trực tuyến qua VNPay, và phân tích doanh thu chi tiết, giúp tối ưu hóa trải nghiệm học tập cho học viên và quản lý hiệu quả cho giảng viên và quản trị viên.
+Hệ thống Khởi Trí Số là nền tảng giáo dục trực tuyến toàn diện, quản lý và phân phối khóa học trực tuyến và sách điện tử. Hệ thống sử dụng Laravel 12+ (Backend), Next.js 15+ (Frontend), PostgreSQL, và Cloudflare Workers để cung cấp nền tảng học tập linh hoạt, bảo mật và có khả năng mở rộng cao.
 
-Đặc biệt, Khởi Trí Số được phát triển để đáp ứng nhu cầu chuyển đổi số trong giáo dục tại Việt Nam, nơi việc học tập trực tuyến ngày càng trở nên phổ biến. Với khả năng tích hợp Cloudflare Workers cho việc upload và lưu trữ file (hình ảnh, video, tài liệu) trên R2 storage, hệ thống thanh toán VNPay, thông báo real-time qua email và in-app notifications, lớp học trực tuyến (live classes), và hệ thống phân quyền chặt chẽ (Admin, Instructor, Student), Khởi Trí Số không chỉ mang lại sự tiện lợi mà còn đảm bảo tính linh hoạt, hiệu năng cao và khả năng mở rộng để phù hợp với xu hướng giáo dục số hiện đại.
+Hệ thống hỗ trợ các chức năng chính: quản lý khóa học và bài giảng video, sách điện tử, câu hỏi và đánh giá, phân quyền đa cấp (Admin, Instructor, Student), thanh toán qua VNPay, lớp học trực tuyến, và báo cáo doanh thu chi tiết.
 
 ## 1.2. Mục tiêu và phạm vi dự án
 
 ### 1.2.1. Mục tiêu dự án
 
-Dự án Khởi Trí Số được xây dựng nhằm đáp ứng nhu cầu chuyển đổi số trong giáo dục, với trọng tâm là tối ưu hóa quy trình quản lý khóa học và nâng cao trải nghiệm học tập. Các mục tiêu chính bao gồm:
+Các mục tiêu chính của dự án:
 
-- **Tự động hóa quy trình quản lý giáo dục**: Chuyển đổi các thao tác thủ công như quản lý khóa học, bài giảng, tài liệu, câu hỏi và đánh giá sang nền tảng số, giúp giảm thiểu sai sót, tiết kiệm thời gian và tăng hiệu quả làm việc cho giảng viên và quản trị viên.
+- **Tự động hóa quy trình quản lý**: Chuyển đổi các thao tác thủ công sang nền tảng số, giúp giảm thiểu sai sót và tăng hiệu quả làm việc.
 
-- **Nâng cao trải nghiệm học tập**: Cung cấp giao diện trực quan, dễ sử dụng cho học viên (xem khóa học, học video, làm bài tập, xem sách điện tử) và giảng viên (tạo khóa học, quản lý bài giảng, chấm bài), từ đó cải thiện chất lượng giáo dục và sự hài lòng của người học.
+- **Nâng cao trải nghiệm học tập**: Cung cấp giao diện trực quan, dễ sử dụng cho học viên và giảng viên.
 
-- **Hỗ trợ ra quyết định kinh doanh**: Tích hợp các công cụ phân tích dữ liệu và báo cáo doanh thu chi tiết (theo khóa học, sách, giảng viên, tổng hợp), thống kê người dùng đã đăng ký, phân tích hiệu suất khóa học, giúp quản trị viên đưa ra các chiến lược kinh doanh phù hợp và kịp thời.
+- **Hỗ trợ ra quyết định kinh doanh**: Tích hợp báo cáo doanh thu chi tiết, thống kê người dùng và phân tích hiệu suất khóa học.
 
-- **Đảm bảo bảo mật và phân quyền**: Triển khai mô hình phân quyền dựa trên vai trò (RBAC) với 3 cấp độ chính (Admin, Instructor, Student) và các cơ chế bảo mật như Laravel Sanctum, JWT, nhằm bảo vệ dữ liệu nhạy cảm, nội dung khóa học có bản quyền và hạn chế truy cập trái phép.
+- **Đảm bảo bảo mật**: Triển khai RBAC với 3 vai trò (Admin, Instructor, Student) và các cơ chế bảo mật (Laravel Sanctum, JWT).
 
-- **Khả năng mở rộng và tích hợp**: Thiết kế hệ thống linh hoạt, cho phép tích hợp với các dịch vụ bên thứ ba như Cloudflare Workers (upload file), VNPay (thanh toán), và hỗ trợ mở rộng trong tương lai, chẳng hạn như tích hợp AI cho gợi ý khóa học, chatbot hỗ trợ học viên, hoặc hệ thống chứng chỉ số.
+- **Khả năng mở rộng**: Thiết kế linh hoạt, tích hợp Cloudflare Workers, VNPay, và hỗ trợ mở rộng trong tương lai.
 
 ### 1.2.2. Phạm vi dự án
 
-Dự án Khởi Trí Số tập trung vào việc phát triển một nền tảng giáo dục trực tuyến toàn diện, bao quát các hoạt động quản lý và học tập chính, với các chức năng cụ thể sau:
+Các chức năng chính của hệ thống:
 
-- **Quản lý người dùng**: Hỗ trợ đăng ký, đăng nhập, xác minh tài khoản qua email hoặc OAuth. Quản trị viên có thể quản lý hồ sơ người dùng, phân quyền, và gán vai trò (Admin, Instructor, Student). Hệ thống hỗ trợ quản lý giảng viên, học viên, và theo dõi hoạt động đăng nhập.
+- **Quản lý người dùng**: Đăng ký, đăng nhập, xác minh tài khoản, phân quyền (Admin, Instructor, Student).
 
-- **Quản lý khóa học**: Cho phép giảng viên và admin tạo, chỉnh sửa, và xóa khóa học với đầy đủ thông tin (mô tả, yêu cầu, nội dung học, giá, danh mục). Hệ thống hỗ trợ phê duyệt khóa học, xuất bản, và quản lý trạng thái (active/inactive, published/unpublished).
+- **Quản lý khóa học**: Tạo, chỉnh sửa, phê duyệt, xuất bản khóa học với đầy đủ thông tin.
 
-- **Quản lý bài giảng và tài liệu**: Cung cấp khả năng tạo bài giảng video với thông tin chi tiết (tiêu đề, mô tả, nội dung rich text, video URL, thời lượng), đính kèm tài liệu học tập (PDF, Word, Excel, PowerPoint, ZIP, hình ảnh, video, audio) thông qua Cloudflare Workers để upload và lưu trữ trên R2 storage. Hệ thống hỗ trợ sắp xếp bài giảng theo thứ tự và tự động đánh dấu bài đầu tiên là miễn phí.
+- **Quản lý bài giảng**: Tạo bài giảng video, upload tài liệu học tập qua Cloudflare Workers, sắp xếp bài giảng.
 
-- **Quản lý câu hỏi và đánh giá**: Cho phép tạo câu hỏi cho từng bài học (trắc nghiệm, tự luận) với đáp án, lời giải (LaTeX, video, file), và điểm số. Hệ thống hỗ trợ tạo bài tập (assignments) với nhiều câu hỏi, chấm điểm tự động và thủ công, theo dõi kết quả học tập của học viên.
+- **Quản lý câu hỏi và đánh giá**: Tạo câu hỏi trắc nghiệm/tự luận, bài tập, chấm điểm tự động và thủ công.
 
-- **Quản lý sách điện tử**: Cung cấp khả năng tạo và quản lý sách điện tử với thông tin đầy đủ (ISBN tự động, tiêu đề, mô tả, giá, danh mục, tác giả). Hệ thống hỗ trợ tạo chương sách với nội dung rich text (hỗ trợ LaTeX cho công thức toán học), câu hỏi cho từng chương, và mã kích hoạt sách.
+- **Quản lý sách điện tử**: Tạo sách với ISBN tự động, chương sách (hỗ trợ LaTeX), mã kích hoạt.
 
-- **Quản lý đơn hàng và thanh toán**: Tự động hóa quy trình từ thêm vào giỏ hàng, tạo đơn hàng, thanh toán trực tuyến qua VNPay, và xử lý đơn hàng (kích hoạt khóa học/sách cho học viên). Hệ thống hỗ trợ áp dụng mã giảm giá (coupon) với hai loại: giảm giá phần trăm (%) và giảm giá cố định (VNĐ).
+- **Quản lý đơn hàng và thanh toán**: Giỏ hàng, thanh toán qua VNPay, mã giảm giá, kích hoạt khóa học/sách.
 
-- **Quản lý lớp học trực tuyến (Live Classes)**: Cho phép giảng viên tạo và quản lý lớp học trực tuyến với thông tin chi tiết (tiêu đề, mô tả, khóa học liên kết, thời gian lên lịch, URL phòng họp, mật khẩu, số lượng người tham gia tối đa). Hệ thống tự động gửi thông báo và email cho học viên đã đăng ký khi lớp học được lên lịch và khi sắp bắt đầu.
+- **Quản lý lớp học trực tuyến**: Tạo lớp học, gửi thông báo tự động, lên lịch nhắc nhở.
 
-- **Quản lý báo cáo và thống kê**: Cung cấp báo cáo doanh thu chi tiết (theo khóa học, sách, giảng viên, tổng hợp), thống kê người dùng đã đăng ký, phân tích hiệu suất khóa học (số lượng đăng ký, tiến độ học tập, mức độ tương tác), và tính toán chiết khấu tự động cho giảng viên (30% cho hệ thống).
+- **Quản lý báo cáo và thống kê**: Báo cáo doanh thu chi tiết, thống kê người dùng, phân tích hiệu suất.
 
-- **Quản lý nội dung và SEO**: Hỗ trợ quản lý danh mục (categories) với cấu trúc phân cấp, tạo trang tĩnh (static pages) với SEO tối ưu (metadata, Open Graph, Twitter Cards, JSON-LD structured data, sitemap, robots.txt), và quản lý cài đặt hệ thống (logo, banner, hotline, tỷ lệ chiết khấu).
+- **Quản lý nội dung và SEO**: Danh mục phân cấp, trang tĩnh với SEO tối ưu, cài đặt hệ thống.
 
-- **Bảo mật và tích hợp**: Áp dụng mô hình RBAC với 3 vai trò chính, tích hợp Cloudflare Workers cho việc upload và lưu trữ file với JWT authentication, tích hợp VNPay cho thanh toán, thông báo qua email và in-app notifications, và cung cấp API RESTful đầy đủ để hỗ trợ tích hợp với các hệ thống bên ngoài.
-
-Về công nghệ, hệ thống sử dụng Laravel 12+ (PHP 8.2+) cho backend, PostgreSQL cho cơ sở dữ liệu, Next.js 15+ với React và Tailwind CSS cho frontend, Cloudflare Workers cho việc xử lý upload file và lưu trữ trên R2 storage. Quá trình phát triển được hỗ trợ bởi các công cụ như Composer, Artisan, PHPUnit, Vite, và TypeScript, triển khai trên môi trường máy chủ Nginx hoặc Apache, đảm bảo hiệu năng cao, tính ổn định và khả năng mở rộng.
+**Công nghệ sử dụng**: Laravel 12+ (Backend), Next.js 15+ (Frontend), PostgreSQL, Cloudflare Workers (R2 storage).
 
 ### 1.2.3. Công nghệ và kiến trúc hệ thống
 
-Hệ thống Khởi Trí Số được xây dựng dựa trên kiến trúc client-server hiện đại với các thành phần chính:
+Kiến trúc hệ thống client-server với các thành phần:
 
-- **Backend (Laravel 12+)**: Xử lý logic nghiệp vụ, quản lý cơ sở dữ liệu, xác thực và phân quyền người dùng, cung cấp API RESTful cho frontend. Sử dụng Laravel Sanctum cho authentication, Eloquent ORM cho truy vấn database, và các middleware để bảo mật.
+- **Backend (Laravel 12+)**: Xử lý logic nghiệp vụ, API RESTful, xác thực (Sanctum), ORM (Eloquent).
 
-- **Frontend (Next.js 15+)**: Giao diện người dùng được xây dựng với React và Next.js, hỗ trợ Server-Side Rendering (SSR) và Static Site Generation (SSG) cho SEO tối ưu. Sử dụng Tailwind CSS cho styling, React Query cho quản lý state và caching, và các thư viện như Tiptap cho rich text editor, Recharts cho biểu đồ.
+- **Frontend (Next.js 15+)**: React, SSR/SSG, Tailwind CSS, React Query, Tiptap, Recharts.
 
-- **Database (PostgreSQL)**: Lưu trữ dữ liệu với khả năng hỗ trợ JSON fields, full-text search, và transactions phức tạp. Hệ thống sử dụng migrations để quản lý schema và seeders để tạo dữ liệu mẫu.
+- **Database (PostgreSQL)**: Hỗ trợ JSON fields, full-text search, transactions.
 
-- **Cloudflare Workers**: Xử lý việc upload và lưu trữ file (hình ảnh, video, tài liệu) trên Cloudflare R2 storage với JWT authentication. Worker đảm bảo tính bảo mật, hiệu năng cao và khả năng mở rộng cho việc lưu trữ file.
+- **Cloudflare Workers**: Upload và lưu trữ file trên R2 storage với JWT authentication.
 
-- **Payment Gateway (VNPay)**: Tích hợp thanh toán trực tuyến an toàn, hỗ trợ các phương thức thanh toán phổ biến tại Việt Nam, với callback verification và xử lý đơn hàng tự động.
+- **VNPay**: Thanh toán trực tuyến với callback verification.
 
-- **Email & Notifications**: Hệ thống gửi email thông qua Laravel Mail với các template Blade, và quản lý thông báo in-app thông qua bảng notifications trong database.
+- **Email & Notifications**: Laravel Mail và in-app notifications.
 
-Hệ thống được thiết kế với nguyên tắc separation of concerns, modularity, và scalability, đảm bảo dễ dàng bảo trì, mở rộng và tích hợp các tính năng mới trong tương lai.
+Hệ thống được thiết kế theo nguyên tắc separation of concerns, modularity, và scalability.
 
 ## 2.2. Yêu cầu hệ thống
 
-Nhóm phát triển đã tiến hành khảo sát các chức năng của nhiều nền tảng giáo dục trực tuyến hiện có, đồng thời thực hiện phân tích bổ sung nhằm hoàn thiện mô hình nghiệp vụ đề xuất. Từ đó, hệ thống Khởi Trí Số được xây dựng với mục tiêu tự động hóa quy trình quản lý giáo dục, nâng cao hiệu quả dạy và học, và cải thiện trải nghiệm người dùng. Hệ thống được thiết kế để đáp ứng nhu cầu của ba nhóm người dùng chính:
+Hệ thống được thiết kế để đáp ứng nhu cầu của ba nhóm người dùng:
 
-- **Học viên (Student)**: Sử dụng giao diện web để xem khóa học, học video bài giảng, làm bài tập, đọc sách điện tử, tham gia lớp học trực tuyến, thanh toán và nhận chứng chỉ.
+- **Học viên (Student)**: Xem khóa học, học video, làm bài tập, đọc sách điện tử, tham gia lớp học trực tuyến, thanh toán.
 
-- **Giảng viên (Instructor)**: Thực hiện các tác vụ quản lý khóa học như tạo khóa học, upload bài giảng video, tạo tài liệu học tập, tạo câu hỏi và bài tập, chấm điểm, quản lý lớp học trực tuyến, và xem báo cáo doanh thu.
+- **Giảng viên (Instructor)**: Tạo khóa học, upload bài giảng, tạo tài liệu và câu hỏi, chấm điểm, quản lý lớp học, xem báo cáo doanh thu.
 
-- **Quản trị viên (Admin)**: Giám sát toàn bộ hoạt động, quản lý người dùng, phê duyệt khóa học và sách, quản lý danh mục, hệ thống mã giảm giá, báo cáo doanh thu tổng hợp và các báo cáo phân tích chi tiết.
-
-Hệ thống được xây dựng với mục tiêu hỗ trợ toàn bộ quá trình giáo dục trực tuyến, từ khâu tạo khóa học, phê duyệt nội dung, đăng ký và thanh toán, đến học tập, đánh giá và cấp chứng chỉ. Tất cả các chức năng được thiết kế nhằm đảm bảo sự thuận tiện, chính xác và đồng bộ dữ liệu giữa các nhóm người dùng.
+- **Quản trị viên (Admin)**: Giám sát toàn bộ hoạt động, quản lý người dùng, phê duyệt khóa học/sách, quản lý danh mục, mã giảm giá, báo cáo tổng hợp.
 
 ### 2.2.1. Yêu cầu chức năng
 
 #### 2.2.1.1. Quản lý khóa học và bài giảng
 
-Hệ thống cần được xây dựng nhằm hỗ trợ giảng viên và quản trị viên trong toàn bộ quá trình tạo, quản lý và phân phối khóa học trực tuyến, đảm bảo nội dung chất lượng, dễ tiếp cận và có tính tương tác cao. Trước hết, hệ thống phải cung cấp giao diện tạo khóa học trực quan, cho phép giảng viên nhập đầy đủ thông tin như tiêu đề, mô tả (với rich text editor), yêu cầu tiên quyết, nội dung học tập, giá bán, danh mục, và hình ảnh đại diện. Hệ thống cần hỗ trợ upload hình ảnh và video thông qua Cloudflare Workers để lưu trữ trên R2 storage, đảm bảo hiệu năng cao và khả năng mở rộng.
+Hệ thống hỗ trợ giảng viên tạo khóa học với đầy đủ thông tin (tiêu đề, mô tả, giá, danh mục), upload hình ảnh/video qua Cloudflare Workers. Giảng viên có thể tạo bài giảng video với nội dung rich text, tài liệu đính kèm (PDF, Word, Excel, PowerPoint, ZIP, hình ảnh, video, audio), và sắp xếp theo thứ tự. Bài giảng đầu tiên tự động được đánh dấu miễn phí.
 
-Tiếp theo, hệ thống cần cho phép giảng viên tạo và quản lý bài giảng (lessons) cho từng khóa học, với khả năng sắp xếp theo thứ tự logic. Mỗi bài giảng phải bao gồm thông tin chi tiết như tiêu đề, mô tả, nội dung rich text (hỗ trợ định dạng như Google Docs), video bài giảng (với tự động trích xuất thời lượng), và các tài liệu đính kèm (PDF, Word, Excel, PowerPoint, ZIP, hình ảnh, video, audio). Hệ thống phải tự động đánh dấu bài giảng đầu tiên (order = 0) là miễn phí để học viên có thể xem thử trước khi quyết định mua khóa học.
-
-Để đảm bảo chất lượng nội dung, hệ thống cần hỗ trợ quy trình phê duyệt khóa học, cho phép quản trị viên xem xét, phê duyệt hoặc từ chối khóa học với lý do cụ thể. Sau khi được phê duyệt, giảng viên có thể xuất bản khóa học để học viên có thể đăng ký và học tập. Quá trình này phải đảm bảo tính toàn vẹn dữ liệu (ACID), giúp việc cập nhật và xử lý thông tin diễn ra chính xác, nhất quán giữa các người dùng truy cập cùng lúc.
-
-Bên cạnh đó, hệ thống phải hỗ trợ quản lý tài liệu học tập một cách linh hoạt, cho phép giảng viên upload nhiều loại file khác nhau và tự động phân loại theo định dạng. Tất cả các file được upload phải được xử lý qua Cloudflare Workers với JWT authentication để đảm bảo bảo mật, và lưu trữ trên R2 storage với khả năng truy cập nhanh chóng. Hệ thống cần tự động tạo URL công khai hoặc riêng tư tùy theo loại tài liệu, đảm bảo học viên chỉ có thể truy cập tài liệu của khóa học mà họ đã đăng ký.
-
-Cuối cùng, để nâng cao trải nghiệm học tập, hệ thống cần hỗ trợ theo dõi tiến độ học tập của học viên, bao gồm thời gian học, số bài đã hoàn thành, và điểm số đạt được. Dữ liệu này giúp giảng viên đánh giá hiệu quả khóa học và hỗ trợ học viên trong quá trình học tập.
+Hệ thống hỗ trợ quy trình phê duyệt khóa học: quản trị viên xem xét, phê duyệt hoặc từ chối với lý do. Sau khi phê duyệt, giảng viên có thể xuất bản. Hệ thống theo dõi tiến độ học tập của học viên (thời gian học, số bài hoàn thành, điểm số).
 
 #### 2.2.1.2. Quản lý sách điện tử
 
-Hệ thống cần đảm bảo khả năng quản lý toàn bộ quá trình tạo, xuất bản và phân phối sách điện tử một cách hiệu quả, minh bạch và thuận tiện cho cả tác giả lẫn độc giả. Quản trị viên và tác giả có thể tạo sách điện tử với thông tin đầy đủ như tiêu đề, mô tả (với rich text editor), ISBN (tự động tạo unique), giá bán, danh mục, hình ảnh bìa, và thông tin tác giả. Giao diện tạo sách cần phải đảm bảo cập nhật thông tin chính xác và hỗ trợ preview trước khi xuất bản.
+Tác giả và quản trị viên có thể tạo sách điện tử với thông tin đầy đủ (tiêu đề, mô tả, ISBN tự động, giá, danh mục, hình ảnh bìa). Hệ thống hỗ trợ tạo chương sách với nội dung rich text, hiển thị công thức toán học bằng LaTeX. Mỗi chương có thể chứa nhiều câu hỏi (trắc nghiệm, tự luận) với đáp án, lời giải (LaTeX, video, file), điểm số.
 
-Sau khi tạo sách, hệ thống phải cho phép tạo và quản lý các chương sách (chapters) với nội dung rich text, hỗ trợ định dạng như Google Docs và hiển thị công thức toán học bằng LaTeX (với KaTeX renderer). Mỗi chương có thể chứa nhiều câu hỏi (questions) với các loại khác nhau như trắc nghiệm và tự luận. Câu hỏi phải bao gồm đáp án, lời giải (có thể là text LaTeX, video, hoặc file), điểm số, và mức độ khó. Hệ thống cần hỗ trợ tạo câu hỏi mẫu để giảng viên có thể chèn nhanh vào chương sách.
-
-Khi thanh toán, hệ thống cần hỗ trợ nhiều hình thức linh hoạt, bao gồm thanh toán online qua VNPay và thanh toán bằng mã kích hoạt (activation code). Trong trường hợp học viên mua sách qua đơn hàng, hệ thống phải tự động tạo và gán mã kích hoạt cho học viên, đảm bảo tính chính xác và minh bạch. Đồng thời, hệ thống cần cung cấp chức năng quản lý mã kích hoạt, cho phép quản trị viên tạo hàng loạt mã kích hoạt cho một cuốn sách, theo dõi trạng thái sử dụng, và xuất báo cáo.
-
-Ngoài ra, hệ thống phải có khả năng tự động áp dụng các mã giảm giá (coupon) hợp lệ khi học viên thanh toán, hỗ trợ cả giảm giá phần trăm (%) và giảm giá cố định (VNĐ), nhằm khuyến khích học viên mua sách và nâng cao tính chuyên nghiệp trong dịch vụ.
+Hệ thống hỗ trợ thanh toán online qua VNPay và thanh toán bằng mã kích hoạt. Khi học viên mua sách, hệ thống tự động tạo và gán mã kích hoạt. Quản trị viên có thể tạo hàng loạt mã kích hoạt, theo dõi trạng thái sử dụng. Hệ thống tự động áp dụng mã giảm giá (phần trăm hoặc cố định) khi thanh toán.
 
 #### 2.2.1.3. Quản lý đơn hàng và thanh toán
 
-Hệ thống cần cung cấp các chức năng hỗ trợ học viên và quản trị viên trong quá trình quản lý và xử lý đơn hàng một cách linh hoạt và hiệu quả. Trước hết, hệ thống phải cho phép học viên thêm khóa học và sách điện tử vào giỏ hàng, xem tổng giá trị, áp dụng mã giảm giá, và tạo đơn hàng. Giao diện giỏ hàng cần phải đảm bảo cập nhật giá và trạng thái sản phẩm chính xác, hiển thị thông tin chi tiết về từng sản phẩm (hình ảnh, tên, giá, giảng viên/tác giả).
+Học viên có thể thêm khóa học/sách vào giỏ hàng, áp dụng mã giảm giá, và tạo đơn hàng. Hệ thống hỗ trợ thanh toán trực tuyến qua VNPay với xác thực callback an toàn. Sau khi thanh toán thành công, hệ thống tự động kích hoạt khóa học/sách cho học viên, gửi thông báo xác nhận, và cập nhật số lượng đăng ký.
 
-Ngoài ra, hệ thống cần hỗ trợ thanh toán trực tuyến qua VNPay, một cổng thanh toán phổ biến tại Việt Nam. Quá trình thanh toán phải đảm bảo tính bảo mật cao, với việc xác thực callback từ VNPay và tự động cập nhật trạng thái đơn hàng sau khi thanh toán thành công. Khi đơn hàng được thanh toán, hệ thống phải tự động kích hoạt khóa học hoặc sách điện tử cho học viên, gửi thông báo xác nhận qua email và in-app notification, và cập nhật số lượng đăng ký/mua của sản phẩm.
-
-Đối với quy trình xử lý đơn hàng, hệ thống phải cho phép quản trị viên xem danh sách tất cả đơn hàng, lọc theo trạng thái (chờ thanh toán, đã thanh toán, đã hủy), xem chi tiết đơn hàng (thông tin khách hàng, sản phẩm, giá trị, phương thức thanh toán), và theo dõi lịch sử giao dịch. Tính năng này không chỉ giúp đồng bộ hoạt động giữa các bộ phận mà còn giảm thiểu tình trạng sai sót hoặc nhầm lẫn trong quá trình xử lý đơn hàng.
-
-Bên cạnh đó, hệ thống cần hỗ trợ tính toán và lưu trữ chiết khấu tự động cho giảng viên khi bán khóa học hoặc sách của họ. Hệ thống phải tự động tính toán 30% cho hệ thống (platform fee) và 70% cho giảng viên (instructor revenue), lưu trữ thông tin này trong mỗi order item để hỗ trợ báo cáo doanh thu chi tiết. Cuối cùng, để đảm bảo tính chính xác trong quản lý tài chính, hệ thống phải có cơ chế tự động cập nhật trạng thái đơn hàng, gửi thông báo cho các bên liên quan, và tạo báo cáo doanh thu theo thời gian thực.
+Quản trị viên có thể xem danh sách đơn hàng, lọc theo trạng thái, xem chi tiết đơn hàng và lịch sử giao dịch. Hệ thống tự động tính toán chiết khấu: 30% cho hệ thống, 70% cho giảng viên, lưu trữ trong mỗi order item để hỗ trợ báo cáo doanh thu.
 
 #### 2.2.1.4. Quản lý câu hỏi và đánh giá
 
-Để hỗ trợ giảng viên và quản trị viên trong việc tạo, quản lý và chấm điểm các câu hỏi, bài tập và đánh giá học tập một cách hiệu quả, chính xác và có tính tương tác cao. Trước hết, hệ thống phải cung cấp các chức năng tạo câu hỏi cho từng bài học hoặc chương sách, hỗ trợ nhiều loại câu hỏi khác nhau như trắc nghiệm (multiple choice) và tự luận (essay). Mỗi câu hỏi phải bao gồm thông tin chi tiết như nội dung câu hỏi, đáp án (với nhiều lựa chọn cho trắc nghiệm), lời giải (có thể là text LaTeX, video, hoặc file), điểm số, và mức độ khó. Hệ thống cần hỗ trợ tạo câu hỏi mẫu để giảng viên có thể chèn nhanh vào bài học hoặc chương sách.
+Hệ thống hỗ trợ tạo câu hỏi cho bài học hoặc chương sách (trắc nghiệm, tự luận) với đáp án, lời giải (LaTeX, video, file), điểm số, mức độ khó. Hệ thống hỗ trợ tạo bài tập với nhiều câu hỏi, thời hạn nộp bài, số lần làm lại.
 
-Đồng thời, hệ thống cần hỗ trợ tạo bài tập (assignments) cho từng bài học, với khả năng bao gồm nhiều câu hỏi khác nhau. Mỗi bài tập phải có thông tin về thời hạn nộp bài, số lần được phép làm lại, và cách tính điểm (tự động cho trắc nghiệm, thủ công cho tự luận). Hệ thống phải tự động chấm điểm các câu hỏi trắc nghiệm và lưu kết quả, đồng thời cho phép giảng viên chấm điểm thủ công các câu hỏi tự luận với khả năng thêm nhận xét.
-
-Bên cạnh đó, hệ thống phải có khả năng theo dõi và quản lý các lần làm bài của học viên, bao gồm thời gian bắt đầu, thời gian nộp bài, điểm số đạt được, và các câu trả lời chi tiết. Dữ liệu này giúp giảng viên đánh giá tiến độ học tập của học viên, phát hiện các vấn đề trong quá trình học, và đưa ra các biện pháp hỗ trợ phù hợp. Hệ thống cũng cần hỗ trợ tạo báo cáo thống kê về kết quả học tập, bao gồm điểm trung bình, tỷ lệ hoàn thành, và phân tích các câu hỏi khó.
-
-Về phía công tác đánh giá, hệ thống cần cung cấp các công cụ để học viên xem lại bài làm của mình, bao gồm đáp án đúng, lời giải chi tiết (với hỗ trợ hiển thị công thức toán học bằng LaTeX), và nhận xét từ giảng viên. Từ đó, học viên có thể học hỏi từ những sai sót và cải thiện kết quả học tập trong các lần làm bài tiếp theo.
-
-Cuối cùng, hệ thống phải có khả năng tổng hợp và theo dõi toàn bộ dữ liệu về câu hỏi, bài tập và kết quả học tập theo thời gian, giúp giảng viên và quản trị viên có cái nhìn tổng quan về chất lượng khóa học và đưa ra các quyết định cải thiện nội dung hợp lý. Các báo cáo thống kê và biểu đồ trực quan cần được tích hợp nhằm hỗ trợ phân tích xu hướng học tập, đánh giá hiệu quả giảng dạy và hoạch định chiến lược giáo dục trong tương lai.
+Hệ thống tự động chấm điểm câu hỏi trắc nghiệm và cho phép giảng viên chấm điểm thủ công câu hỏi tự luận với nhận xét. Hệ thống theo dõi các lần làm bài của học viên, tạo báo cáo thống kê (điểm trung bình, tỷ lệ hoàn thành, phân tích câu hỏi khó). Học viên có thể xem lại bài làm với đáp án đúng, lời giải chi tiết (hỗ trợ LaTeX), và nhận xét từ giảng viên.
 
 #### 2.2.1.5. Quản lý lớp học trực tuyến (Live Classes)
 
-Hệ thống cần đảm bảo tính linh hoạt cao trong việc quản lý và tổ chức lớp học trực tuyến, bao gồm lên lịch, thông báo, và theo dõi tham gia của học viên. Trước hết, hệ thống phải cho phép giảng viên tạo lớp học trực tuyến với thông tin đầy đủ như tiêu đề, mô tả, khóa học liên kết, thời gian lên lịch, URL phòng họp (ví dụ: Google Meet, Zoom), ID và mật khẩu phòng họp, số lượng người tham gia tối đa, và các tùy chọn như bật/tắt chat, ghi lại buổi học. Việc này giúp đảm bảo lớp học được tổ chức một cách chuyên nghiệp và có hệ thống.
+Giảng viên có thể tạo lớp học trực tuyến với thông tin đầy đủ (tiêu đề, mô tả, khóa học liên kết, thời gian lên lịch, URL phòng họp, ID và mật khẩu, số lượng người tham gia tối đa, tùy chọn chat, ghi lại buổi học).
 
-Ngoài ra, hệ thống cần hỗ trợ tự động gửi thông báo và email cho tất cả học viên đã đăng ký khóa học khi lớp học được lên lịch, bao gồm thông tin về thời gian, link tham gia, và hướng dẫn. Hệ thống cũng phải tự động gửi thông báo nhắc nhở khi lớp học sắp bắt đầu (ví dụ: 15 phút trước), giúp học viên không bỏ lỡ buổi học. Tất cả các thông báo phải được lưu trữ trong hệ thống để học viên có thể xem lại trong phần thông báo (notification bell).
-
-Bên cạnh quản lý lịch học, hệ thống cũng cần cung cấp công cụ để giảng viên và quản trị viên theo dõi trạng thái lớp học (sắp diễn ra, đang diễn ra, đã kết thúc), số lượng người tham gia, và link ghi lại buổi học (nếu có). Chức năng này phải cho phép quản lý điều chỉnh lịch học, hủy lớp học, và cập nhật thông tin phòng họp khi cần thiết.
-
-Để hỗ trợ công tác quản lý và ra quyết định, hệ thống cần tích hợp các chức năng theo dõi và đánh giá hiệu quả lớp học trực tuyến, bao gồm số lượng học viên tham gia, tỷ lệ tham gia so với số lượng đăng ký, và phản hồi từ học viên. Dữ liệu thu thập sẽ được tổng hợp thành các báo cáo thống kê chi tiết, cho phép quản lý dễ dàng phân tích hiệu quả của các lớp học trực tuyến và đưa ra các cải thiện phù hợp.
+Hệ thống tự động gửi thông báo và email cho học viên đã đăng ký khi lớp học được lên lịch, và gửi thông báo nhắc nhở 15 phút trước khi bắt đầu. Tất cả thông báo được lưu trữ trong hệ thống. Giảng viên và quản trị viên có thể theo dõi trạng thái lớp học, số lượng người tham gia, và link ghi lại buổi học.
 
 #### 2.2.1.6. Quản lý báo cáo và thống kê
 
-Hệ thống cần cung cấp công cụ quản lý toàn diện cho quản trị viên và giảng viên, nhằm hỗ trợ giám sát, phân tích và điều hành hoạt động kinh doanh một cách hiệu quả, minh bạch và có tính hệ thống. Trung tâm của mô-đun này là bảng điều khiển tổng quan (Dashboard), hiển thị các chỉ số hoạt động chính như doanh thu theo ngày/tháng, số lượng đơn hàng, số lượng khóa học và sách, số lượng học viên đăng ký, hiệu suất khóa học và các chỉ báo vận hành khác. Thông qua đó, quản lý có thể nhanh chóng đánh giá tình hình kinh doanh và đưa ra quyết định điều chỉnh kịp thời.
+Dashboard hiển thị các chỉ số hoạt động chính: doanh thu theo ngày/tháng, số lượng đơn hàng, khóa học, sách, học viên đăng ký, hiệu suất khóa học.
 
-Bên cạnh đó, hệ thống cần hỗ trợ chức năng báo cáo doanh thu chi tiết, bao gồm:
+Báo cáo doanh thu bao gồm:
+- **Báo cáo doanh thu Admin**: Doanh thu từ admin items + chiết khấu 30% từ giảng viên.
+- **Báo cáo doanh thu Giảng viên**: Doanh thu gộp, chiết khấu, thu nhập thực tế của từng giảng viên.
+- **Báo cáo doanh thu Chi tiết**: Breakdown phí nền tảng và thu nhập giảng viên.
+- **Báo cáo doanh thu Tổng hợp**: Tổng hợp doanh thu khóa học và sách.
 
-- **Báo cáo doanh thu Admin**: Tổng hợp doanh thu từ các khóa học và sách do admin tạo, cộng với chiết khấu (30%) từ các khóa học và sách do giảng viên tạo.
-
-- **Báo cáo doanh thu Giảng viên**: Hiển thị doanh thu của từng giảng viên, bao gồm doanh thu gộp, chiết khấu, và thu nhập thực tế.
-
-- **Báo cáo doanh thu Chi tiết**: Phân tích doanh thu theo từng giảng viên/tác giả, với breakdown về phí nền tảng và thu nhập giảng viên.
-
-- **Báo cáo doanh thu Tổng hợp**: Tổng hợp doanh thu từ cả khóa học và sách điện tử trong một khoảng thời gian.
-
-Hệ thống cũng cần hỗ trợ thống kê người dùng đã đăng ký, bao gồm số lượng học viên đăng ký từng khóa học, tiến độ học tập, mức độ tương tác, và phân tích hiệu suất khóa học. Các báo cáo này phải được hiển thị dưới dạng biểu đồ trực quan (line chart, bar chart, pie chart) để dễ dàng phân tích và đưa ra quyết định.
-
-Về mặt an toàn hệ thống, cần đảm bảo cơ chế bảo mật và phân quyền truy cập chi tiết, giúp ngăn chặn truy cập trái phép và bảo vệ dữ liệu nội bộ. Hệ thống phải hỗ trợ xác thực người dùng theo vai trò (Admin, Instructor, Student), đồng thời cho phép phân quyền chi tiết đến từng nhóm chức năng hoặc module, đảm bảo mỗi người dùng chỉ được phép thực hiện các thao tác trong phạm vi quyền hạn của mình.
+Hệ thống hỗ trợ thống kê người dùng đăng ký, tiến độ học tập, mức độ tương tác, phân tích hiệu suất khóa học. Các báo cáo được hiển thị dưới dạng biểu đồ trực quan (line chart, bar chart, pie chart).
 
 ### 2.2.2. Yêu cầu phi chức năng
 
@@ -216,55 +182,30 @@ Các biểu đồ UML bao gồm:
 
 ```plantuml
 @startuml
-!define RECTANGLE class
-
-package "Client Layer" {
-  [Web Browser] as Browser
+package "Client" {
   [Next.js Frontend] as Frontend
 }
 
-package "API Gateway Layer" {
+package "Backend" {
   [Laravel API] as API
-  [Authentication\nSanctum] as Auth
-  [Middleware] as Middleware
-}
-
-package "Application Layer" {
-  [Controllers] as Controllers
-  [Services] as Services
-  [Validators] as Validators
-}
-
-package "Domain Layer" {
+  [Controllers & Services] as App
   [Models] as Models
-  [Relationships] as Relationships
-}
-
-package "Data Layer" {
   database "PostgreSQL" as DB
-  [Cloudflare R2\nStorage] as R2
 }
 
-package "External Services" {
-  [Cloudflare Workers] as Workers
-  [VNPay Gateway] as VNPay
-  [Email Service] as Email
+package "External" {
+  [Cloudflare R2] as R2
+  [VNPay] as VNPay
+  [Email] as Email
 }
 
-Browser --> Frontend
-Frontend --> API : HTTP/HTTPS\nRESTful API
-API --> Auth
-API --> Middleware
-Middleware --> Controllers
-Controllers --> Services
-Services --> Validators
-Services --> Models
-Models --> Relationships
+Frontend --> API : RESTful API
+API --> App
+App --> Models
 Models --> DB
-Services --> Workers : Upload Files
-Workers --> R2 : Store Files
-Services --> VNPay : Payment
-Services --> Email : Notifications
+App --> R2 : Upload Files
+App --> VNPay : Payment
+App --> Email : Notifications
 R2 --> Frontend : Serve Files
 
 @enduml
@@ -312,60 +253,24 @@ Việc kết hợp phân tích nghiệp vụ, biểu đồ UML và ERD tạo nê
 
 ```plantuml
 @startuml
-package "Next.js Application" {
-  package "App Router" {
-    [Pages] as Pages
-    [Layouts] as Layouts
-    [Middleware] as Middleware
-  }
-  
-  package "Components" {
-    [UI Components] as UI
-    [Feature Components] as Features
-    [Shared Components] as Shared
-  }
-  
-  package "Services" {
-    [API Services] as API
-    [Auth Service] as Auth
-    [Upload Service] as Upload
-  }
-  
-  package "State Management" {
-    [React State] as State
-    [Context API] as Context
-    [React Query] as Query
-  }
-  
-  package "Utils & Hooks" {
-    [Custom Hooks] as Hooks
-    [Helpers] as Helpers
-    [Constants] as Constants
-  }
+package "Next.js Frontend" {
+  [Pages & Components] as Pages
+  [Services] as Services
+  [State Management] as State
 }
 
-package "External Services" {
-  [Laravel Backend API] as Backend
+package "External" {
+  [Laravel Backend] as Backend
   [Cloudflare Workers] as Workers
-  [VNPay Gateway] as VNPay
+  [VNPay] as VNPay
 }
 
-Pages --> Layouts
-Pages --> UI
-Pages --> Features
-Features --> Shared
-Pages --> API
-API --> Backend
-API --> Workers
-API --> VNPay
-Pages --> Auth
+Pages --> Services
+Services --> Backend
+Services --> Workers
+Services --> VNPay
 Pages --> State
-Pages --> Context
-Pages --> Query
-Query --> API
-Pages --> Hooks
-Hooks --> Helpers
-Hooks --> Constants
+State --> Services
 
 @enduml
 ```
@@ -401,32 +306,23 @@ Hệ thống frontend sử dụng tập hợp công nghệ hiện đại, đư�
 Việc lựa chọn các thư viện và công cụ này nhằm đảm bảo tính ổn định, dễ dàng tái sử dụng, đồng thời tối ưu trải nghiệm người dùng trong cả ba môi trường: công khai, học viên và quản trị.
 
 ```plantuml
-    @startuml
-    start
-    :Người dùng thực hiện hành động\n(Click, Submit, Navigate);
-    :UI Component xử lý sự kiện;
-    if (Cần dữ liệu từ server?) then (Có)
-    :Gọi Custom Hook hoặc\nReact Query Hook;
-    :Hook gọi API Service;
-    :API Service gửi HTTP Request\nđến Backend (với token);
-    :Backend xử lý và trả về dữ liệu;
-    :React Query cập nhật cache;
-    :Component nhận dữ liệu và render;
-    else (Không)
-    :Cập nhật local state;
-    :Component re-render;
-    endif
-    if (Upload file?) then (Có)
-    :Gọi Upload Service;
-    :Service lấy presigned URL\n từ Backend;
-    :Upload trực tiếp lên\nCloudflare Workers;
-    :Workers lưu vào R2 Storage;
-    :Xác nhận upload với Backend;
-    :Cập nhật UI;
-    endif
-    stop
-
-    @enduml
+@startuml
+start
+:Người dùng thực hiện hành động;
+if (Cần dữ liệu từ server?) then (Có)
+  :Gọi API Service;
+  :Backend xử lý và trả về;
+  :Cập nhật UI;
+else (Không)
+  :Cập nhật local state;
+endif
+if (Upload file?) then (Có)
+  :Lấy presigned URL từ Backend;
+  :Upload lên Cloudflare R2;
+  :Cập nhật UI;
+endif
+stop
+@enduml
 ```
 
 #### Hình 3.4: Luồng xử lý dữ liệu ở Frontend
@@ -457,113 +353,32 @@ Luồng này giúp hệ thống đảm bảo phản hồi nhanh, cập nhật d�
 
 ```plantuml
 @startuml
-package "Client Layer" {
+package "Client" {
   [Next.js Frontend] as Frontend
-  [Mobile App\n(Future)] as Mobile
 }
 
-package "API Gateway Layer" {
-  [Laravel Routes] as Routes
-  [Sanctum Auth] as Sanctum
-  [Middleware] as Middleware
-  [CORS] as CORS
-}
-
-package "Application Layer" {
-  package "Controllers" {
-    [AdminController] as AdminCtrl
-    [CourseController] as CourseCtrl
-    [BookController] as BookCtrl
-    [OrderController] as OrderCtrl
-    [LiveClassController] as LiveClassCtrl
-    [CouponController] as CouponCtrl
-    [ReportController] as ReportCtrl
-  }
-  
-  package "Services" {
-    [UploadService] as UploadSvc
-    [VNPayService] as VNPaySvc
-    [MessageService] as MessageSvc
-  }
-  
-  package "Validators" {
-    [Request Validation] as Validation
-  }
-}
-
-package "Domain Layer" {
-  package "Models" {
-    [User] as UserModel
-    [Course] as CourseModel
-    [Book] as BookModel
-    [Order] as OrderModel
-    [LiveClass] as LiveClassModel
-  }
-  
-  package "Relationships" {
-    [Eloquent Relations] as Relations
-  }
-}
-
-package "Data Layer" {
+package "Backend" {
+  [Routes & Middleware] as Gateway
+  [Controllers] as Controllers
+  [Services] as Services
+  [Models] as Models
   database "PostgreSQL" as DB
-  [Cloudflare R2\nvia Workers] as R2
-  [File Storage] as Storage
 }
 
-package "External Services" {
-  [Cloudflare Workers] as Workers
-  [VNPay Gateway] as VNPay
-  [Email Service\nLaravel Mail] as Email
+package "External" {
+  [Cloudflare R2] as R2
+  [VNPay] as VNPay
+  [Email] as Email
 }
 
-Frontend --> Routes
-Mobile --> Routes
-Routes --> Sanctum
-Routes --> Middleware
-Routes --> CORS
-Routes --> AdminCtrl
-Routes --> CourseCtrl
-Routes --> BookCtrl
-Routes --> OrderCtrl
-Routes --> LiveClassCtrl
-Routes --> CouponCtrl
-Routes --> ReportCtrl
-
-AdminCtrl --> Validation
-CourseCtrl --> Validation
-BookCtrl --> Validation
-OrderCtrl --> Validation
-
-AdminCtrl --> UploadSvc
-CourseCtrl --> UploadSvc
-BookCtrl --> UploadSvc
-
-OrderCtrl --> VNPaySvc
-OrderCtrl --> MessageSvc
-
-LiveClassCtrl --> MessageSvc
-
-UploadSvc --> Workers
-Workers --> R2
-
-VNPaySvc --> VNPay
-MessageSvc --> Email
-
-AdminCtrl --> CourseModel
-AdminCtrl --> BookModel
-AdminCtrl --> OrderModel
-CourseCtrl --> CourseModel
-BookCtrl --> BookModel
-OrderCtrl --> OrderModel
-LiveClassCtrl --> LiveClassModel
-
-CourseModel --> Relations
-BookModel --> Relations
-OrderModel --> Relations
-LiveClassModel --> Relations
-
-Relations --> DB
+Frontend --> Gateway
+Gateway --> Controllers
+Controllers --> Services
+Services --> Models
+Models --> DB
+Services --> R2
+Services --> VNPay
+Services --> Email
 
 @enduml
 ```
@@ -592,23 +407,18 @@ actor "Client" as Client
 participant "API Gateway" as Gateway
 participant "Controller" as Controller
 participant "Service" as Service
-participant "Model" as Model
 participant "Database" as DB
-participant "External Service" as External
+participant "External" as External
 
 Client -> Gateway: HTTP Request
-Gateway -> Gateway: Authenticate (Sanctum)
-Gateway -> Gateway: Check Authorization
-Gateway -> Gateway: Validate Request
-Gateway -> Controller: Route to Controller
-Controller -> Service: Call Service Method
-Service -> Model: Query/Update Data
-Model -> DB: Execute SQL Query
-DB --> Model: Return Data
-Model --> Service: Return Result
-Service -> External: Call External API\n(Workers, VNPay, Email)
-External --> Service: Return Response
-Service --> Controller: Return Result
+Gateway -> Gateway: Authenticate & Validate
+Gateway -> Controller: Route Request
+Controller -> Service: Process Business Logic
+Service -> DB: Query/Update Data
+DB --> Service: Return Data
+Service -> External: Call External API
+External --> Service: Response
+Service --> Controller: Result
 Controller --> Gateway: JSON Response
 Gateway --> Client: HTTP Response
 

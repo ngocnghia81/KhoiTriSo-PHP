@@ -329,7 +329,12 @@ export default function BookDetailPage() {
             )}
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">{book.title}</h1>
-              <p className="text-gray-600 mb-4">{book.description}</p>
+              {book.description && (
+                <div 
+                  className="prose prose-sm max-w-none text-gray-600 mb-4"
+                  dangerouslySetInnerHTML={{ __html: book.description }}
+                />
+              )}
               <div className="flex flex-wrap gap-4 text-sm text-gray-500">
                 <span>ISBN: {book.isbn}</span>
                 <span>Giá: {book.price?.toLocaleString('vi-VN')} đ</span>
@@ -362,9 +367,14 @@ export default function BookDetailPage() {
                       }`}
                     >
                       <div className="font-medium text-gray-900">{chapter.title}</div>
-                      <div className="text-xs text-gray-500 mt-1 line-clamp-2">
-                        {chapter.description}
-                      </div>
+                      {chapter.description && (
+                        <div 
+                          className="text-xs text-gray-500 mt-1 line-clamp-2 prose prose-xs max-w-none"
+                          dangerouslySetInnerHTML={{ 
+                            __html: chapter.description.replace(/<[^>]*>/g, '').substring(0, 100) + (chapter.description.replace(/<[^>]*>/g, '').length > 100 ? '...' : '')
+                          }}
+                        />
+                      )}
                       {chapter.question_count !== undefined && (
                         <div className="text-xs text-blue-600 mt-1">
                           {chapter.question_count} câu hỏi
@@ -390,7 +400,12 @@ export default function BookDetailPage() {
                     + Thêm câu hỏi
                   </button>
                 </div>
-                <div className="text-gray-600 mb-6">{renderMathContent(selectedChapter.description)}</div>
+                {selectedChapter.description && (
+                  <div 
+                    className="prose prose-sm max-w-none text-gray-600 mb-6 rich-text-content"
+                    dangerouslySetInnerHTML={{ __html: selectedChapter.description }}
+                  />
+                )}
 
                 {loadingQuestions ? (
                   <div className="animate-pulse space-y-4">

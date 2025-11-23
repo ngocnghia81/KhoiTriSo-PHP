@@ -237,9 +237,10 @@ export default function CourseDetailPage() {
                 Về khóa học này
               </h2>
               {course.description && (
-                <div className="prose max-w-none">
-                  <p className="text-gray-700 text-lg leading-relaxed">{course.description}</p>
-                </div>
+                <div 
+                  className="prose prose-lg max-w-none text-gray-700"
+                  dangerouslySetInnerHTML={{ __html: course.description }}
+                />
               )}
 
               {/* Preview: show lesson 0 (lesson_order = 1) if available */}

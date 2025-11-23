@@ -21,6 +21,85 @@ import { ChevronDownIcon } from "@heroicons/react/20/solid";
 import Logo from "./Logo";
 import BackdropBlur from "./BackdropBlur";
 import NotificationBell from "./NotificationBell";
+import { httpClient } from "@/lib/http-client";
+
+// Cart Badge Component with animation
+function CartBadge() {
+    const [count, setCount] = useState<number>(0);
+    const [isAnimating, setIsAnimating] = useState(false);
+    const [prevCount, setPrevCount] = useState<number>(0);
+
+    const refresh = async () => {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            setCount(0);
+            setPrevCount(0);
+            return;
+        }
+
+        try {
+            const response = await httpClient.get('cart');
+            if (response.ok && response.data) {
+                // Handle different response structures
+                const data = response.data as any;
+                let items: any[] = [];
+                if (Array.isArray(data)) {
+                    items = data;
+                } else if (data.items) {
+                    items = data.items;
+                } else if (data.data?.items) {
+                    items = data.data.items;
+                } else if (Array.isArray(data.data)) {
+                    items = data.data;
+                }
+                
+                const sum = items.reduce((t: number, i: any) => t + Number(i.quantity ?? 1), 0);
+                
+                // Trigger animation if count increased (including first time)
+                if (sum > prevCount) {
+                    setIsAnimating(true);
+                    setTimeout(() => setIsAnimating(false), 800);
+                }
+                
+                setPrevCount(sum);
+                setCount(sum);
+            }
+        } catch (error) {
+            console.error('Error fetching cart:', error);
+        }
+    };
+
+    useEffect(() => {
+        refresh();
+        const handler = () => {
+            // Small delay to ensure backend has processed
+            setTimeout(() => refresh(), 100);
+        };
+        window.addEventListener('kts-cart-changed', handler as any);
+        return () => window.removeEventListener('kts-cart-changed', handler as any);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    return (
+        <Link
+            href="/cart"
+            className={`relative p-2 text-gray-600 hover:text-blue-600 transition-all duration-300 ${
+                isAnimating ? 'scale-125' : ''
+            }`}
+        >
+            <ShoppingBagIcon className={`h-6 w-6 transition-all duration-300 ${
+                isAnimating ? 'text-blue-600 animate-bounce' : ''
+            }`} />
+            {count > 0 && (
+                <span className={`absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-[20px] px-1.5 flex items-center justify-center shadow-lg transition-all duration-300 ${
+                    isAnimating ? 'animate-bounce scale-150 bg-red-600 ring-4 ring-red-300' : ''
+                }`}>
+                    {count > 99 ? '99+' : count}
+                </span>
+            )}
+        </Link>
+    );
+}
 
 const navigation = [
     {
@@ -435,12 +514,7 @@ export default function Header() {
                             </div>
 
                             {/* Cart */}
-                            <Link
-                                href="/cart"
-                                className="relative p-2 text-gray-600 hover:text-blue-600 transition-colors"
-                            >
-                                <ShoppingBagIcon className="h-6 w-6" />
-                            </Link>
+                            <CartBadge />
 
                             {/* Menu Toggle */}
                             <button

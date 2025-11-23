@@ -25,6 +25,8 @@ interface NotificationResponse {
 export default function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [prevUnreadCount, setPrevUnreadCount] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -72,8 +74,17 @@ export default function NotificationBell() {
       
       if (response.ok && response.data) {
         const data = response.data.data as NotificationResponse;
+        const newUnreadCount = data.unreadCount || 0;
+        
+        // Trigger animation if unread count increased
+        if (newUnreadCount > prevUnreadCount && prevUnreadCount >= 0) {
+          setIsAnimating(true);
+          setTimeout(() => setIsAnimating(false), 600);
+        }
+        
+        setPrevUnreadCount(newUnreadCount);
         setNotifications(data.notifications || []);
-        setUnreadCount(data.unreadCount || 0);
+        setUnreadCount(newUnreadCount);
       }
     } catch (error) {
       console.error('Error fetching notifications:', error);
@@ -166,12 +177,18 @@ export default function NotificationBell() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 text-gray-600 hover:text-gray-900 transition-colors"
+        className={`relative p-2 text-gray-600 hover:text-gray-900 transition-all duration-300 ${
+          isAnimating ? 'scale-110' : ''
+        }`}
         aria-label="Notifications"
       >
-        <BellIcon className="h-6 w-6" />
+        <BellIcon className={`h-6 w-6 transition-all duration-300 ${
+          isAnimating ? 'text-red-600 animate-pulse' : ''
+        }`} />
         {unreadCount > 0 && (
-          <span className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
+          <span className={`absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white transition-all duration-300 ${
+            isAnimating ? 'animate-pulse scale-125 bg-red-600' : ''
+          }`}>
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}

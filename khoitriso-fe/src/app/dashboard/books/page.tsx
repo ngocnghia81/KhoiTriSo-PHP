@@ -1065,7 +1065,12 @@ export default function BooksPage() {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-500">Mô tả</label>
-                    <p className="text-gray-900 whitespace-pre-wrap">{selectedBook.description}</p>
+                    {selectedBook.description && (
+                      <div 
+                        className="prose prose-sm max-w-none text-gray-900 rich-text-content"
+                        dangerouslySetInnerHTML={{ __html: selectedBook.description }}
+                      />
+                    )}
                   </div>
                   {selectedBook.chapters && selectedBook.chapters.length > 0 && (
                     <div>
@@ -1074,7 +1079,12 @@ export default function BooksPage() {
                         {selectedBook.chapters.map((chapter: any) => (
                           <div key={chapter.id} className="p-3 bg-gray-50 rounded-lg">
                             <p className="font-medium text-gray-900">Chương {chapter.order_index}: {chapter.title}</p>
-                            <p className="text-sm text-gray-600 mt-1">{chapter.description}</p>
+                            {chapter.description && (
+                              <div 
+                                className="text-sm text-gray-600 mt-1 prose prose-xs max-w-none"
+                                dangerouslySetInnerHTML={{ __html: chapter.description }}
+                              />
+                            )}
                           </div>
                         ))}
                       </div>

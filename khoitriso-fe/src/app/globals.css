@@ -629,3 +629,98 @@
   color: white;
   text-decoration: none;
 }
+
+/* Rich Text Content Styles - matching RichTextEditor output */
+.rich-text-content,
+.prose {
+  color: #374151;
+  line-height: 1.75;
+}
+
+.rich-text-content h1,
+.prose h1 {
+  font-size: 2em;
+  font-weight: bold;
+  margin-top: 0.67em;
+  margin-bottom: 0.67em;
+  color: #111827;
+}
+
+.rich-text-content h2,
+.prose h2 {
+  font-size: 1.5em;
+  font-weight: bold;
+  margin-top: 0.83em;
+  margin-bottom: 0.83em;
+  color: #111827;
+}
+
+.rich-text-content h3,
+.prose h3 {
+  font-size: 1.17em;
+  font-weight: bold;
+  margin-top: 1em;
+  margin-bottom: 1em;
+  color: #111827;
+}
+
+.rich-text-content ul,
+.prose ul,
+.rich-text-content ol,
+.prose ol {
+  padding-left: 1.5rem;
+  margin: 1rem 0;
+}
+
+.rich-text-content li,
+.prose li {
+  margin: 0.5rem 0;
+}
+
+.rich-text-content blockquote,
+.prose blockquote {
+  border-left: 4px solid #ddd;
+  padding-left: 1rem;
+  margin: 1rem 0;
+  font-style: italic;
+  color: #6b7280;
+}
+
+.rich-text-content img,
+.prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 1rem 0;
+}
+
+.rich-text-content a,
+.prose a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.rich-text-content a:hover,
+.prose a:hover {
+  color: #1d4ed8;
+}
+
+.rich-text-content p,
+.prose p {
+  margin: 1rem 0;
+}
+
+.rich-text-content strong,
+.prose strong {
+  font-weight: 700;
+}
+
+.rich-text-content em,
+.prose em {
+  font-style: italic;
+}
+
+.rich-text-content u,
+.prose u {
+  text-decoration: underline;
+}

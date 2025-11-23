@@ -439,39 +439,45 @@ class OrderController extends Controller
                 return redirect("{$frontendUrl}/orders?status=error&message=" . urlencode('Không tìm thấy đơn hàng'));
             }
             
-            // Check if order is already paid
-            if ($order->status == 2) {
-                return redirect("{$frontendUrl}/orders/{$order->id}?status=success");
-            }
-            
             // Check response code
             if ($verifyResult['response_code'] === '00') {
                 // Payment successful
                 DB::beginTransaction();
                 try {
+                    // Update order status and payment info
+                    // Always update to ensure consistency, even if already paid
                     $order->status = 2; // Paid
-                    $order->paid_at = now();
+                    if (!$order->paid_at) {
+                        $order->paid_at = now();
+                    }
                     $order->transaction_id = $verifyResult['transaction_id'];
                     $order->payment_method = 'vnpay';
                     $order->payment_gateway = 'vnpay';
                     $order->save();
                     
-                    // Process order items (enroll courses, generate book codes)
-                    $this->processOrderItems($order);
+                    // Always process order items (enroll courses, generate book codes)
+                    // This ensures courses are enrolled even if callback is called multiple times
+                    // or if previous enrollment failed
+                    $processResult = $this->processOrderItems($order);
                     
                     DB::commit();
                     
                     \Log::info('VNPay payment successful', [
                         'order_id' => $order->id,
                         'order_code' => $order->order_code,
-                        'transaction_id' => $verifyResult['transaction_id']
+                        'transaction_id' => $verifyResult['transaction_id'],
+                        'enrolled_courses' => $processResult['enrolled_courses'] ?? []
                     ]);
                     
                     return redirect("{$frontendUrl}/orders/{$order->id}?status=success");
                 } catch (\Exception $e) {
                     DB::rollBack();
-                    \Log::error('Error processing order items after payment: ' . $e->getMessage());
-                    return redirect("{$frontendUrl}/orders/{$order->id}?status=error&message=" . urlencode('Thanh toán thành công nhưng có lỗi khi xử lý đơn hàng'));
+                    \Log::error('Error processing order items after payment: ' . $e->getMessage(), [
+                        'order_id' => $order->id,
+                        'order_code' => $order->order_code,
+                        'trace' => $e->getTraceAsString()
+                    ]);
+                    return redirect("{$frontendUrl}/orders/{$order->id}?status=error&message=" . urlencode('Thanh toán thành công nhưng có lỗi khi xử lý đơn hàng. Vui lòng liên hệ hỗ trợ.'));
                 }
             } else {
                 // Payment failed
@@ -514,28 +520,50 @@ class OrderController extends Controller
                     ->where('course_id', $item->item_id)
                     ->first();
                 
-                if (!$existing) {
-                    DB::table('course_enrollments')->insert([
-                        'user_id' => $order->user_id,
-                        'course_id' => $item->item_id,
-                        'enrolled_at' => now(),
-                        'progress_percentage' => 0,
-                        'is_active' => DB::raw('true'),
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-                } else {
-                    DB::table('course_enrollments')
-                        ->where('user_id', $order->user_id)
-                        ->where('course_id', $item->item_id)
-                        ->update([
-                            'is_active' => DB::raw('true'),
+                try {
+                    if (!$existing) {
+                        DB::table('course_enrollments')->insert([
+                            'user_id' => $order->user_id,
+                            'course_id' => $item->item_id,
                             'enrolled_at' => now(),
+                            'progress_percentage' => 0,
+                            'is_active' => DB::raw('true'),
+                            'created_at' => now(),
                             'updated_at' => now(),
                         ]);
+                        \Log::info('Course enrolled successfully', [
+                            'order_id' => $order->id,
+                            'user_id' => $order->user_id,
+                            'course_id' => $item->item_id
+                        ]);
+                    } else {
+                        DB::table('course_enrollments')
+                            ->where('user_id', $order->user_id)
+                            ->where('course_id', $item->item_id)
+                            ->update([
+                                'is_active' => DB::raw('true'),
+                                'enrolled_at' => now(),
+                                'updated_at' => now(),
+                            ]);
+                        \Log::info('Course enrollment reactivated', [
+                            'order_id' => $order->id,
+                            'user_id' => $order->user_id,
+                            'course_id' => $item->item_id
+                        ]);
+                    }
+                    
+                    $enrolledCourses[] = $item->item_id;
+                } catch (\Exception $e) {
+                    \Log::error('Failed to enroll course', [
+                        'order_id' => $order->id,
+                        'user_id' => $order->user_id,
+                        'course_id' => $item->item_id,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString()
+                    ]);
+                    // Re-throw to rollback transaction and ensure consistency
+                    throw $e;
                 }
-                
-                $enrolledCourses[] = $item->item_id;
             } elseif ($item->item_type == 2) { // Book
                 // Generate activation code for books
                 $code = 'BOOK-' . strtoupper(substr(md5(uniqid()), 0, 8));
