@@ -752,10 +752,10 @@ export default function CoursesPage() {
                         className={`inline-block px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${
                           course.isActive
                             ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
+                            : 'bg-gray-100 text-gray-800'
                         }`}
                       >
-                        {course.isActive ? 'Hoạt động' : 'Không hoạt động'}
+                        {course.isActive ? 'Hoạt động' : 'Đã vô hiệu hóa'}
                       </span>
                     </td>
                     <td className="px-6 py-4">

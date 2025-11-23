@@ -45,9 +45,11 @@ class CourseController extends BaseController
     public function show(int $id)
     {
         try {
-            $course = Course::with([
-                'instructor', 
-                'category', 
+            // Only show active courses for regular users
+            $course = Course::whereRaw('is_active = true')
+                ->with([
+                    'instructor', 
+                    'category', 
                 'lessons' => function ($q) {
                     $q->orderBy('lesson_order');
                 },
@@ -166,8 +168,13 @@ class CourseController extends BaseController
     public function destroy(int $id)
     {
         $course = Course::findOrFail($id);
-        $course->is_active = false;
-        $course->save();
+        // Soft delete: set is_active = false (use direct update with raw SQL for PostgreSQL boolean)
+        \DB::table('courses')
+            ->where('id', $id)
+            ->update([
+                'is_active' => \DB::raw('false'),
+                'updated_at' => now(),
+            ]);
         return response()->json(['success' => true, 'message' => 'Course deleted successfully']);
     }
 

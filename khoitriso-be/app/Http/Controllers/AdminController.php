@@ -1612,6 +1612,10 @@ class AdminController extends BaseController
             }
 
             $query = Book::query()->with(['category:id,name', 'author:id,name,email']);
+            
+            // Admin can see all books (active and inactive) by default
+            // Only filter by isActive if explicitly requested
+            // If not specified, show all books
 
             // Search
             if ($request->filled('search')) {
@@ -1628,6 +1632,17 @@ class AdminController extends BaseController
                 $query->where('category_id', $request->integer('categoryId'));
             }
 
+            // Handle status parameter (active/inactive) - map to is_active
+            if ($request->filled('status')) {
+                $status = $request->string('status')->toString();
+                if ($status === 'active') {
+                    $query->whereRaw('is_active = true');
+                } elseif ($status === 'inactive') {
+                    $query->whereRaw('is_active = false');
+                }
+            }
+
+            // Also support isActive parameter (boolean)
             if ($request->filled('isActive')) {
                 $query->whereRaw('is_active = ?', [$request->boolean('isActive')]);
             }
@@ -1808,7 +1823,7 @@ class AdminController extends BaseController
     }
 
     /**
-     * Delete book for admin
+     * Delete book for admin (Soft delete - set is_active = false)
      * DELETE /api/admin/books/{id}
      */
     public function deleteBook(int $id, Request $request): JsonResponse
@@ -1824,23 +1839,20 @@ class AdminController extends BaseController
                 return $this->notFound('Book');
             }
 
-            // Check if book has chapters or other related data
-            $chapterCount = BookChapter::where('book_id', $id)->count();
-            if ($chapterCount > 0) {
-                return $this->error(
-                    MessageCode::VALIDATION_ERROR,
-                    "Không thể xóa sách vì sách có {$chapterCount} chương. Vui lòng xóa các chương trước.",
-                    null,
-                    400
-                );
-            }
-
-            $book->delete();
+            // Soft delete: set is_active = false (use direct update with raw SQL for PostgreSQL boolean)
+            \DB::table('books')
+                ->where('id', $id)
+                ->update([
+                    'is_active' => \DB::raw('false'),
+                    'updated_by' => $user->name ?? $user->email,
+                    'updated_at' => now(),
+                ]);
 
             return $this->success(null, 'Xóa sách thành công', $request);
 
         } catch (\Exception $e) {
             \Log::error('Error in admin deleteBook: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
             return $this->internalError();
         }
     }
@@ -2764,13 +2776,23 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
 
             $data = $validator->validated();
 
+            // Map level string to integer
+            $levelMap = [
+                'beginner' => 1,
+                'intermediate' => 2,
+                'advanced' => 3,
+            ];
+            $level = isset($data['level']) && isset($levelMap[$data['level']]) 
+                ? $levelMap[$data['level']] 
+                : ($course->level ?? 1); // Default to existing level or beginner (1)
+
             $course->fill([
                 'title' => $data['title'] ?? $course->title,
                 'description' => $data['description'] ?? $course->description,
                 'thumbnail' => $data['thumbnail'] ?? $course->thumbnail,
                 'instructor_id' => $data['instructorId'] ?? $course->instructor_id,
                 'category_id' => $data['categoryId'] ?? $course->category_id,
-                'level' => $data['level'] ?? $course->level,
+                'level' => $level,
                 'is_free' => isset($data['isFree']) ? (bool)$data['isFree'] : $course->is_free,
                 'price' => $data['price'] ?? $course->price,
                 'language' => $data['language'] ?? $course->language,
@@ -2788,7 +2810,7 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
     }
 
     /**
-     * Delete course (Admin only)
+     * Delete course (Admin only) - Soft delete (set is_active = false)
      * DELETE /api/admin/courses/{id}
      */
     public function deleteCourse(int $id, Request $request): JsonResponse
@@ -2804,23 +2826,19 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
                 return $this->notFound('Course');
             }
 
-            // Check if course has lessons
-            $lessonCount = \App\Models\Lesson::where('course_id', $id)->count();
-            if ($lessonCount > 0) {
-                return $this->error(
-                    MessageCode::VALIDATION_ERROR,
-                    "Không thể xóa khóa học vì có {$lessonCount} bài học. Vui lòng xóa các bài học trước.",
-                    null,
-                    400
-                );
-            }
-
-            $course->delete();
+            // Soft delete: set is_active = false (use direct update with raw SQL for PostgreSQL boolean)
+            \DB::table('courses')
+                ->where('id', $id)
+                ->update([
+                    'is_active' => \DB::raw('false'),
+                    'updated_at' => now(),
+                ]);
 
             return $this->success(null, 'Xóa khóa học thành công', $request);
 
         } catch (\Exception $e) {
             \Log::error('Error in admin deleteCourse: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
             return $this->internalError();
         }
     }

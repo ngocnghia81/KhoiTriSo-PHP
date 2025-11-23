@@ -160,25 +160,36 @@ export default function BooksPage() {
         };
       }
       
-      const mappedBooks = (response.data || []).map((book: any) => ({
-        id: book.id,
-        title: book.title,
-        description: book.description,
-        isbn: book.isbn,
-        cover_image: book.cover_image || book.coverImage,
-        price: typeof book.price === 'string' ? parseFloat(book.price) : book.price,
-        category_id: book.category_id || book.category?.id,
-        category: book.category,
-        author_id: book.author_id || book.author?.id,
-        author: book.author,
-        is_active: book.is_active !== undefined ? book.is_active : (book.isActive !== undefined ? book.isActive : true),
-        approval_status: book.approval_status !== undefined ? book.approval_status : (book.approvalStatus !== undefined ? book.approvalStatus : 0),
-        language: book.language || 'vi',
-        publication_year: book.publication_year || book.publicationYear,
-        edition: book.edition,
-        chapters: book.chapters || [],
-      })) as Book[];
+      const mappedBooks = (response.data || []).map((book: any) => {
+        // Debug log to see what we're getting
+        console.log('Book data:', book.id, 'is_active:', book.is_active, 'isActive:', book.isActive);
+        
+        return {
+          id: book.id,
+          title: book.title,
+          description: book.description,
+          isbn: book.isbn,
+          cover_image: book.cover_image || book.coverImage,
+          price: typeof book.price === 'string' ? parseFloat(book.price) : book.price,
+          category_id: book.category_id || book.category?.id,
+          category: book.category,
+          author_id: book.author_id || book.author?.id,
+          author: book.author,
+          // Check is_active from multiple possible field names
+          is_active: book.is_active !== undefined 
+            ? Boolean(book.is_active) 
+            : (book.isActive !== undefined 
+              ? Boolean(book.isActive) 
+              : true),
+          approval_status: book.approval_status !== undefined ? book.approval_status : (book.approvalStatus !== undefined ? book.approvalStatus : 0),
+          language: book.language || 'vi',
+          publication_year: book.publication_year || book.publicationYear,
+          edition: book.edition,
+          chapters: book.chapters || [],
+        };
+      }) as Book[];
       console.log('Fetched books:', mappedBooks.length, 'pagination:', response.pagination);
+      console.log('Sample book is_active values:', mappedBooks.slice(0, 3).map(b => ({ id: b.id, title: b.title, is_active: b.is_active })));
       setBooks(mappedBooks);
       setTotal(response.pagination?.total || 0);
       setLastPage(response.pagination?.totalPages || 1);
@@ -381,7 +392,20 @@ export default function BooksPage() {
       fetchBooks();
     } catch (error: any) {
       console.error('Error deleting book:', error);
-      notify(error.message || 'Lỗi xóa sách', 'error');
+      
+      // Extract error message from API response
+      let errorMessage = 'Lỗi xóa sách';
+      
+      if (error.response?.data?.message) {
+        // Backend returns { success: false, message: "..." }
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+      
+      notify(errorMessage, 'error');
     }
   };
 
@@ -583,9 +607,9 @@ export default function BooksPage() {
               
                   <div className="absolute top-3 left-3 flex flex-col gap-2">
                 <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                      book.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      book.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                 }`}>
-                      {book.is_active ? 'Đang bán' : 'Tạm dừng'}
+                      {book.is_active ? 'Đang bán' : 'Đã vô hiệu hóa'}
                 </span>
                 {(() => {
                   const approvalStatus = book.approval_status ?? (book as any).approvalStatus ?? 0;
@@ -1056,9 +1080,9 @@ export default function BooksPage() {
                       <div>
                         <label className="text-sm font-medium text-gray-500">Trạng thái</label>
                         <p className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                          selectedBook.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          selectedBook.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                         }`}>
-                          {selectedBook.is_active ? 'Đang bán' : 'Tạm dừng'}
+                          {selectedBook.is_active ? 'Đang bán' : 'Đã vô hiệu hóa'}
                         </p>
                       </div>
                     </div>

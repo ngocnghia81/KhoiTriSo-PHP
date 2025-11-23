@@ -112,7 +112,7 @@ export async function submitAssignment(id: number, data: { attemptId: number; an
 
 // Admin APIs
 export async function getLessonAssignments(lessonId: number) {
-  const response = await api.get<{ data: Assignment[] } }>(`admin/lessons/${lessonId}/assignments`);
+  const response = await api.get<{ data: Assignment[] }>(`admin/lessons/${lessonId}/assignments`);
   return response.data || [];
 }
 

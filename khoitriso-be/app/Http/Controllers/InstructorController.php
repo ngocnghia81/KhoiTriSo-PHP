@@ -247,6 +247,9 @@ class InstructorController extends BaseController
 
             $q = Book::with(['category:id,name'])
                 ->where('author_id', $user->id);
+            
+            // Instructor can see all their books (active and inactive) by default
+            // Only filter by status if explicitly requested
 
             // Filter by status
             if ($request->filled('status')) {
@@ -705,8 +708,13 @@ class InstructorController extends BaseController
                 return $this->forbidden('Bạn không có quyền xóa khóa học này');
             }
 
-            $course->is_active = false;
-            $course->save();
+            // Soft delete: set is_active = false (use direct update with raw SQL for PostgreSQL boolean)
+            \DB::table('courses')
+                ->where('id', $id)
+                ->update([
+                    'is_active' => \DB::raw('false'),
+                    'updated_at' => now(),
+                ]);
 
             return $this->success(null, 'Xóa khóa học thành công', $request);
 
@@ -894,8 +902,13 @@ class InstructorController extends BaseController
                 return $this->forbidden('Bạn không có quyền xóa sách này');
             }
 
-            $book->is_active = false;
-            $book->save();
+            // Soft delete: set is_active = false (use direct update with raw SQL for PostgreSQL boolean)
+            \DB::table('books')
+                ->where('id', $id)
+                ->update([
+                    'is_active' => \DB::raw('false'),
+                    'updated_at' => now(),
+                ]);
 
             return $this->success(null, 'Xóa sách thành công', $request);
 

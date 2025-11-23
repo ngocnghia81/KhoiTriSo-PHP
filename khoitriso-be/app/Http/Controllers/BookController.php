@@ -34,7 +34,10 @@ class BookController extends Controller
 
     public function show(int $id, Request $request)
     {
-        $book = Book::with(['author','category','chapters' => function ($q) { $q->orderBy('order_index'); }])->findOrFail($id);
+        // Only show active books for regular users
+        $book = Book::whereRaw('is_active = true')
+            ->with(['author','category','chapters' => function ($q) { $q->orderBy('order_index'); }])
+            ->findOrFail($id);
         
         // Check if user owns this book
         // Try to authenticate user if token is provided (for public route)
@@ -156,8 +159,13 @@ class BookController extends Controller
     public function destroy(int $id)
     {
         $book = Book::findOrFail($id);
-        $book->is_active = false;
-        $book->save();
+        // Soft delete: set is_active = false (use direct update with raw SQL for PostgreSQL boolean)
+        \DB::table('books')
+            ->where('id', $id)
+            ->update([
+                'is_active' => \DB::raw('false'),
+                'updated_at' => now(),
+            ]);
         return response()->json(['success' => true, 'message' => 'Book deleted successfully']);
     }
 

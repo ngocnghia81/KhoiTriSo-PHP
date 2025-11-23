@@ -642,9 +642,12 @@ export interface AdminBook {
   description?: string;
   isbn?: string;
   coverImage?: string;
+  cover_image?: string;
   price: number;
-  approvalStatus: number;
+  approvalStatus?: number;
+  approval_status?: number;
   isPublished?: boolean;
+  is_active?: boolean;
   reviewNotes?: string;
   author?: {
     id: number;
@@ -655,8 +658,10 @@ export interface AdminBook {
     id: number;
     name: string;
   };
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
 }
 
 export interface PaginatedAdminBooksResponse {

@@ -125,3 +125,26 @@ export async function deleteStaticPage(id: number): Promise<void> {
   }
 }
 
+/**
+ * Get static page by path (for courses/books)
+ */
+export async function getStaticPageByPath(path: string): Promise<StaticPage> {
+  const response = await httpClient.get(`static-pages/by-path?path=${encodeURIComponent(path)}`);
+  
+  console.log('Static page API response:', response);
+  
+  // Backend may return data directly or wrapped in success/data
+  if (response.ok && response.data) {
+    // Check if it's wrapped in success/data format
+    if (typeof response.data === 'object' && 'success' in response.data && response.data.success === true && 'data' in response.data) {
+      return (response.data as any).data as StaticPage;
+    }
+    // Or return data directly
+    return response.data as StaticPage;
+  }
+  
+  // If not successful, try to extract error
+  const error = handleApiError(response);
+  throw new Error(error);
+}
+

@@ -137,29 +137,30 @@ export default function AssignmentPage({ params }: { params: { slug: string } })
       // start attempt
       await startAssignment(idNum);
       const res = await getAssignment(idNum);
-      if (res.ok && res.data) {
-        const raw: any = res.data;
+      if (res) {
+        // getAssignment returns { data: Assignment } from api.get
+        const raw: any = (res as any).data || res;
         const mapped: Assignment = {
           id: String(raw.id ?? params.slug),
           title: raw.title ?? mockAssignment.title,
           description: raw.description ?? mockAssignment.description,
-          timeLimit: Number(raw.timeLimit ?? mockAssignment.timeLimit),
+          timeLimit: Number(raw.timeLimit ?? raw.time_limit ?? mockAssignment.timeLimit),
           totalQuestions: raw.totalQuestions ?? (raw.questions?.length ?? mockAssignment.totalQuestions),
-          maxScore: raw.maxScore ?? mockAssignment.maxScore,
-          maxAttempts: raw.maxAttempts ?? mockAssignment.maxAttempts,
+          maxScore: raw.maxScore ?? raw.max_score ?? mockAssignment.maxScore,
+          maxAttempts: raw.maxAttempts ?? raw.max_attempts ?? mockAssignment.maxAttempts,
           course: {
             title: raw.course?.title ?? mockAssignment.course.title,
             slug: raw.course?.slug ?? mockAssignment.course.slug,
           },
           questions: (raw.questions ?? mockAssignment.questions).map((q: any, idx: number) => ({
             id: Number(q.id ?? idx + 1),
-            content: q.content ?? q.title ?? '',
+            content: q.content ?? q.question_content ?? q.title ?? '',
             options: (q.options ?? []).map((op: any, oi: number) => ({
               id: String(op.id ?? String.fromCharCode(65 + oi)),
-              text: String(op.text ?? op.content ?? ''),
-              isCorrect: Boolean(op.isCorrect ?? false),
+              text: String(op.text ?? op.option_content ?? op.content ?? ''),
+              isCorrect: Boolean(op.isCorrect ?? op.is_correct ?? false),
             })),
-            points: Number(q.points ?? 1),
+            points: Number(q.points ?? q.default_points ?? 1),
             image: q.image ?? undefined,
           })),
         };

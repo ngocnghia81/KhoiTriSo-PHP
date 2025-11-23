@@ -724,3 +724,52 @@
 .prose u {
   text-decoration: underline;
 }
+
+/* Static Page Content Styles */
+.course-static-content,
+.book-static-content {
+  line-height: 1.8;
+}
+
+.course-static-content h1,
+.course-static-content h2,
+.course-static-content h3,
+.book-static-content h1,
+.book-static-content h2,
+.book-static-content h3 {
+  margin-top: 1.5em;
+  margin-bottom: 0.75em;
+  font-weight: 600;
+}
+
+.course-static-content p,
+.book-static-content p {
+  margin-bottom: 1em;
+}
+
+.course-static-content ul,
+.course-static-content ol,
+.book-static-content ul,
+.book-static-content ol {
+  margin-bottom: 1em;
+  padding-left: 2em;
+}
+
+.course-static-content img,
+.book-static-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 1em 0;
+}
+
+.course-static-content a,
+.book-static-content a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.course-static-content a:hover,
+.book-static-content a:hover {
+  color: #1d4ed8;
+}

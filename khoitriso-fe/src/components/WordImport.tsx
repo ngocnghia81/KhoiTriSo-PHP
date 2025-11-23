@@ -32,7 +32,7 @@ export default function WordImport({
         'application/vnd.ms-word',
       ];
       const validExtensions = ['.docx', '.doc'];
-      const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase());
+      const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
 
       if (
         !validTypes.includes(file.type) &&

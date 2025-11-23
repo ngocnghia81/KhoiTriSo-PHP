@@ -326,9 +326,20 @@ export const bookService = {
    * DELETE /api/admin/books/{id}
    */
   deleteBook: async (id: number): Promise<void> => {
-    const response = await api.delete<ApiResponse<void>>(`/admin/books/${id}`);
-    if (!response.success) {
-      throw new Error(response.message || 'Failed to delete book');
+    try {
+      const response = await api.delete<ApiResponse<void>>(`/admin/books/${id}`);
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to delete book');
+      }
+    } catch (error: any) {
+      // Extract error message from API response
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      if (error.message) {
+        throw error;
+      }
+      throw new Error('Failed to delete book');
     }
   },
 

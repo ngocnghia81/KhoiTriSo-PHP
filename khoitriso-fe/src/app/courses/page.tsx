@@ -30,15 +30,11 @@ interface CourseDisplay extends Course {
   isNew?: boolean;
 }
 
-const categories = [
-  { id: 'all', name: 'Tất cả', count: 24 },
-  { id: 'free', name: 'Miễn phí', count: 8 },
-  { id: 'paid', name: 'Trả phí', count: 16 },
-  { id: 'math', name: 'Toán học', count: 6 },
-  { id: 'physics', name: 'Vật lý', count: 4 },
-  { id: 'chemistry', name: 'Hóa học', count: 4 },
-  { id: 'english', name: 'Tiếng Anh', count: 3 },
-  { id: 'literature', name: 'Văn học', count: 3 },
+// Categories will be loaded from API
+const staticCategories = [
+  { id: 'all', name: 'Tất cả' },
+  { id: 'free', name: 'Miễn phí' },
+  { id: 'paid', name: 'Trả phí' },
 ];
 
 const levels = ['Tất cả', 'Lớp 10', 'Lớp 11', 'Lớp 12', 'Đại học'];
@@ -53,6 +49,7 @@ const sortOptions = [
 export default function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState(staticCategories);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedLevel, setSelectedLevel] = useState('Tất cả');
   const [sortBy, setSortBy] = useState('popular');
@@ -61,20 +58,38 @@ export default function CoursesPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [favorites, setFavorites] = useState<number[]>([]);
 
-  // Fetch courses from API
+  // Fetch courses and categories from API
   useEffect(() => {
-    const fetchCourses = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
-        // Backend returns { data: [...], total: ..., current_page: ... }
-        const response = await httpClient.get('courses');
-        console.log('Courses API response:', response);
         
-        if (response.ok && response.data) {
-          // Backend returns { data: [...], total: ... } directly (not wrapped in success)
-          const responseData = response.data as any;
+        // Fetch courses
+        const coursesResponse = await httpClient.get('courses');
+        console.log('Courses API response:', coursesResponse);
+        
+        if (coursesResponse.ok && coursesResponse.data) {
+          const responseData = coursesResponse.data as any;
           const courses = responseData.data || responseData || [];
           setCourses(Array.isArray(courses) ? courses : []);
+        }
+        
+        // Fetch categories
+        try {
+          const categoriesResponse = await httpClient.get('categories');
+          if (categoriesResponse.ok) {
+            const responseData = categoriesResponse.data as any;
+            const cats = Array.isArray(responseData) 
+              ? responseData 
+              : (responseData?.data || []);
+            setCategories([
+              ...staticCategories,
+              ...cats.map((cat: any) => ({ id: String(cat.id), name: cat.name }))
+            ]);
+          }
+        } catch (catError) {
+          console.error('Error fetching categories:', catError);
+          // Keep static categories if API fails
         }
       } catch (error) {
         console.error('Error fetching courses:', error);
@@ -83,29 +98,44 @@ export default function CoursesPage() {
       }
     };
 
-    fetchCourses();
+    fetchData();
   }, []);
 
   const filteredAndSortedCourses = useMemo(() => {
     const filtered = courses.filter(course => {
       // Category filter
       if (selectedCategory !== 'all') {
-        const categoryName = course.category?.name.toLowerCase();
-        if (selectedCategory === 'free' && course.price > 0) return false;
-        if (selectedCategory === 'paid' && course.price === 0) return false;
-        // Match category by name
-        if (!['all', 'free', 'paid'].includes(selectedCategory) && 
-            !categoryName?.includes(selectedCategory)) {
+        if (selectedCategory === 'free') {
+          if (course.price > 0 || !course.is_free) return false;
+        } else if (selectedCategory === 'paid') {
+          if (course.price === 0 || course.is_free) return false;
+        } else {
+          // Match category by ID
+          const courseCategoryId = course.category?.id ? String(course.category.id) : null;
+          if (courseCategoryId !== selectedCategory) {
+            return false;
+          }
+        }
+      }
+      
+      // Level filter - map level names to course level
+      if (selectedLevel !== 'Tất cả') {
+        const levelMap: { [key: string]: number } = {
+          'Lớp 10': 1,
+          'Lớp 11': 2,
+          'Lớp 12': 3,
+          'Đại học': 4,
+        };
+        const expectedLevel = levelMap[selectedLevel];
+        if (expectedLevel && course.level !== expectedLevel) {
           return false;
         }
       }
       
-      // Level filter - skip for now as it's not in DB
-      
       // Search filter
       if (searchTerm) {
         const searchLower = searchTerm.toLowerCase();
-        const matchTitle = course.title.toLowerCase().includes(searchLower);
+        const matchTitle = course.title?.toLowerCase().includes(searchLower);
         const matchDesc = course.description?.toLowerCase().includes(searchLower);
         const matchInstructor = course.instructor?.name?.toLowerCase().includes(searchLower);
         if (!matchTitle && !matchDesc && !matchInstructor) {
@@ -114,8 +144,27 @@ export default function CoursesPage() {
       }
       
       // Price range filter
-      if (course.price < priceRange[0] || course.price > priceRange[1]) {
-        return false;
+      const coursePrice = course.price || 0;
+      const isFree = course.is_free || coursePrice === 0;
+      
+      // Special handling for "Miễn phí" (priceRange = [0, 0])
+      if (priceRange[0] === 0 && priceRange[1] === 0) {
+        // Only show free courses
+        if (!isFree) return false;
+      } else if (priceRange[1] === 2000000) {
+        // "Tất cả" - show all courses (no filter)
+        // Do nothing, show all
+      } else {
+        // Other price ranges: show courses within range (including free if range starts at 0)
+        if (priceRange[0] === 0) {
+          // Range starts at 0, include free courses
+          if (coursePrice > priceRange[1]) return false;
+        } else {
+          // Range doesn't start at 0, exclude free courses
+          if (isFree || coursePrice < priceRange[0] || coursePrice > priceRange[1]) {
+            return false;
+          }
+        }
       }
       
       return true;
@@ -277,9 +326,6 @@ export default function CoursesPage() {
                           }`}
                         >
                           <span>{category.name}</span>
-                          <span className="text-sm bg-gray-200 px-2 py-1 rounded">
-                            {category.count}
-                          </span>
                         </button>
                       </li>
                     ))}

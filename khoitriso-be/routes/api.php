@@ -305,6 +305,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Static Pages (public for viewing, protected for management)
     Route::get('static-pages/{slug}', [\App\Http\Controllers\StaticPageController::class, 'showBySlug']);
+    Route::get('static-pages/by-path', [\App\Http\Controllers\StaticPageController::class, 'showByPath']);
 
     // Instructor endpoints (require instructor role only, not admin)
     Route::middleware('role.instructor')->group(function () {

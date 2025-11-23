@@ -115,11 +115,11 @@ class OrderController extends Controller
             
             // Get real item data
             if ($itemType == 1) { // Course
-                $item = Course::find($itemId);
+                $item = Course::whereRaw('is_active = true')->find($itemId);
                 $itemName = $item ? $item->title : 'Unknown Course';
                 $price = $item ? $item->price : 0;
             } else { // Book
-                $item = Book::find($itemId);
+                $item = Book::whereRaw('is_active = true')->find($itemId);
                 $itemName = $item ? $item->title : 'Unknown Book';
                 $price = $item ? $item->price : 0;
             }
@@ -180,10 +180,10 @@ class OrderController extends Controller
             
             // Get instructor_id from course or book
             if ($item['itemType'] == 1) { // Course
-                $course = Course::find($item['itemId']);
+                $course = Course::whereRaw('is_active = true')->find($item['itemId']);
                 $instructorId = $course ? $course->instructor_id : null;
             } elseif ($item['itemType'] == 2) { // Book
-                $book = Book::find($item['itemId']);
+                $book = Book::whereRaw('is_active = true')->find($item['itemId']);
                 $instructorId = $book ? $book->author_id : null;
             }
             
