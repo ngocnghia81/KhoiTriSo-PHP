@@ -112,7 +112,16 @@ export default function OrderDetailPage() {
         if (response.ok && response.data) {
           // Backend returns order directly, not wrapped in { success: true, data: ... }
           const orderData = (response.data as any).data || response.data;
-          setOrder(orderData as Order);
+          const fetchedOrder = orderData as Order;
+          setOrder(fetchedOrder);
+          
+          // Log for debugging
+          console.log('Order fetched:', {
+            id: fetchedOrder.id,
+            order_code: fetchedOrder.order_code,
+            status: fetchedOrder.status,
+            paid_at: fetchedOrder.paid_at
+          });
         } else {
           router.push('/orders');
         }
@@ -138,27 +147,95 @@ export default function OrderDetailPage() {
     const message = urlParams.get('message');
     
     if (status === 'success') {
-      // Refresh order data to get updated status
+      // Immediately refresh order data when callback returns
       const refreshOrder = async () => {
         try {
           const response = await httpClient.get(`orders/${params.id}`);
           if (response.ok && response.data) {
-            // Backend returns order directly, not wrapped in { success: true, data: ... }
             const orderData = (response.data as any).data || response.data;
-            setOrder(orderData as Order);
+            const updatedOrder = orderData as Order;
+            setOrder(updatedOrder);
+            
+            // If already paid, show success and clean URL
+            if (updatedOrder.status === 2) {
+              setTimeout(() => {
+                alert('Thanh toán thành công!');
+                window.history.replaceState({}, '', window.location.pathname);
+              }, 300);
+              return true; // Indicate success
+            }
           }
         } catch (error) {
           console.error('Error refreshing order:', error);
         }
+        return false;
       };
       
-      refreshOrder().then(() => {
-        // Show success message after data is refreshed
-        setTimeout(() => {
-          alert('Thanh toán thành công!');
-          // Clean URL
-          window.history.replaceState({}, '', window.location.pathname);
-        }, 500);
+      // Refresh immediately and start polling if needed
+      refreshOrder().then((isPaid) => {
+        if (isPaid) {
+          console.log('Order already paid, no polling needed');
+          return; // Already paid, no need to poll
+        }
+        
+        console.log('Starting to poll order status...');
+        
+        // Poll order status until it's updated to paid (status = 2)
+        let retryCount = 0;
+        const maxRetries = 25; // Increased retries
+        const pollInterval = 500; // Reduced interval to 500ms for faster updates
+        
+        const pollOrderStatus = async () => {
+          try {
+            console.log(`Polling order status (attempt ${retryCount + 1}/${maxRetries})...`);
+            const response = await httpClient.get(`orders/${params.id}`);
+            if (response.ok && response.data) {
+              const orderData = (response.data as any).data || response.data;
+              const updatedOrder = orderData as Order;
+              
+              console.log('Order status from poll:', {
+                id: updatedOrder.id,
+                status: updatedOrder.status,
+                paid_at: updatedOrder.paid_at
+              });
+              
+              // If order is now paid, update state and show success
+              if (updatedOrder.status === 2) {
+                console.log('Order is now paid! Updating state...');
+                setOrder(updatedOrder);
+                setTimeout(() => {
+                  alert('Thanh toán thành công!');
+                  // Clean URL
+                  window.history.replaceState({}, '', window.location.pathname);
+                }, 300);
+                return; // Stop polling
+              }
+              
+              // If still not paid and haven't exceeded max retries, continue polling
+              if (retryCount < maxRetries) {
+                retryCount++;
+                setTimeout(pollOrderStatus, pollInterval);
+              } else {
+                // Max retries reached, refresh once more and show message
+                console.warn('Max retries reached, order still not paid');
+                setOrder(updatedOrder);
+                setTimeout(() => {
+                  alert('Đang xử lý thanh toán. Vui lòng tải lại trang sau vài giây nếu đơn hàng chưa cập nhật.');
+                  window.history.replaceState({}, '', window.location.pathname);
+                }, 300);
+              }
+            }
+          } catch (error) {
+            console.error('Error polling order status:', error);
+            if (retryCount < maxRetries) {
+              retryCount++;
+              setTimeout(pollOrderStatus, pollInterval);
+            }
+          }
+        };
+        
+        // Start polling after a short delay to allow backend to process
+        setTimeout(pollOrderStatus, 500);
       });
     } else if (status === 'error' && message) {
       // Show error message

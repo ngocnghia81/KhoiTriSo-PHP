@@ -79,9 +79,16 @@ export default function CoursesPage() {
           const categoriesResponse = await httpClient.get('categories');
           if (categoriesResponse.ok) {
             const responseData = categoriesResponse.data as any;
-            const cats = Array.isArray(responseData) 
+            let cats = Array.isArray(responseData) 
               ? responseData 
               : (responseData?.data || []);
+            
+            // Ensure cats is an array
+            if (!Array.isArray(cats)) {
+              console.warn('Categories response is not an array:', cats);
+              cats = [];
+            }
+            
             setCategories([
               ...staticCategories,
               ...cats.map((cat: any) => ({ id: String(cat.id), name: cat.name }))

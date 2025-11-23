@@ -224,6 +224,37 @@ class OrderController extends Controller
         // Clear cart after order creation
         CartItem::where('user_id', $request->user()->id)->delete();
 
+        // If order is free (final_amount = 0), auto-complete it
+        if ($final == 0) {
+            DB::beginTransaction();
+            try {
+                $order->status = 2; // Paid
+                $order->paid_at = now();
+                $order->save();
+                
+                // Auto-enroll courses and generate book codes
+                $this->processOrderItems($order);
+                
+                DB::commit();
+                
+                \Log::info('Free order auto-completed', [
+                    'order_id' => $order->id,
+                    'order_code' => $order->order_code
+                ]);
+                
+                return response()->json([
+                    'success' => true,
+                    'order' => $order->fresh(),
+                    'paymentUrl' => null,
+                    'isFree' => true
+                ], 201);
+            } catch (\Exception $e) {
+                DB::rollBack();
+                \Log::error('Error auto-completing free order: ' . $e->getMessage());
+                // Continue with normal flow if auto-complete fails
+            }
+        }
+
         // Generate payment URL if payment method is VNPay
         $paymentUrl = null;
         if (strtolower($data['paymentMethod']) === 'vnpay') {
@@ -432,18 +463,44 @@ class OrderController extends Controller
             }
             
             // Find order by order code
-            $order = Order::where('order_code', $verifyResult['order_code'])->first();
+            $orderCode = $verifyResult['order_code'] ?? null;
+            \Log::info('VNPay callback - searching for order', [
+                'order_code' => $orderCode,
+                'all_verify_data' => $verifyResult
+            ]);
+            
+            $order = Order::where('order_code', $orderCode)->first();
             
             if (!$order) {
-                \Log::error('Order not found for VNPay callback', ['order_code' => $verifyResult['order_code']]);
+                \Log::error('Order not found for VNPay callback', [
+                    'order_code' => $orderCode,
+                    'verify_result' => $verifyResult,
+                    'all_orders' => Order::select('id', 'order_code', 'status')->get()->toArray()
+                ]);
                 return redirect("{$frontendUrl}/orders?status=error&message=" . urlencode('Không tìm thấy đơn hàng'));
             }
+            
+            \Log::info('VNPay callback - order found', [
+                'order_id' => $order->id,
+                'order_code' => $order->order_code,
+                'current_status' => $order->status,
+                'response_code' => $verifyResult['response_code'] ?? 'unknown'
+            ]);
             
             // Check response code
             if ($verifyResult['response_code'] === '00') {
                 // Payment successful
                 DB::beginTransaction();
                 try {
+                    // Check if order is already paid to avoid duplicate processing
+                    $wasAlreadyPaid = ($order->status == 2);
+                    
+                    \Log::info('VNPay callback - updating order', [
+                        'order_id' => $order->id,
+                        'was_already_paid' => $wasAlreadyPaid,
+                        'old_status' => $order->status
+                    ]);
+                    
                     // Update order status and payment info
                     // Always update to ensure consistency, even if already paid
                     $order->status = 2; // Paid
@@ -453,20 +510,79 @@ class OrderController extends Controller
                     $order->transaction_id = $verifyResult['transaction_id'];
                     $order->payment_method = 'vnpay';
                     $order->payment_gateway = 'vnpay';
-                    $order->save();
                     
-                    // Always process order items (enroll courses, generate book codes)
-                    // This ensures courses are enrolled even if callback is called multiple times
-                    // or if previous enrollment failed
-                    $processResult = $this->processOrderItems($order);
+                    // Force save and verify
+                    $saved = $order->save();
+                    
+                    \Log::info('VNPay callback - order saved', [
+                        'order_id' => $order->id,
+                        'saved' => $saved,
+                        'new_status' => $order->status,
+                        'paid_at' => $order->paid_at
+                    ]);
+                    
+                    // Only process order items if order wasn't already paid
+                    // This prevents duplicate enrollment/code generation
+                    if (!$wasAlreadyPaid) {
+                        // Process order items (enroll courses, generate book codes)
+                        $processResult = $this->processOrderItems($order);
+                        
+                        \Log::info('VNPay payment successful - items processed', [
+                            'order_id' => $order->id,
+                            'order_code' => $order->order_code,
+                            'transaction_id' => $verifyResult['transaction_id'],
+                            'enrolled_courses' => $processResult['enrolled_courses'] ?? [],
+                            'activation_codes' => count($processResult['activation_codes'] ?? [])
+                        ]);
+                    } else {
+                        \Log::info('VNPay payment callback - order already paid, skipping item processing', [
+                            'order_id' => $order->id,
+                            'order_code' => $order->order_code,
+                            'transaction_id' => $verifyResult['transaction_id']
+                        ]);
+                    }
                     
                     DB::commit();
                     
-                    \Log::info('VNPay payment successful', [
+                    // Verify the save worked by querying fresh from database
+                    $order->refresh();
+                    $finalOrder = Order::find($order->id);
+                    
+                    if (!$finalOrder || $finalOrder->status != 2) {
+                        \Log::error('VNPay callback - order status not persisted correctly after commit', [
+                            'order_id' => $order->id,
+                            'expected_status' => 2,
+                            'actual_status' => $finalOrder ? $finalOrder->status : 'not_found',
+                            'order_from_refresh' => $order->status
+                        ]);
+                        
+                        // Try to update again using raw SQL to ensure it works
+                        if ($finalOrder) {
+                            DB::table('orders')
+                                ->where('id', $finalOrder->id)
+                                ->update([
+                                    'status' => 2,
+                                    'paid_at' => now(),
+                                    'transaction_id' => $verifyResult['transaction_id'],
+                                    'payment_method' => 'vnpay',
+                                    'payment_gateway' => 'vnpay',
+                                    'updated_at' => now()
+                                ]);
+                            
+                            $finalOrder->refresh();
+                            \Log::info('VNPay callback - order status updated using raw SQL', [
+                                'order_id' => $finalOrder->id,
+                                'new_status' => $finalOrder->status
+                            ]);
+                        }
+                    }
+                    
+                    \Log::info('VNPay payment callback completed successfully', [
                         'order_id' => $order->id,
                         'order_code' => $order->order_code,
-                        'transaction_id' => $verifyResult['transaction_id'],
-                        'enrolled_courses' => $processResult['enrolled_courses'] ?? []
+                        'order_status' => $finalOrder ? $finalOrder->status : $order->status,
+                        'paid_at' => $finalOrder ? $finalOrder->paid_at : $order->paid_at,
+                        'transaction_id' => $finalOrder ? $finalOrder->transaction_id : $order->transaction_id
                     ]);
                     
                     return redirect("{$frontendUrl}/orders/{$order->id}?status=success");

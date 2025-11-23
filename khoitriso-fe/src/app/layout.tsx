@@ -49,7 +49,7 @@ export default function RootLayout({
         <LanguageProvider>
           <ToastProvider>
             <ConditionalHeader />
-            <main className="min-h-screen">
+            <main className="min-h-screen pt-[170px]">
               {children}
             </main>
             <Footer />

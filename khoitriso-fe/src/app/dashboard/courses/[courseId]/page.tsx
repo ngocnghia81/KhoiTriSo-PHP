@@ -98,11 +98,11 @@ export default function CourseDetailPage() {
     }
   };
 
-  const handleReply = async (discussionId: number, content: string) => {
+  const handleReply = async (discussionId: number, content: string, videoTimestamp?: number) => {
     if (!selectedLesson) return;
 
     try {
-      await courseService.replyToDiscussion(selectedLesson.id, discussionId, content);
+      await courseService.replyToDiscussion(selectedLesson.id, discussionId, content, videoTimestamp);
       notify('Trả lời thành công!', 'success');
       // Refresh discussions
       const response = await courseService.getLessonDiscussions(selectedLesson.id);
@@ -481,21 +481,39 @@ export default function CourseDetailPage() {
 
 interface DiscussionItemProps {
   discussion: LessonDiscussion;
-  onReply: (discussionId: number, content: string) => void;
+  onReply: (discussionId: number, content: string, videoTimestamp?: number) => void;
   onRefresh?: () => void;
 }
 
 function DiscussionItem({ discussion, onReply, onRefresh }: DiscussionItemProps) {
   const [replyContent, setReplyContent] = useState('');
   const [showReplyForm, setShowReplyForm] = useState(false);
+  const [videoTimestamp, setVideoTimestamp] = useState<string>('');
 
   const handleReplySubmit = async () => {
     const content = replyContent.trim();
     if (!content) {
       return;
     }
-    await onReply(discussion.id, content);
+    
+    // Parse video timestamp (format: MM:SS or seconds)
+    let timestamp: number | undefined = undefined;
+    if (videoTimestamp.trim()) {
+      const parts = videoTimestamp.trim().split(':');
+      if (parts.length === 2) {
+        // Format: MM:SS
+        const minutes = parseInt(parts[0], 10) || 0;
+        const seconds = parseInt(parts[1], 10) || 0;
+        timestamp = minutes * 60 + seconds;
+      } else {
+        // Format: seconds
+        timestamp = parseInt(videoTimestamp.trim(), 10) || undefined;
+      }
+    }
+    
+    await onReply(discussion.id, content, timestamp);
     setReplyContent('');
+    setVideoTimestamp('');
     setShowReplyForm(false);
     // Refresh to show new reply
     if (onRefresh) {
@@ -519,7 +537,7 @@ function DiscussionItem({ discussion, onReply, onRefresh }: DiscussionItemProps)
           </div>
           <p className="text-gray-700">{discussion.content}</p>
           <div className="text-xs text-gray-500 mt-1">
-            {new Date(discussion.createdAt).toLocaleString('vi-VN')}
+            {(discussion.createdAt || discussion.created_at) ? new Date(discussion.createdAt || discussion.created_at || '').toLocaleString('vi-VN') : ''}
           </div>
         </div>
       </div>
@@ -536,10 +554,15 @@ function DiscussionItem({ discussion, onReply, onRefresh }: DiscussionItemProps)
                 {reply.isInstructor && (
                   <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">Giảng viên</span>
                 )}
+                {((reply.videoTimestamp ?? reply.video_timestamp) !== undefined && (reply.videoTimestamp ?? reply.video_timestamp) !== null) && (
+                  <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                    Tại {Math.floor((reply.videoTimestamp ?? reply.video_timestamp ?? 0) / 60)}:{((reply.videoTimestamp ?? reply.video_timestamp ?? 0) % 60).toString().padStart(2, '0')}
+                  </span>
+                )}
               </div>
               <p className="text-gray-700">{reply.content}</p>
               <div className="text-xs text-gray-500 mt-1">
-                {new Date(reply.createdAt).toLocaleString('vi-VN')}
+                {(reply.createdAt || reply.created_at) ? new Date(reply.createdAt || reply.created_at || '').toLocaleString('vi-VN') : ''}
               </div>
             </div>
           ))}
@@ -563,11 +586,37 @@ function DiscussionItem({ discussion, onReply, onRefresh }: DiscussionItemProps)
             rows={3}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
           />
+          <div className="mt-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Mốc thời gian video (tùy chọn, định dạng: MM:SS hoặc số giây)
+            </label>
+            <input
+              type="text"
+              value={videoTimestamp}
+              onChange={(e) => setVideoTimestamp(e.target.value)}
+              placeholder="VD: 1:30 hoặc 90"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+            />
+            {discussion.videoTimestamp && (
+              <button
+                type="button"
+                onClick={() => {
+                  const minutes = Math.floor(discussion.videoTimestamp! / 60);
+                  const seconds = discussion.videoTimestamp! % 60;
+                  setVideoTimestamp(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+                }}
+                className="mt-1 text-xs text-blue-600 hover:text-blue-900"
+              >
+                Dùng mốc thời gian của câu hỏi ({Math.floor(discussion.videoTimestamp / 60)}:{(discussion.videoTimestamp % 60).toString().padStart(2, '0')})
+              </button>
+            )}
+          </div>
           <div className="flex justify-end space-x-2 mt-2">
             <button
               onClick={() => {
                 setShowReplyForm(false);
                 setReplyContent('');
+                setVideoTimestamp('');
               }}
               className="px-3 py-1 text-sm border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
             >

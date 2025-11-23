@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { httpClient } from '@/lib/http-client';
 import Link from 'next/link';
@@ -100,6 +100,9 @@ export default function CourseLearningPage() {
   const [currentVideoTime, setCurrentVideoTime] = useState<number>(0);
   const [youtubePlayer, setYoutubePlayer] = useState<any>(null);
   const [isYouTube, setIsYouTube] = useState<boolean>(false);
+  const [replyingTo, setReplyingTo] = useState<number | null>(null);
+  const [replyContent, setReplyContent] = useState<string>('');
+  const [expandedDiscussions, setExpandedDiscussions] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     console.log('🟢 useEffect triggered');
@@ -291,7 +294,38 @@ export default function CourseLearningPage() {
         });
         
         console.log('Formatted discussions:', formattedDiscussions);
-        setDiscussions(formattedDiscussions);
+        
+        // Load replies for each discussion
+        const discussionsWithReplies = await Promise.all(
+          formattedDiscussions.map(async (discussion) => {
+            try {
+              const repliesResponse = await httpClient.get(`discussions/${discussion.id}/replies?pageSize=100`);
+              if (repliesResponse.ok) {
+                const apiResponse = repliesResponse.data as any;
+                const repliesData = apiResponse.data || apiResponse;
+                const replies = Array.isArray(repliesData) ? repliesData.map((r: any) => ({
+                  id: r.id,
+                  user_id: r.user_id,
+                  user: r.user,
+                  user_name: r.user?.name || r.user_name || 'Người dùng',
+                  content: r.content,
+                  video_timestamp: r.video_timestamp || r.videoTimestamp,
+                  parent_id: r.parent_id || r.parentId,
+                  like_count: r.like_count || r.likeCount || 0,
+                  is_instructor: r.is_instructor || r.isInstructor || false,
+                  created_at: r.created_at || r.createdAt || new Date().toISOString(),
+                })) : [];
+                return { ...discussion, replies };
+              }
+              return { ...discussion, replies: [] };
+            } catch (e) {
+              console.error('Error loading replies for discussion', discussion.id, e);
+              return { ...discussion, replies: [] };
+            }
+          })
+        );
+        
+        setDiscussions(discussionsWithReplies);
       } else {
         console.error('Failed to load discussions:', response);
         setDiscussions([]);
@@ -427,6 +461,7 @@ export default function CourseLearningPage() {
           like_count: newDiscussionData.like_count || 0,
           is_instructor: newDiscussionData.is_instructor || false,
           created_at: newDiscussionData.created_at || new Date().toISOString(),
+          replies: [],
         };
         
         // Add new discussion and sort by created_at descending
@@ -448,10 +483,208 @@ export default function CourseLearningPage() {
     }
   };
 
+  const postReply = async (parentId: number) => {
+    if (!replyContent.trim() || !currentLesson) return;
+    
+    try {
+      // Get current video time if available
+      let videoTimestamp: number | null = null;
+      if (isYouTube && youtubePlayer && youtubePlayer.getCurrentTime) {
+        try {
+          videoTimestamp = Math.floor(youtubePlayer.getCurrentTime());
+        } catch (e) {
+          console.error('Error getting YouTube current time:', e);
+        }
+      } else if (videoRef && videoRef.currentTime) {
+        videoTimestamp = Math.floor(videoRef.currentTime);
+      } else if (currentVideoTime > 0) {
+        videoTimestamp = currentVideoTime;
+      }
+      
+      console.log('Posting reply to discussion:', parentId, 'at timestamp:', videoTimestamp);
+      const response = await httpClient.post(`lessons/${currentLesson.id}/discussions`, {
+        content: replyContent,
+        videoTimestamp: videoTimestamp,
+        parentId: parentId,
+      });
+      
+      console.log('Reply API response:', response);
+      
+      if (response.ok && response.data) {
+        const apiResponse = response.data as any;
+        const newReplyData = apiResponse.data || apiResponse;
+        
+        if (!newReplyData || !newReplyData.id) {
+          console.error('Invalid reply data:', newReplyData);
+          alert('Dữ liệu trả về không hợp lệ. Vui lòng thử lại.');
+          return;
+        }
+        
+        const newReply: Discussion = {
+          id: newReplyData.id,
+          user_id: newReplyData.user_id,
+          user: newReplyData.user,
+          user_name: newReplyData.user?.name || 'Bạn',
+          content: newReplyData.content,
+          video_timestamp: newReplyData.video_timestamp,
+          parent_id: parentId,
+          like_count: newReplyData.like_count || 0,
+          is_instructor: newReplyData.is_instructor || false,
+          created_at: newReplyData.created_at || new Date().toISOString(),
+        };
+        
+        // Update discussions with new reply
+        const updatedDiscussions = discussions.map(discussion => {
+          if (discussion.id === parentId) {
+            const updatedReplies = [...(discussion.replies || []), newReply].sort((a, b) => {
+              const dateA = new Date(a.created_at).getTime();
+              const dateB = new Date(b.created_at).getTime();
+              return dateA - dateB; // Ascending order for replies (oldest first)
+            });
+            return {
+              ...discussion,
+              replies: updatedReplies,
+            };
+          }
+          return discussion;
+        });
+        
+        setDiscussions(updatedDiscussions);
+        setReplyContent('');
+        setReplyingTo(null);
+        
+        // Auto-expand the discussion to show the new reply
+        setExpandedDiscussions(prev => new Set(prev).add(parentId));
+      } else {
+        console.error('Failed to post reply:', response);
+        const errorMsg = response.error?.message || 'Có lỗi xảy ra khi đăng trả lời. Vui lòng thử lại.';
+        alert(errorMsg);
+      }
+    } catch (error: any) {
+      console.error('Error posting reply:', error);
+      alert(error?.message || 'Có lỗi xảy ra khi đăng trả lời. Vui lòng thử lại.');
+    }
+  };
+
+  const toggleReplies = (discussionId: number) => {
+    setExpandedDiscussions(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(discussionId)) {
+        newSet.delete(discussionId);
+      } else {
+        newSet.add(discussionId);
+      }
+      return newSet;
+    });
+  };
+
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Format timestamp from seconds to readable string (e.g., "1:45" or "1:23:45")
+  const formatTimestamp = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Parse timestamp string to seconds (e.g., "1:45" -> 105, "1:23:45" -> 5025)
+  const parseTimestamp = (timestamp: string): number | null => {
+    const parts = timestamp.split(':').map(p => parseInt(p, 10));
+    if (parts.some(isNaN)) return null;
+    
+    if (parts.length === 2) {
+      // mm:ss
+      return parts[0] * 60 + parts[1];
+    } else if (parts.length === 3) {
+      // hh:mm:ss
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+    return null;
+  };
+
+  // Seek video to specific timestamp
+  const seekToTimestamp = (seconds: number) => {
+    if (isYouTube && youtubePlayer && youtubePlayer.seekTo) {
+      try {
+        youtubePlayer.seekTo(seconds, true);
+      } catch (e) {
+        console.error('Error seeking YouTube video:', e);
+      }
+    } else if (videoRef) {
+      videoRef.currentTime = seconds;
+      videoRef.play().catch(e => console.error('Error playing video:', e));
+    }
+  };
+
+  // Parse content and convert timestamps to clickable links
+  const parseTimestampContent = (content: string) => {
+    // Regex to match timestamps: mm:ss or hh:mm:ss
+    const timestampRegex = /\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b/g;
+    const parts: (string | React.ReactNode)[] = [];
+    let lastIndex = 0;
+    let match;
+    let keyIndex = 0;
+
+    while ((match = timestampRegex.exec(content)) !== null) {
+      const timestamp = match[0];
+      const seconds = parseTimestamp(timestamp);
+      
+      if (seconds !== null) {
+        // Add text before timestamp
+        if (match.index > lastIndex) {
+          parts.push(content.substring(lastIndex, match.index));
+        }
+        
+        // Add clickable timestamp
+        parts.push(
+          <button
+            key={`timestamp-${keyIndex++}`}
+            onClick={() => seekToTimestamp(seconds)}
+            className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+          >
+            {timestamp}
+          </button>
+        );
+        
+        lastIndex = match.index + timestamp.length;
+      }
+    }
+    
+    // Add remaining text
+    if (lastIndex < content.length) {
+      parts.push(content.substring(lastIndex));
+    }
+    
+    return parts.length > 0 ? parts : [content];
+  };
+
+  // Insert current timestamp into textarea
+  const insertTimestamp = (textareaValue: string, setTextareaValue: (value: string) => void) => {
+    let currentTime = 0;
+    if (isYouTube && youtubePlayer && youtubePlayer.getCurrentTime) {
+      try {
+        currentTime = Math.floor(youtubePlayer.getCurrentTime());
+      } catch (e) {
+        console.error('Error getting YouTube current time:', e);
+      }
+    } else if (videoRef && videoRef.currentTime) {
+      currentTime = Math.floor(videoRef.currentTime);
+    } else if (currentVideoTime > 0) {
+      currentTime = currentVideoTime;
+    }
+    
+    const timestamp = formatTimestamp(currentTime);
+    const newValue = textareaValue + (textareaValue ? ' ' : '') + timestamp;
+    setTextareaValue(newValue);
   };
 
   if (loading) {
@@ -658,13 +891,25 @@ export default function CourseLearningPage() {
                     className="w-full border border-gray-300 rounded-lg p-3 mb-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     rows={4}
                   />
-                  <button
-                    onClick={postQuestion}
-                    disabled={!newQuestion.trim()}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Đăng câu hỏi
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => insertTimestamp(newQuestion, setNewQuestion)}
+                      className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 flex items-center gap-1"
+                      title="Thêm mốc thời gian hiện tại"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Thêm mốc thời gian
+                    </button>
+                    <button
+                      onClick={postQuestion}
+                      disabled={!newQuestion.trim()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex-1"
+                    >
+                      Đăng câu hỏi
+                    </button>
+                  </div>
                 </div>
 
                 {/* Discussions List */}
@@ -689,7 +934,7 @@ export default function CourseLearningPage() {
                             </div>
                           )}
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <span className="font-semibold text-gray-900">
                                 {discussion.user_name || discussion.user?.name || 'Người dùng'}
                               </span>
@@ -702,15 +947,130 @@ export default function CourseLearningPage() {
                                 {new Date(discussion.created_at).toLocaleDateString('vi-VN')}
                               </span>
                               {discussion.video_timestamp && discussion.video_timestamp > 0 && (
-                                <span className="text-xs text-gray-400">
-                                  @ {Math.floor(discussion.video_timestamp / 60)}:{(discussion.video_timestamp % 60).toString().padStart(2, '0')}
-                                </span>
+                                <button
+                                  onClick={() => seekToTimestamp(discussion.video_timestamp!)}
+                                  className="text-xs px-2 py-0.5 bg-blue-100 text-blue-600 rounded font-medium hover:bg-blue-200 transition-colors"
+                                  title="Chuyển tới thời gian này"
+                                >
+                                  @ {formatTimestamp(discussion.video_timestamp)}
+                                </button>
                               )}
                             </div>
-                            <p className="text-gray-700">{discussion.content}</p>
-                            {discussion.like_count && discussion.like_count > 0 && (
-                              <div className="mt-2 text-sm text-gray-500">
-                                👍 {discussion.like_count} lượt thích
+                            <p className="text-gray-700 mb-2">{parseTimestampContent(discussion.content)}</p>
+                            
+                            {/* Action Buttons */}
+                            <div className="flex items-center gap-4 mt-2">
+                              {discussion.like_count && discussion.like_count > 0 && (
+                                <span className="text-sm text-gray-500">
+                                  👍 {discussion.like_count}
+                                </span>
+                              )}
+                              <button
+                                onClick={() => {
+                                  if (replyingTo === discussion.id) {
+                                    setReplyingTo(null);
+                                    setReplyContent('');
+                                  } else {
+                                    setReplyingTo(discussion.id);
+                                    setReplyContent('');
+                                  }
+                                }}
+                                className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                              >
+                                {replyingTo === discussion.id ? 'Hủy' : 'Trả lời'}
+                              </button>
+                              {discussion.replies && discussion.replies.length > 0 && (
+                                <button
+                                  onClick={() => toggleReplies(discussion.id)}
+                                  className="text-sm text-gray-600 hover:text-gray-800"
+                                >
+                                  {expandedDiscussions.has(discussion.id) 
+                                    ? `Ẩn ${discussion.replies.length} câu trả lời` 
+                                    : `Xem ${discussion.replies.length} câu trả lời`}
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Reply Form */}
+                            {replyingTo === discussion.id && (
+                              <div className="mt-4 pl-4 border-l-2 border-gray-200">
+                                <textarea
+                                  value={replyContent}
+                                  onChange={(e) => setReplyContent(e.target.value)}
+                                  placeholder="Viết câu trả lời của bạn..."
+                                  className="w-full border border-gray-300 rounded-lg p-3 mb-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                  rows={3}
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => insertTimestamp(replyContent, setReplyContent)}
+                                    className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300 flex items-center gap-1"
+                                    title="Thêm mốc thời gian hiện tại"
+                                  >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Mốc TG
+                                  </button>
+                                  <button
+                                    onClick={() => postReply(discussion.id)}
+                                    disabled={!replyContent.trim()}
+                                    className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex-1"
+                                  >
+                                    Đăng trả lời
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Replies */}
+                            {expandedDiscussions.has(discussion.id) && discussion.replies && discussion.replies.length > 0 && (
+                              <div className="mt-4 space-y-3 pl-4 border-l-2 border-gray-100">
+                                {discussion.replies.map(reply => (
+                                  <div key={reply.id} className="flex items-start gap-2">
+                                    {reply.user?.avatar ? (
+                                      <img 
+                                        src={reply.user.avatar} 
+                                        alt={reply.user_name || 'User'}
+                                        className="w-8 h-8 rounded-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-600 text-sm font-semibold">
+                                        {(reply.user_name || reply.user?.name || 'U').charAt(0).toUpperCase()}
+                                      </div>
+                                    )}
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                        <span className="font-semibold text-gray-900 text-sm">
+                                          {reply.user_name || reply.user?.name || 'Người dùng'}
+                                        </span>
+                                        {reply.is_instructor && (
+                                          <span className="px-1.5 py-0.5 bg-blue-100 text-blue-600 text-xs font-medium rounded">
+                                            Giảng viên
+                                          </span>
+                                        )}
+                                        <span className="text-xs text-gray-500">
+                                          {new Date(reply.created_at).toLocaleDateString('vi-VN')}
+                                        </span>
+                                        {reply.video_timestamp && reply.video_timestamp > 0 && (
+                                          <button
+                                            onClick={() => seekToTimestamp(reply.video_timestamp!)}
+                                            className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded font-medium hover:bg-blue-200 transition-colors"
+                                            title="Chuyển tới thời gian này"
+                                          >
+                                            @ {formatTimestamp(reply.video_timestamp)}
+                                          </button>
+                                        )}
+                                      </div>
+                                      <p className="text-gray-700 text-sm">{parseTimestampContent(reply.content)}</p>
+                                      {reply.like_count && reply.like_count > 0 && (
+                                        <span className="text-xs text-gray-500 mt-1 inline-block">
+                                          👍 {reply.like_count}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             )}
                           </div>
@@ -739,13 +1099,25 @@ export default function CourseLearningPage() {
                     className="w-full border border-gray-300 rounded-lg p-3 mb-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     rows={4}
                   />
-                  <button
-                    onClick={saveNote}
-                    disabled={!note.trim()}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Lưu ghi chú {currentVideoTime > 0 && `(@ ${Math.floor(currentVideoTime / 60)}:${(currentVideoTime % 60).toString().padStart(2, '0')})`}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => insertTimestamp(note, setNote)}
+                      className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 flex items-center gap-1"
+                      title="Thêm mốc thời gian hiện tại"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Thêm mốc thời gian
+                    </button>
+                    <button
+                      onClick={saveNote}
+                      disabled={!note.trim()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex-1"
+                    >
+                      Lưu ghi chú {currentVideoTime > 0 && `(@ ${formatTimestamp(currentVideoTime)})`}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Notes List */}
@@ -763,13 +1135,17 @@ export default function CourseLearningPage() {
                               {new Date(noteItem.created_at).toLocaleDateString('vi-VN')}
                             </span>
                             {noteItem.video_timestamp !== null && noteItem.video_timestamp !== undefined && (
-                              <span className="text-xs px-2 py-1 bg-blue-100 text-blue-600 rounded font-medium">
-                                @ {Math.floor(noteItem.video_timestamp / 60)}:{(noteItem.video_timestamp % 60).toString().padStart(2, '0')}
-                              </span>
+                              <button
+                                onClick={() => seekToTimestamp(noteItem.video_timestamp!)}
+                                className="text-xs px-2 py-1 bg-blue-100 text-blue-600 rounded font-medium hover:bg-blue-200 transition-colors"
+                                title="Chuyển tới thời gian này"
+                              >
+                                @ {formatTimestamp(noteItem.video_timestamp)}
+                              </button>
                             )}
                           </div>
                         </div>
-                        <p className="text-gray-700 whitespace-pre-wrap">{noteItem.content}</p>
+                        <p className="text-gray-700 whitespace-pre-wrap">{parseTimestampContent(noteItem.content)}</p>
                       </div>
                     ))
                   )}

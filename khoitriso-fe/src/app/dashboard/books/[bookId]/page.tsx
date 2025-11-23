@@ -200,87 +200,138 @@ export default function BookDetailPage() {
   const renderMathContent = (content: string) => {
     if (!content) return null;
     
-    const parts: Array<{ type: 'text' | 'block' | 'inline'; content: string }> = [];
-    const blockMathRegex = /\$\$([^$]+)\$\$/g;
-    const inlineMathRegex = /\$([^$]+)\$/g;
+    // First, auto-detect and wrap LaTeX commands that are not already wrapped
+    let processedContent = content;
     
-    let match;
-    const blockMatches: Array<{ start: number; end: number; content: string }> = [];
-    const inlineMatches: Array<{ start: number; end: number; content: string }> = [];
+    // Common LaTeX patterns to auto-wrap
+    const latexPatterns = [
+      // Fractions: \frac{...}{...}
+      { regex: /\\frac\{[^}]+\}\{[^}]+\}/g, wrapper: '$' },
+      // Square root: \sqrt{...} or \sqrt[n]{...}
+      { regex: /\\sqrt(?:\[[^\]]+\])?\{[^}]+\}/g, wrapper: '$' },
+      // Math symbols: \mathbb{...}, \text{...}, etc.
+      { regex: /\\(?:mathbb|text|textbf|textit|mathrm)\{[^}]+\}/g, wrapper: '$' },
+      // Greek letters: \alpha, \beta, etc.
+      { regex: /\\(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Alpha|Beta|Gamma|Delta|Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|Xi|Pi|Rho|Sigma|Tau|Upsilon|Phi|Chi|Psi|Omega)\b/g, wrapper: '$' },
+      // Math operators: \cdot, \times, \div, etc.
+      { regex: /\\(?:cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|infty|sum|prod|int|lim|sin|cos|tan|log|ln|exp)\b/g, wrapper: '$' },
+      // Subscripts and superscripts with special chars: x_1, x^2, etc.
+      { regex: /(?:[a-zA-Z0-9]|\\[a-zA-Z]+)(?:[_^]\{[^}]+\}|[_^][a-zA-Z0-9])+/g, wrapper: '$' },
+      // Underbrace: \underbrace{...}_{...}
+      { regex: /\\underbrace\{[^}]+\}(?:_\{[^}]+\})?/g, wrapper: '$' },
+    ];
     
-    while ((match = blockMathRegex.exec(content)) !== null) {
-      blockMatches.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        content: match[1],
-      });
+    // Check if content already has LaTeX delimiters
+    const hasDelimiters = /\$\$[\s\S]+?\$\$|\$[^$]+?\$/.test(content);
+    
+    if (!hasDelimiters) {
+      // Auto-wrap LaTeX patterns
+      for (const { regex, wrapper } of latexPatterns) {
+        processedContent = processedContent.replace(regex, (match) => {
+          // Don't wrap if already inside delimiters
+          const beforeMatch = processedContent.substring(0, processedContent.indexOf(match));
+          const afterMatch = processedContent.substring(processedContent.indexOf(match) + match.length);
+          const openDelimiters = (beforeMatch.match(/\$/g) || []).length;
+          const isInsideDelimiters = openDelimiters % 2 === 1;
+          
+          if (isInsideDelimiters) return match;
+          return `${wrapper}${match}${wrapper}`;
+        });
+      }
     }
     
-    while ((match = inlineMathRegex.exec(content)) !== null) {
-      const isInsideBlock = blockMatches.some(
-        bm => match!.index >= bm.start && match!.index < bm.end
-      );
-      if (!isInsideBlock) {
-        inlineMatches.push({
+    // Now, replace LaTeX math in the HTML string with placeholders
+    const mathPlaceholders: Array<{ id: string; type: 'block' | 'inline'; content: string }> = [];
+    let placeholderIndex = 0;
+    
+    // Find and replace block math: $$...$$
+    processedContent = processedContent.replace(/\$\$([^$]+)\$\$/g, (match, mathContent) => {
+      const id = `__MATH_BLOCK_${placeholderIndex++}__`;
+      mathPlaceholders.push({ id, type: 'block', content: mathContent.trim() });
+      return id;
+    });
+    
+    // Find and replace inline math: $...$ (but not $$...$$)
+    processedContent = processedContent.replace(/\$([^$\n]+)\$/g, (match, mathContent) => {
+      // Skip if it's part of a block math (shouldn't happen after first replace, but just in case)
+      if (match.includes('__MATH_BLOCK_')) return match;
+      const id = `__MATH_INLINE_${placeholderIndex++}__`;
+      mathPlaceholders.push({ id, type: 'inline', content: mathContent.trim() });
+      return id;
+    });
+    
+    // Render HTML with placeholders
+    const renderWithMath = (html: string) => {
+      const parts: React.ReactNode[] = [];
+      let lastIndex = 0;
+      let partIndex = 0; // Unique counter for keys
+      
+      // Find all placeholders
+      const placeholderRegex = /__(MATH_(?:BLOCK|INLINE)_\d+)__/g;
+      let match;
+      const matches: Array<{ start: number; end: number; id: string }> = [];
+      
+      placeholderRegex.lastIndex = 0;
+      while ((match = placeholderRegex.exec(html)) !== null) {
+        matches.push({
           start: match.index,
           end: match.index + match[0].length,
-          content: match[1],
+          id: match[1],
         });
       }
-    }
-    
-    const allMatches = [
-      ...blockMatches.map(m => ({ ...m, type: 'block' as const })),
-      ...inlineMatches.map(m => ({ ...m, type: 'inline' as const })),
-    ].sort((a, b) => a.start - b.start);
-    
-    let lastIndex = 0;
-    for (const match of allMatches) {
-      if (match.start > lastIndex) {
-        parts.push({
-          type: 'text',
-          content: content.substring(lastIndex, match.start),
-        });
+      
+      if (matches.length === 0) {
+        // No math found, just render HTML
+        return <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: html }} />;
       }
-      parts.push({
-        type: match.type,
-        content: match.content,
-      });
-      lastIndex = match.end;
-    }
-    
-    if (lastIndex < content.length) {
-      parts.push({
-        type: 'text',
-        content: content.substring(lastIndex),
-      });
-    }
-    
-    if (parts.length === 0) {
-      parts.push({ type: 'text', content });
-    }
-    
-    return (
-      <div className="prose max-w-none">
-        {parts.map((part, i) => {
-          if (part.type === 'block') {
+      
+      // Split HTML and insert math components
+      for (const mathMatch of matches) {
+        // Add HTML before math
+        if (mathMatch.start > lastIndex) {
+          const htmlBefore = html.substring(lastIndex, mathMatch.start);
+          if (htmlBefore) {
+            parts.push(
+              <span key={`part-${partIndex++}`} dangerouslySetInnerHTML={{ __html: htmlBefore }} />
+            );
+          }
+        }
+        
+        // Find and render math
+        const placeholder = mathPlaceholders.find(p => p.id === `__${mathMatch.id}__`);
+        if (placeholder) {
+          if (placeholder.type === 'block') {
             try {
-              return <BlockMath key={i} math={part.content.trim()} />;
+              parts.push(<BlockMath key={`part-${partIndex++}`} math={placeholder.content} />);
             } catch {
-              return <span key={i} className="text-red-500 text-sm">[Lỗi công thức]</span>;
-            }
-          } else if (part.type === 'inline') {
-            try {
-              return <InlineMath key={i} math={part.content.trim()} />;
-            } catch {
-              return <span key={i} className="text-red-500 text-sm">[Lỗi công thức]</span>;
+              parts.push(<span key={`part-${partIndex++}`} className="text-red-500 text-sm">[Lỗi công thức]</span>);
             }
           } else {
-            return <span key={i}>{part.content}</span>;
+            try {
+              parts.push(<InlineMath key={`part-${partIndex++}`} math={placeholder.content} />);
+            } catch {
+              parts.push(<span key={`part-${partIndex++}`} className="text-red-500 text-sm">[Lỗi công thức]</span>);
+            }
           }
-        })}
-      </div>
-    );
+        }
+        
+        lastIndex = mathMatch.end;
+      }
+      
+      // Add remaining HTML
+      if (lastIndex < html.length) {
+        const htmlAfter = html.substring(lastIndex);
+        if (htmlAfter) {
+          parts.push(
+            <span key={`part-${partIndex++}`} dangerouslySetInnerHTML={{ __html: htmlAfter }} />
+          );
+        }
+      }
+      
+      return <div className="prose max-w-none">{parts}</div>;
+    };
+    
+    return renderWithMath(processedContent);
   };
 
   if (loading) {
@@ -347,10 +398,9 @@ export default function BookDetailPage() {
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">{book.title}</h1>
               {book.description && (
-                <div 
-                  className="prose prose-sm max-w-none text-gray-600 mb-4"
-                  dangerouslySetInnerHTML={{ __html: book.description }}
-                />
+                <div className="prose prose-sm max-w-none text-gray-600 mb-4">
+                  {renderMathContent(book.description)}
+                </div>
               )}
               <div className="flex flex-wrap gap-4 text-sm text-gray-500">
                 <span>ISBN: {book.isbn}</span>
@@ -517,10 +567,9 @@ export default function BookDetailPage() {
                   </div>
                 </div>
                 {selectedChapter.description && (
-                  <div 
-                    className="prose prose-sm max-w-none text-gray-600 mb-6 rich-text-content"
-                    dangerouslySetInnerHTML={{ __html: selectedChapter.description }}
-                  />
+                  <div className="prose prose-sm max-w-none text-gray-600 mb-6 rich-text-content">
+                    {renderMathContent(selectedChapter.description)}
+                  </div>
                 )}
 
                 {loadingQuestions ? (

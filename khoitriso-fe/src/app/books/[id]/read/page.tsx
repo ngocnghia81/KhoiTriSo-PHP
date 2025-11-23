@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { httpClient } from '@/lib/http-client';
+import { BlockMath, InlineMath } from 'react-katex';
+import 'katex/dist/katex.min.css';
 import {
   BookOpenIcon,
   ArrowLeftIcon,
@@ -92,6 +94,143 @@ export default function BookReadPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const renderMathContent = (content: string) => {
+    if (!content) return null;
+    
+    // First, auto-detect and wrap LaTeX commands that are not already wrapped
+    let processedContent = content;
+    
+    // Common LaTeX patterns to auto-wrap
+    const latexPatterns = [
+      // Fractions: \frac{...}{...}
+      { regex: /\\frac\{[^}]+\}\{[^}]+\}/g, wrapper: '$' },
+      // Square root: \sqrt{...} or \sqrt[n]{...}
+      { regex: /\\sqrt(?:\[[^\]]+\])?\{[^}]+\}/g, wrapper: '$' },
+      // Math symbols: \mathbb{...}, \text{...}, etc.
+      { regex: /\\(?:mathbb|text|textbf|textit|mathrm)\{[^}]+\}/g, wrapper: '$' },
+      // Greek letters: \alpha, \beta, etc.
+      { regex: /\\(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Alpha|Beta|Gamma|Delta|Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|Xi|Pi|Rho|Sigma|Tau|Upsilon|Phi|Chi|Psi|Omega)\b/g, wrapper: '$' },
+      // Math operators: \cdot, \times, \div, etc.
+      { regex: /\\(?:cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|infty|sum|prod|int|lim|sin|cos|tan|log|ln|exp)\b/g, wrapper: '$' },
+      // Subscripts and superscripts with special chars: x_1, x^2, etc.
+      { regex: /(?:[a-zA-Z0-9]|\\[a-zA-Z]+)(?:[_^]\{[^}]+\}|[_^][a-zA-Z0-9])+/g, wrapper: '$' },
+      // Underbrace: \underbrace{...}_{...}
+      { regex: /\\underbrace\{[^}]+\}(?:_\{[^}]+\})?/g, wrapper: '$' },
+    ];
+    
+    // Check if content already has LaTeX delimiters
+    const hasDelimiters = /\$\$[\s\S]+?\$\$|\$[^$]+?\$/.test(content);
+    
+    if (!hasDelimiters) {
+      // Auto-wrap LaTeX patterns
+      for (const { regex, wrapper } of latexPatterns) {
+        processedContent = processedContent.replace(regex, (match) => {
+          // Don't wrap if already inside delimiters
+          const beforeMatch = processedContent.substring(0, processedContent.indexOf(match));
+          const afterMatch = processedContent.substring(processedContent.indexOf(match) + match.length);
+          const openDelimiters = (beforeMatch.match(/\$/g) || []).length;
+          const isInsideDelimiters = openDelimiters % 2 === 1;
+          
+          if (isInsideDelimiters) return match;
+          return `${wrapper}${match}${wrapper}`;
+        });
+      }
+    }
+    
+    // Now, replace LaTeX math in the HTML string with placeholders
+    const mathPlaceholders: Array<{ id: string; type: 'block' | 'inline'; content: string }> = [];
+    let placeholderIndex = 0;
+    
+    // Find and replace block math: $$...$$
+    processedContent = processedContent.replace(/\$\$([^$]+)\$\$/g, (match, mathContent) => {
+      const id = `__MATH_BLOCK_${placeholderIndex++}__`;
+      mathPlaceholders.push({ id, type: 'block', content: mathContent.trim() });
+      return id;
+    });
+    
+    // Find and replace inline math: $...$ (but not $$...$$)
+    processedContent = processedContent.replace(/\$([^$\n]+)\$/g, (match, mathContent) => {
+      // Skip if it's part of a block math (shouldn't happen after first replace, but just in case)
+      if (match.includes('__MATH_BLOCK_')) return match;
+      const id = `__MATH_INLINE_${placeholderIndex++}__`;
+      mathPlaceholders.push({ id, type: 'inline', content: mathContent.trim() });
+      return id;
+    });
+    
+    // Render HTML with placeholders
+    const renderWithMath = (html: string) => {
+      const parts: React.ReactNode[] = [];
+      let lastIndex = 0;
+      let partIndex = 0; // Unique counter for keys
+      
+      // Find all placeholders
+      const placeholderRegex = /__(MATH_(?:BLOCK|INLINE)_\d+)__/g;
+      let match;
+      const matches: Array<{ start: number; end: number; id: string }> = [];
+      
+      placeholderRegex.lastIndex = 0;
+      while ((match = placeholderRegex.exec(html)) !== null) {
+        matches.push({
+          start: match.index,
+          end: match.index + match[0].length,
+          id: match[1],
+        });
+      }
+      
+      if (matches.length === 0) {
+        // No math found, just render HTML
+        return <div className="prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: html }} />;
+      }
+      
+      // Split HTML and insert math components
+      for (const mathMatch of matches) {
+        // Add HTML before math
+        if (mathMatch.start > lastIndex) {
+          const htmlBefore = html.substring(lastIndex, mathMatch.start);
+          if (htmlBefore) {
+            parts.push(
+              <span key={`part-${partIndex++}`} dangerouslySetInnerHTML={{ __html: htmlBefore }} />
+            );
+          }
+        }
+        
+        // Find and render math
+        const placeholder = mathPlaceholders.find(p => p.id === `__${mathMatch.id}__`);
+        if (placeholder) {
+          if (placeholder.type === 'block') {
+            try {
+              parts.push(<BlockMath key={`part-${partIndex++}`} math={placeholder.content} />);
+            } catch {
+              parts.push(<span key={`part-${partIndex++}`} className="text-red-500 text-sm">[Lỗi công thức]</span>);
+            }
+          } else {
+            try {
+              parts.push(<InlineMath key={`part-${partIndex++}`} math={placeholder.content} />);
+            } catch {
+              parts.push(<span key={`part-${partIndex++}`} className="text-red-500 text-sm">[Lỗi công thức]</span>);
+            }
+          }
+        }
+        
+        lastIndex = mathMatch.end;
+      }
+      
+      // Add remaining HTML
+      if (lastIndex < html.length) {
+        const htmlAfter = html.substring(lastIndex);
+        if (htmlAfter) {
+          parts.push(
+            <span key={`part-${partIndex++}`} dangerouslySetInnerHTML={{ __html: htmlAfter }} />
+          );
+        }
+      }
+      
+      return <div className="prose prose-sm max-w-none">{parts}</div>;
+    };
+    
+    return renderWithMath(processedContent);
   };
 
   if (loading) {
@@ -234,9 +373,9 @@ export default function BookReadPage() {
                             </h3>
                           </div>
                           {chapter.description && (
-                            <p className="text-gray-600 mb-3 ml-13">
-                              {chapter.description}
-                            </p>
+                            <div className="text-gray-700 mb-3 ml-13 prose prose-sm max-w-none">
+                              {renderMathContent(chapter.description)}
+                            </div>
                           )}
                           <div className="flex items-center space-x-4 text-sm text-gray-500 ml-13">
                             <span className="flex items-center">

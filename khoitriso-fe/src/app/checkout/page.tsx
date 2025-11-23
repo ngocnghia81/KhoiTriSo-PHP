@@ -188,9 +188,13 @@ export default function CheckoutPage() {
       const response = await httpClient.post('orders', orderData);
       
       if (response.ok && response.data) {
-        const { order, paymentUrl } = response.data;
+        const { order, paymentUrl, isFree } = response.data;
         
-        if (paymentMethod === 'vnpay' && paymentUrl) {
+        // If order is free (price = 0), redirect directly to order detail
+        if (isFree || calculateTotal() === 0) {
+          notify('Đăng ký thành công! Bạn đã được cấp quyền truy cập.', 'success');
+          router.push(`/orders/${order.id}`);
+        } else if (paymentMethod === 'vnpay' && paymentUrl) {
           // Redirect to VNPay payment page
           window.location.href = paymentUrl;
         } else {

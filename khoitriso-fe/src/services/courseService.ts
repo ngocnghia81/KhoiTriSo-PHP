@@ -73,14 +73,18 @@ export interface LessonMaterial {
 
 export interface LessonDiscussion {
   id: number;
-  lessonId: number;
-  userId: number;
+  lessonId?: number;
+  userId?: number;
   parentId?: number;
   content: string;
   videoTimestamp?: number;
-  isInstructor: boolean;
-  likeCount: number;
-  createdAt: string;
+  video_timestamp?: number; // Support both formats
+  isInstructor?: boolean;
+  is_instructor?: boolean; // Support both formats
+  likeCount?: number;
+  like_count?: number; // Support both formats
+  createdAt?: string;
+  created_at?: string; // Support both formats
   user?: {
     id: number;
     name: string;
@@ -320,8 +324,12 @@ export const courseService = {
    * Reply to discussion as instructor/admin
    * POST /api/admin/lessons/{lessonId}/discussions/{discussionId}/reply
    */
-  replyToDiscussion: async (lessonId: number, discussionId: number, content: string): Promise<LessonDiscussion> => {
-    const response = await api.post<ApiResponse<LessonDiscussion>>(`/admin/lessons/${lessonId}/discussions/${discussionId}/reply`, { content });
+  replyToDiscussion: async (lessonId: number, discussionId: number, content: string, videoTimestamp?: number): Promise<LessonDiscussion> => {
+    const payload: { content: string; videoTimestamp?: number } = { content };
+    if (videoTimestamp !== undefined && videoTimestamp !== null) {
+      payload.videoTimestamp = videoTimestamp;
+    }
+    const response = await api.post<ApiResponse<LessonDiscussion>>(`/admin/lessons/${lessonId}/discussions/${discussionId}/reply`, payload);
     if (response.success && response.data) {
       return response.data;
     }

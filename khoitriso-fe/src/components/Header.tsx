@@ -116,21 +116,12 @@ const navigation = [
         ],
     },
     {
-        name: "Khóa học của tôi",
-        href: "/my-learning",
-        requireAuth: true,
-    },
-    {
         name: "Sách điện tử",
         href: "/books",
         children: [
             { name: "Danh sách sách", href: "/books" },
             { name: "Kích hoạt sách", href: "/books/activation" },
         ],
-    },
-    {
-        name: "Diễn đàn",
-        href: "/forum",
     },
     {
         name: "Đơn hàng",
@@ -239,7 +230,7 @@ export default function Header() {
     };
 
     return (
-        <div>
+        <div className="fixed top-0 left-0 right-0 z-50 w-full bg-white">
             {/* Topbar */}
             <div className="py-4" style={{ backgroundColor: "#f5f2e8" }}>
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -446,7 +437,7 @@ export default function Header() {
             </div>
 
             {/* Main Header */}
-            <header className="bg-white shadow-sm sticky top-0 z-40">
+            <header className="bg-white shadow-sm border-t border-gray-200">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
                         {/* Navigation Menu */}

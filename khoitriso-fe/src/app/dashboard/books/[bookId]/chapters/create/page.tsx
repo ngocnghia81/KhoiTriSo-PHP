@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeftIcon, EyeIcon, EyeSlashIcon, CalculatorIcon } from '@heroicons/react/24/outline';
 import { bookService } from '@/services/bookService';
 import { useToast } from '@/components/ToastProvider';
-import MathEditor from '@/components/MathEditor';
+import MathQuestionEditor from '@/components/MathQuestionEditor';
 import SampleQuestionsButton from '@/components/SampleQuestionsButton';
 import SolutionVideoUpload from '@/components/SolutionVideoUpload';
 import { sampleQuestions, SampleQuestion } from '@/data/sampleQuestions';
@@ -31,7 +31,8 @@ export default function CreateChapterPage() {
     type: 'multiple_choice' | 'essay';
     options?: Array<{ id: string; text: string; isCorrect: boolean }>;
     correctAnswer?: string;
-    explanation: string;
+    explanation?: string;
+    solution?: string;
     solutionVideo?: string;
     solutionType?: 'text' | 'video' | 'latex';
   }>>([]);
@@ -58,7 +59,7 @@ export default function CreateChapterPage() {
         { id: '3', text: '', isCorrect: false },
         { id: '4', text: '', isCorrect: false },
       ],
-      explanation: '',
+      solution: '',
       solutionType: 'text' as const,
     };
     setQuestions([...questions, newQuestion]);
@@ -75,7 +76,8 @@ export default function CreateChapterPage() {
         text: opt.text,
         isCorrect: opt.isCorrect,
       })),
-      explanation: sample.explanation || '',
+      explanation: sample.explanation || undefined,
+      solution: sample.explanation || '',
       correctAnswer: sample.correctAnswer || '',
       solutionType: 'text' as const,
     };
@@ -191,8 +193,9 @@ export default function CreateChapterPage() {
         content: q.content,
         type: q.type,
         options: q.type === 'multiple_choice' ? q.options : undefined,
-        explanation: q.solutionType === 'video' ? undefined : (q.explanation || undefined),
+        explanation: q.type === 'essay' ? (q.explanation || undefined) : undefined,
         correctAnswer: q.type === 'essay' ? q.correctAnswer : undefined,
+        solution: q.solutionType === 'video' ? undefined : (q.solution || undefined),
         solutionVideo: q.solutionType === 'video' ? q.solutionVideo : undefined,
         solutionType: q.solutionType || 'text',
       }));
@@ -244,15 +247,12 @@ export default function CreateChapterPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Mô tả *
-                  </label>
-                  <MathEditor
+                  <MathQuestionEditor
                     value={formData.description}
                     onChange={(value) => setFormData({ ...formData, description: value })}
-                    placeholder="Nhập mô tả chương. Có thể sử dụng công thức toán học."
-                    rows={4}
-                    showPreview={showPreview}
+                    placeholder="Nhập mô tả chương. Sử dụng các nút trên toolbar để thêm công thức toán học..."
+                    height={200}
+                    label="Mô tả *"
                   />
                 </div>
                 <div>
@@ -340,15 +340,15 @@ export default function CreateChapterPage() {
 
                       {/* Question Content */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Nội dung câu hỏi *
-                        </label>
-                        <MathEditor
+                        <MathQuestionEditor
                           value={question.content}
-                          onChange={(value) => updateQuestion(qIndex, 'content', value)}
-                          placeholder="Nhập nội dung câu hỏi. Sử dụng công cụ bên dưới để chèn công thức toán học."
-                          rows={4}
-                          showPreview={showPreview}
+                          onChange={(value) => {
+                            updateQuestion(qIndex, 'content', value);
+                            setCurrentQuestionIndex(qIndex);
+                          }}
+                          placeholder="Nhập nội dung câu hỏi. Sử dụng các nút trên toolbar để thêm công thức toán học..."
+                          height={200}
+                          label="Nội dung câu hỏi *"
                         />
                       </div>
 
@@ -372,7 +372,7 @@ export default function CreateChapterPage() {
                                   className="mt-2"
                                 />
                                 <div className="flex-1">
-                                  <MathEditor
+                                  <MathQuestionEditor
                                     value={option.text}
                                     onChange={(value) => {
                                       const updated = [...questions];
@@ -380,8 +380,7 @@ export default function CreateChapterPage() {
                                       setQuestions(updated);
                                     }}
                                     placeholder={`Lựa chọn ${oIndex + 1}`}
-                                    rows={2}
-                                    showPreview={showPreview}
+                                    height={150}
                                   />
                                 </div>
                                 {question.options!.length > 2 && (
@@ -409,15 +408,25 @@ export default function CreateChapterPage() {
                       {/* Correct Answer for Essay */}
                       {question.type === 'essay' && (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Đáp án mẫu
-                          </label>
-                          <MathEditor
+                          <MathQuestionEditor
                             value={question.correctAnswer || ''}
                             onChange={(value) => updateQuestion(qIndex, 'correctAnswer', value)}
-                            placeholder="Nhập đáp án mẫu (tùy chọn)"
-                            rows={3}
-                            showPreview={showPreview}
+                            placeholder="Nhập đáp án mẫu (tùy chọn). Sử dụng các nút trên toolbar để thêm công thức toán học..."
+                            height={200}
+                            label="Đáp án mẫu (tùy chọn)"
+                          />
+                        </div>
+                      )}
+
+                      {/* Giải thích - chỉ cho tự luận */}
+                      {question.type === 'essay' && (
+                        <div className="mb-4">
+                          <MathQuestionEditor
+                            value={question.explanation || ''}
+                            onChange={(value) => updateQuestion(qIndex, 'explanation', value)}
+                            placeholder="Nhập giải thích cho câu hỏi tự luận (tùy chọn). Sử dụng các nút trên toolbar để thêm công thức toán học."
+                            height={200}
+                            label="Giải thích (tùy chọn)"
                           />
                         </div>
                       )}
@@ -438,7 +447,7 @@ export default function CreateChapterPage() {
                         </select>
                       </div>
 
-                      {/* Explanation/Solution */}
+                      {/* Solution */}
                       {question.solutionType === 'video' ? (
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -455,19 +464,12 @@ export default function CreateChapterPage() {
                         </div>
                       ) : (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            {question.solutionType === 'latex' ? 'Lời giải LaTeX' : 'Giải thích'}
-                          </label>
-                          <MathEditor
-                            value={question.explanation}
-                            onChange={(value) => updateQuestion(qIndex, 'explanation', value)}
-                            placeholder={
-                              question.solutionType === 'latex'
-                                ? 'Nhập lời giải bằng LaTeX (tùy chọn)'
-                                : 'Giải thích đáp án (tùy chọn). Sử dụng công cụ bên dưới để chèn công thức toán học.'
-                            }
-                            rows={3}
-                            showPreview={showPreview}
+                          <MathQuestionEditor
+                            value={question.solution || ''}
+                            onChange={(value) => updateQuestion(qIndex, 'solution', value)}
+                            placeholder="Nhập lời giải (tùy chọn). Sử dụng các nút trên toolbar để thêm công thức toán học, phân số, căn..."
+                            height={250}
+                            label={question.solutionType === 'latex' ? 'Lời giải LaTeX' : 'Lời giải'}
                           />
                         </div>
                       )}

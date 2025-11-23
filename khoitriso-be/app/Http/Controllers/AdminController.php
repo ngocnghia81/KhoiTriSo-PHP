@@ -3530,6 +3530,8 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
 
             $validator = Validator::make($request->all(), [
                 'content' => ['required', 'string'],
+                'videoTimestamp' => ['nullable', 'integer', 'min:0'],
+                'video_timestamp' => ['nullable', 'integer', 'min:0'], // Support both formats
             ]);
 
             if ($validator->fails()) {
@@ -3541,19 +3543,34 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
             }
 
             $data = $validator->validated();
+            
+            // Get video timestamp (support both formats)
+            $videoTimestamp = $data['videoTimestamp'] ?? $data['video_timestamp'] ?? null;
 
-            // Create reply with is_instructor = true
-            $reply = \App\Models\LessonDiscussion::create([
+            // Create reply with is_instructor = true using raw SQL for PostgreSQL compatibility
+            $replyId = DB::table('lesson_discussions')->insertGetId([
                 'lesson_id' => $lessonId,
                 'user_id' => $user->id,
                 'parent_id' => $discussionId,
                 'content' => $data['content'],
-                'is_instructor' => \DB::raw('true'),
-                'is_hidden' => \DB::raw('false'),
+                'video_timestamp' => $videoTimestamp,
+                'is_instructor' => DB::raw('true'),
+                'is_hidden' => DB::raw('false'),
                 'like_count' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
 
-            $reply->load('user:id,name,email,avatar');
+            // Load the created reply with user relationship
+            $reply = \App\Models\LessonDiscussion::with('user:id,name,email,avatar')->find($replyId);
+
+            \Log::info('Admin reply created successfully', [
+                'reply_id' => $replyId,
+                'lesson_id' => $lessonId,
+                'discussion_id' => $discussionId,
+                'user_id' => $user->id,
+                'video_timestamp' => $videoTimestamp
+            ]);
 
             return $this->success($reply, 'Trả lời thành công', $request);
 
@@ -3605,22 +3622,32 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
                         'id' => $discussion->id,
                         'content' => $discussion->content,
                         'videoTimestamp' => $discussion->video_timestamp,
+                        'video_timestamp' => $discussion->video_timestamp, // Support both formats
                         'isInstructor' => $discussion->is_instructor,
+                        'is_instructor' => $discussion->is_instructor, // Support both formats
                         'likeCount' => $discussion->like_count,
+                        'like_count' => $discussion->like_count, // Support both formats
                         'createdAt' => is_string($discussion->created_at) ? $discussion->created_at : $discussion->created_at->toISOString(),
+                        'created_at' => is_string($discussion->created_at) ? $discussion->created_at : $discussion->created_at->toISOString(), // Support both formats
                         'user' => $discussion->user ? [
                             'id' => $discussion->user->id,
                             'name' => $discussion->user->name,
                             'email' => $discussion->user->email,
                             'avatar' => $discussion->user->avatar,
                         ] : null,
+                        'user_name' => $discussion->user ? $discussion->user->name : null, // For backward compatibility
                         'replies' => $replies->map(function ($reply) {
                             return [
                                 'id' => $reply->id,
                                 'content' => $reply->content,
+                                'videoTimestamp' => $reply->video_timestamp,
+                                'video_timestamp' => $reply->video_timestamp, // Support both formats
                                 'isInstructor' => $reply->is_instructor,
+                                'is_instructor' => $reply->is_instructor, // Support both formats
                                 'likeCount' => $reply->like_count,
+                                'like_count' => $reply->like_count, // Support both formats
                                 'createdAt' => is_string($reply->created_at) ? $reply->created_at : $reply->created_at->toISOString(),
+                                'created_at' => is_string($reply->created_at) ? $reply->created_at : $reply->created_at->toISOString(), // Support both formats
                                 'user' => $reply->user ? [
                                     'id' => $reply->user->id,
                                     'name' => $reply->user->name,
@@ -3716,7 +3743,12 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
 
             $data = $validator->validated();
 
-            $assignment = \App\Models\Assignment::create([
+            // Use raw SQL insert for PostgreSQL boolean compatibility
+            $isPublished = isset($data['isPublished']) && $data['isPublished'] ? DB::raw('true') : DB::raw('false');
+            $shuffleQuestions = isset($data['shuffleQuestions']) && $data['shuffleQuestions'] ? DB::raw('true') : DB::raw('false');
+            $shuffleOptions = isset($data['shuffleOptions']) && $data['shuffleOptions'] ? DB::raw('true') : DB::raw('false');
+            
+            $assignmentId = DB::table('assignments')->insertGetId([
                 'lesson_id' => $lessonId,
                 'title' => $data['title'],
                 'description' => $data['description'],
@@ -3726,11 +3758,15 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
                 'max_attempts' => $data['maxAttempts'],
                 'show_answers_after' => $data['showAnswersAfter'],
                 'due_date' => isset($data['dueDate']) ? $data['dueDate'] : null,
-                'is_published' => $data['isPublished'] ?? false,
+                'is_published' => $isPublished,
                 'passing_score' => $data['passingScore'] ?? null,
-                'shuffle_questions' => $data['shuffleQuestions'] ?? false,
-                'shuffle_options' => $data['shuffleOptions'] ?? false,
+                'shuffle_questions' => $shuffleQuestions,
+                'shuffle_options' => $shuffleOptions,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
+            
+            $assignment = \App\Models\Assignment::find($assignmentId);
 
             // Send notifications to enrolled students
             try {
