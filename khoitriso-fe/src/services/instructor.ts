@@ -337,6 +337,7 @@ export async function updateInstructorCourse(id: number, data: {
   language?: string;
   requirements?: string[];
   whatYouWillLearn?: string[];
+  isActive?: boolean;
 }): Promise<InstructorCourse> {
   const response = await httpClient.put(`instructor/courses/${id}`, data);
   if (!isSuccess(response)) throw new Error(handleApiError(response));
@@ -383,6 +384,7 @@ export async function updateInstructorBook(id: number, data: {
   language?: string;
   publicationYear?: number;
   edition?: string;
+  isActive?: boolean;
 }): Promise<InstructorBook> {
   const response = await httpClient.put(`instructor/books/${id}`, data);
   if (!isSuccess(response)) throw new Error(handleApiError(response));

@@ -12,7 +12,8 @@ import {
   DocumentTextIcon,
   ChartBarIcon,
   UserGroupIcon,
-  CurrencyDollarIcon
+  CurrencyDollarIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import { courseService, Course } from '@/services/courseService';
 import { 
@@ -355,6 +356,21 @@ export default function CoursesPage() {
     } catch (error: any) {
       console.error('Error deleting course:', error);
       notify(error.message || 'Lỗi xóa khóa học', 'error');
+    }
+  };
+
+  const handleRestoreCourse = async (course: Course) => {
+    try {
+      if (isInstructor) {
+        await updateInstructorCourse(course.id, { isActive: true });
+      } else {
+        await courseService.updateCourse(course.id, { isActive: true });
+      }
+      notify('Khôi phục khóa học thành công!', 'success');
+      fetchCourses();
+    } catch (error: any) {
+      console.error('Error restoring course:', error);
+      notify(error.message || 'Lỗi khôi phục khóa học', 'error');
     }
   };
 
@@ -703,15 +719,18 @@ export default function CoursesPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {courses.map((course) => (
-                  <tr key={course.id} className="hover:bg-gray-50">
+                {courses.map((course) => {
+                  const isActive = course.isActive ?? (course as any).is_active ?? true;
+                  const isInactive = !isActive;
+                  return (
+                  <tr key={course.id} className={isInactive ? 'bg-gray-50 text-gray-500' : 'hover:bg-gray-50'}>
                     <td className="px-6 py-4">
-                      <div className="flex items-start">
+                      <div className={`flex items-start ${isInactive ? 'opacity-70' : ''}`}>
                         {course.thumbnail && (
                           <img
                             src={course.thumbnail}
                             alt={course.title}
-                            className="h-12 w-12 rounded object-cover mr-3 flex-shrink-0"
+                            className={`h-12 w-12 rounded object-cover mr-3 flex-shrink-0 ${isInactive ? 'grayscale' : ''}`}
                           />
                         )}
                         <div className="min-w-0 flex-1">
@@ -750,12 +769,12 @@ export default function CoursesPage() {
                     <td className="px-6 py-4">
                       <span
                         className={`inline-block px-2 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${
-                          course.isActive
+                          isActive
                             ? 'bg-green-100 text-green-800'
                             : 'bg-gray-100 text-gray-800'
                         }`}
                       >
-                        {course.isActive ? 'Hoạt động' : 'Đã vô hiệu hóa'}
+                        {isActive ? 'Hoạt động' : 'Đã vô hiệu hóa'}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -813,17 +832,27 @@ export default function CoursesPage() {
                         >
                           <PencilIcon className="h-5 w-5" />
                         </button>
-                        <button
-                          onClick={() => handleDeleteClick(course)}
-                          className="text-red-600 hover:text-red-900"
-                          title="Xóa"
-                        >
-                          <TrashIcon className="h-5 w-5" />
-                    </button>
+                        {isActive ? (
+                          <button
+                            onClick={() => handleDeleteClick(course)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Vô hiệu hóa"
+                          >
+                            <TrashIcon className="h-5 w-5" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleRestoreCourse(course)}
+                            className="text-emerald-600 hover:text-emerald-900"
+                            title="Khôi phục"
+                          >
+                            <ArrowPathIcon className="h-5 w-5" />
+                          </button>
+                        )}
                   </div>
                     </td>
                   </tr>
-          ))}
+          )})}
               </tbody>
             </table>
         </div>

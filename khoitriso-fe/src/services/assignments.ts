@@ -182,6 +182,7 @@ export async function createAssignmentQuestions(assignmentId: number, data: {
     defaultPoints?: number;
   }>;
   isBatchInsert?: boolean;
+  replaceExisting?: boolean;
 }) {
   const response = await api.post<{ data: {
     assignment: Assignment;

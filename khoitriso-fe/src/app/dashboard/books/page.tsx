@@ -13,6 +13,7 @@ import {
   XMarkIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import { bookService } from '@/services/bookService';
 import { getInstructorBooks, createInstructorBook, updateInstructorBook, deleteInstructorBook } from '@/services/instructor';
@@ -409,6 +410,22 @@ export default function BooksPage() {
     }
   };
 
+  const handleRestoreBook = async (book: Book) => {
+    try {
+      if (isInstructor) {
+        await updateInstructorBook(book.id, { isActive: true });
+      } else {
+        await bookService.updateBook(book.id, { isActive: true });
+      }
+      notify('Khôi phục sách thành công', 'success');
+      fetchBooks();
+    } catch (error: any) {
+      console.error('Error restoring book:', error);
+      const message = error?.message || error?.response?.data?.message || 'Lỗi khôi phục sách';
+      notify(message, 'error');
+    }
+  };
+
   const handleViewBook = async (id: number) => {
     router.push(`/dashboard/books/${id}`);
   };
@@ -594,11 +611,22 @@ export default function BooksPage() {
       ) : (
         <>
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {books.map((book) => (
-          <div key={book.id} className="bg-white overflow-hidden shadow-lg rounded-xl hover:shadow-xl transition-all duration-300">
+        {books.map((book) => {
+          const isInactive = !book.is_active;
+          return (
+          <div
+            key={book.id}
+            className={`bg-white overflow-hidden shadow-lg rounded-xl transition-all duration-300 ${
+              isInactive ? 'border border-dashed border-gray-200 bg-gray-50 text-gray-500' : 'hover:shadow-xl'
+            }`}
+          >
             <div className="aspect-[3/4] bg-gradient-to-br from-blue-500 to-purple-600 relative">
                   {book.cover_image ? (
-                    <img src={book.cover_image} alt={book.title} className="w-full h-full object-cover" />
+                    <img
+                      src={book.cover_image}
+                      alt={book.title}
+                      className={`w-full h-full object-cover ${isInactive ? 'opacity-70 grayscale' : ''}`}
+                    />
                   ) : (
               <div className="absolute inset-0 flex items-center justify-center">
                 <BookOpenIcon className="h-20 w-20 text-white opacity-80" />
@@ -641,7 +669,7 @@ export default function BooksPage() {
               </div>
             </div>
 
-            <div className="p-6">
+            <div className={`p-6 ${isInactive ? 'opacity-70' : ''}`}>
               <div className="flex items-center justify-between mb-2">
                     <span className="text-sm text-blue-600 font-medium">
                       {book.category?.name || 'Chưa phân loại'}
@@ -735,18 +763,28 @@ export default function BooksPage() {
                       >
                     <PencilIcon className="h-4 w-4" />
                   </button>
-                      <button
-                        onClick={() => handleDeleteClick(book)}
-                        className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"
-                        title="Xóa"
-                      >
-                    <TrashIcon className="h-4 w-4" />
-                  </button>
+                      {book.is_active ? (
+                        <button
+                          onClick={() => handleDeleteClick(book)}
+                          className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"
+                          title="Vô hiệu hóa"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleRestoreBook(book)}
+                          className="p-1.5 text-gray-400 hover:text-emerald-600 transition-colors"
+                          title="Khôi phục"
+                        >
+                          <ArrowPathIcon className="h-4 w-4" />
+                        </button>
+                      )}
                 </div>
               </div>
             </div>
           </div>
-        ))}
+        )})}
       </div>
 
       {/* Pagination */}

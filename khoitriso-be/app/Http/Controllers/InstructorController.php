@@ -608,6 +608,7 @@ class InstructorController extends BaseController
                 'language' => ['sometimes', 'string', 'max:10'],
                 'requirements' => ['sometimes', 'array'],
                 'whatYouWillLearn' => ['sometimes', 'array'],
+                'isActive' => ['sometimes', 'boolean'],
             ]);
 
             if ($validator->fails()) {
@@ -660,6 +661,11 @@ class InstructorController extends BaseController
             if (isset($data['whatYouWillLearn'])) {
                 $updates[] = 'what_you_will_learn = ?::json';
                 $values[] = json_encode($data['whatYouWillLearn'], JSON_UNESCAPED_UNICODE);
+            }
+            if (isset($data['isActive'])) {
+                $isActive = filter_var($data['isActive'], FILTER_VALIDATE_BOOLEAN);
+                $updates[] = 'is_active = ?::boolean';
+                $values[] = $isActive;
             }
             
             // If course was approved, set back to pending after update
@@ -846,6 +852,7 @@ class InstructorController extends BaseController
                 'language' => ['sometimes', 'string', 'max:10'],
                 'publicationYear' => ['sometimes', 'integer'],
                 'edition' => ['sometimes', 'string', 'max:50'],
+                'isActive' => ['sometimes', 'boolean'],
             ]);
 
             if ($validator->fails()) {
@@ -870,7 +877,13 @@ class InstructorController extends BaseController
                 'language' => $data['language'] ?? $book->language,
                 'publication_year' => $data['publicationYear'] ?? $book->publication_year,
                 'edition' => $data['edition'] ?? $book->edition,
-            ])->save();
+            ]);
+
+            if (array_key_exists('isActive', $data)) {
+                $book->is_active = (bool) $data['isActive'];
+            }
+
+            $book->save();
 
             return $this->success($book, 'Cập nhật sách thành công. Đang chờ phê duyệt lại.', $request);
 

@@ -593,6 +593,7 @@ class AssignmentController extends BaseController
                 'questions.*.solutionType' => ['nullable', 'string', 'in:text,video,latex'],
                 'questions.*.defaultPoints' => ['nullable', 'numeric', 'min:0'], // For BatchInsert
                 'isBatchInsert' => ['nullable', 'boolean'], // true for Word import, false for single add
+                'replaceExisting' => ['nullable', 'boolean'],
             ]);
             
             if ($validator->fails()) {
@@ -621,6 +622,8 @@ class AssignmentController extends BaseController
             // Use filtered data
             $data = $requestData;
             $isBatchInsert = isset($data['isBatchInsert']) && $data['isBatchInsert'];
+            $replaceExisting = isset($data['replaceExisting']) && filter_var($data['replaceExisting'], FILTER_VALIDATE_BOOLEAN);
+            unset($data['replaceExisting']);
 
             \DB::beginTransaction();
 
@@ -629,6 +632,15 @@ class AssignmentController extends BaseController
                 $existingQuestions = Question::where('context_type', 1)
                     ->where('context_id', $assignmentId)
                     ->get();
+
+                if ($replaceExisting && $existingQuestions->count() > 0) {
+                    $questionIds = $existingQuestions->pluck('id');
+                    if ($questionIds->count() > 0) {
+                        QuestionOption::whereIn('question_id', $questionIds)->delete();
+                        Question::whereIn('id', $questionIds)->delete();
+                    }
+                    $existingQuestions = collect();
+                }
 
                 // Azota Points array: [10%, 25%, 50%, 100%]
                 $azotaPoints = [0.1, 0.25, 0.5, 1.0];

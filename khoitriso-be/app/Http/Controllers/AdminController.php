@@ -2991,6 +2991,7 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
                 'language' => ['nullable', 'string', 'max:10'],
                 'requirements' => ['nullable', 'array'],
                 'whatYouWillLearn' => ['nullable', 'array'],
+                'isActive' => ['nullable', 'boolean'],
             ]);
 
             if ($validator->fails()) {
@@ -3020,12 +3021,25 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
                 'instructor_id' => $data['instructorId'] ?? $course->instructor_id,
                 'category_id' => $data['categoryId'] ?? $course->category_id,
                 'level' => $level,
-                'is_free' => isset($data['isFree']) ? (bool)$data['isFree'] : $course->is_free,
                 'price' => $data['price'] ?? $course->price,
                 'language' => $data['language'] ?? $course->language,
                 'requirements' => $data['requirements'] ?? $course->requirements,
                 'what_you_will_learn' => $data['whatYouWillLearn'] ?? $course->what_you_will_learn,
-            ])->save();
+            ]);
+
+            if (array_key_exists('isActive', $data)) {
+                $course->is_active = (bool) $data['isActive'];
+            }
+
+            $course->save();
+
+            if (array_key_exists('isFree', $data)) {
+                $isFree = filter_var($data['isFree'], FILTER_VALIDATE_BOOLEAN);
+                \DB::table('courses')
+                    ->where('id', $course->id)
+                    ->update(['is_free' => \DB::raw($isFree ? 'true' : 'false')]);
+                $course->is_free = $isFree;
+            }
 
             return $this->success($course, 'Cập nhật khóa học thành công', $request);
 
