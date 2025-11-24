@@ -613,6 +613,7 @@ export default function BooksPage() {
                 </span>
                 {(() => {
                   const approvalStatus = book.approval_status ?? (book as any).approvalStatus ?? 0;
+                  // Backend uses: 0=Chờ duyệt, 1=Đã duyệt, 2=Từ chối
                   if (approvalStatus === 0) {
                     return (
                       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
@@ -682,6 +683,7 @@ export default function BooksPage() {
                 <div className="mb-4">
                   {(() => {
                     const approvalStatus = book.approval_status ?? (book as any).approvalStatus ?? 0;
+                    // Backend uses: 0=Chờ duyệt, 1=Đã duyệt, 2=Từ chối
                     if (approvalStatus === 0) {
                       return (
                         <div className="flex items-center text-xs text-yellow-700 bg-yellow-50 px-3 py-2 rounded-lg">
@@ -704,6 +706,7 @@ export default function BooksPage() {
                         </div>
                       );
                     }
+                    return null;
                     return null;
                   })()}
                 </div>
@@ -993,9 +996,9 @@ export default function BooksPage() {
                       <select value={bookForm.approvalStatus}
                         onChange={(e) => setBookForm(prev => ({ ...prev, approvalStatus: parseInt(e.target.value) }))}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                        <option value="1">Chờ duyệt</option>
+                        <option value="0">Chờ duyệt</option>
+                        <option value="1">Đã duyệt</option>
                         <option value="2">Từ chối</option>
-                        <option value="3">Đã duyệt</option>
                       </select>
                     </div>
                     <div className="sm:col-span-2">

@@ -138,6 +138,12 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
   };
 
   const addToCart = async () => {
+    // Check if book is already purchased
+    if (book.is_purchased || (book as any).is_owned) {
+      alert('Bạn đã mua sách này rồi!');
+      return;
+    }
+    
     // itemType: 1 = course, 2 = book
     await apiAddToCart({ itemType: 2, itemId: Number(book.id) || 0 });
     alert('Đã thêm vào giỏ hàng');
@@ -331,13 +337,23 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
               </div>
 
               <div className="flex space-x-4">
-                <button
-                  onClick={addToCart}
-                  className="flex-1 flex items-center justify-center px-6 py-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-lg"
-                >
-                  <ShoppingCartIcon className="h-5 w-5 mr-2" />
-                  Thêm vào giỏ hàng
-                </button>
+                {book.isOwned || book.is_purchased ? (
+                  <button
+                    disabled
+                    className="flex-1 flex items-center justify-center px-6 py-4 bg-green-600 text-white font-semibold rounded-lg cursor-not-allowed opacity-75 shadow-lg"
+                  >
+                    <CheckCircleIcon className="h-5 w-5 mr-2" />
+                    Đã mua
+                  </button>
+                ) : (
+                  <button
+                    onClick={addToCart}
+                    className="flex-1 flex items-center justify-center px-6 py-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-lg"
+                  >
+                    <ShoppingCartIcon className="h-5 w-5 mr-2" />
+                    Thêm vào giỏ hàng
+                  </button>
+                )}
                 <button
                   onClick={async () => {
                     try {
@@ -521,12 +537,21 @@ export default function BookDetailClient({ book }: BookDetailClientProps) {
                     <p className="text-gray-600 mb-6">
                       Mua sách để truy cập {book.chapters.length} chương với {book.totalQuestions} câu hỏi và lời giải chi tiết
                     </p>
-                    <button
-                      onClick={addToCart}
-                      className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
-                    >
-                      Thêm vào giỏ hàng
-                    </button>
+                    {book.isOwned || book.is_purchased ? (
+                      <button
+                        disabled
+                        className="bg-green-600 text-white px-6 py-3 rounded-lg font-medium cursor-not-allowed opacity-75"
+                      >
+                        Đã mua
+                      </button>
+                    ) : (
+                      <button
+                        onClick={addToCart}
+                        className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                      >
+                        Thêm vào giỏ hàng
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

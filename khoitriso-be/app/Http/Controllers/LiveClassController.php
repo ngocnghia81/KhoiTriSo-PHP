@@ -50,7 +50,16 @@ class LiveClassController extends BaseController
                 ->orderBy('scheduled_at')
                 ->skip(($page - 1) * $pageSize)
                 ->take($pageSize)
-                ->get();
+                ->get()
+                ->map(function ($lc) {
+                    $data = $lc->toArray();
+                    // Convert scheduled_at from UTC to UTC+7 for display
+                    if (isset($data['scheduled_at'])) {
+                        $scheduledAt = \Carbon\Carbon::parse($data['scheduled_at'])->setTimezone('Asia/Ho_Chi_Minh');
+                        $data['scheduled_at'] = $scheduledAt->toIso8601String();
+                    }
+                    return $data;
+                });
             
             return $this->paginated($liveClasses->toArray(), $page, $pageSize, $total);
 
@@ -69,7 +78,14 @@ class LiveClassController extends BaseController
                 return $this->notFound('Live class');
             }
             
-            return $this->success($lc);
+            // Convert scheduled_at from UTC to UTC+7 for display
+            $lcData = $lc->toArray();
+            if (isset($lcData['scheduled_at'])) {
+                $scheduledAt = \Carbon\Carbon::parse($lcData['scheduled_at'])->setTimezone('Asia/Ho_Chi_Minh');
+                $lcData['scheduled_at'] = $scheduledAt->toIso8601String();
+            }
+            
+            return $this->success($lcData);
 
         } catch (\Exception $e) {
             \Log::error('Error in liveClass show: ' . $e->getMessage());
@@ -128,6 +144,12 @@ class LiveClassController extends BaseController
                 
                 $instructorId = ($user->role ?? '') === 'admin' ? $course->instructor_id : $user->id;
                 
+                // Parse scheduledAt and ensure it's in UTC+7 (Asia/Ho_Chi_Minh)
+                // Frontend sends datetime-local which is in local timezone, convert to UTC+7
+                $scheduledAtCarbon = \Carbon\Carbon::parse($data['scheduledAt'], 'Asia/Ho_Chi_Minh');
+                // Store in database as UTC (PostgreSQL will handle timezone conversion)
+                $scheduledAtUTC = $scheduledAtCarbon->utc();
+                
                 $lcId = DB::selectOne("
                     INSERT INTO live_classes (
                         course_id, instructor_id, title, description, scheduled_at,
@@ -141,7 +163,7 @@ class LiveClassController extends BaseController
                     $instructorId,
                     $data['title'],
                     $data['description'],
-                    $data['scheduledAt'],
+                    $scheduledAtUTC->toDateTimeString(),
                     $data['durationMinutes'],
                     $data['maxParticipants'] ?? null,
                     $data['meetingUrl'],
@@ -163,7 +185,8 @@ class LiveClassController extends BaseController
                     ->with('user')
                     ->get();
                 
-                $scheduledAt = \Carbon\Carbon::parse($data['scheduledAt']);
+                // Parse scheduledAt in UTC+7 timezone for display
+                $scheduledAt = \Carbon\Carbon::parse($data['scheduledAt'], 'Asia/Ho_Chi_Minh');
                 $formattedDate = $scheduledAt->format('d/m/Y');
                 $formattedTime = $scheduledAt->format('H:i');
                 
@@ -273,7 +296,9 @@ class LiveClassController extends BaseController
             $updateData = [
                 'title' => $data['title'] ?? $lc->title,
                 'description' => $data['description'] ?? $lc->description,
-                'scheduled_at' => isset($data['scheduledAt']) ? $data['scheduledAt'] : $lc->scheduled_at,
+                'scheduled_at' => isset($data['scheduledAt']) 
+                    ? \Carbon\Carbon::parse($data['scheduledAt'], 'Asia/Ho_Chi_Minh')->utc()->toDateTimeString()
+                    : $lc->scheduled_at,
                 'duration_minutes' => $data['durationMinutes'] ?? $lc->duration_minutes,
                 'max_participants' => $data['maxParticipants'] ?? $lc->max_participants,
                 'status' => $data['status'] ?? $lc->status,

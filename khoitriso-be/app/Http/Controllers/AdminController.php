@@ -1929,7 +1929,7 @@ class AdminController extends BaseController
                 'edition' => ['nullable', 'string', 'max:50'],
                 'authorId' => ['nullable', 'integer', 'exists:users,id'],
                 'isActive' => ['nullable', 'boolean'],
-                'approvalStatus' => ['nullable', 'integer', 'in:1,2,3'],
+                'approvalStatus' => ['nullable', 'integer', 'in:0,1,2'],
             ]);
 
             if ($validator->fails()) {

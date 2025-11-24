@@ -244,11 +244,20 @@ export default function LiveClassesPage() {
     if (!selectedLiveClass) return;
     
     try {
+      // Convert datetime-local to ISO string with UTC+7 timezone
+      let scheduledAtISO = form.scheduledAt;
+      if (form.scheduledAt) {
+        const localDate = new Date(form.scheduledAt);
+        const utc7Offset = -7 * 60; // UTC+7 is -420 minutes from UTC
+        const utc7Date = new Date(localDate.getTime() - (localDate.getTimezoneOffset() - utc7Offset) * 60000);
+        scheduledAtISO = utc7Date.toISOString();
+      }
+      
       const payload = {
         title: form.title,
         description: form.description,
         courseId: Number(form.courseId),
-        scheduledAt: form.scheduledAt,
+        scheduledAt: scheduledAtISO,
         durationMinutes: Number(form.durationMinutes) || 60,
         maxParticipants: Number(form.maxParticipants) || 100,
         meetingUrl: form.meetingUrl,
@@ -334,7 +343,18 @@ export default function LiveClassesPage() {
       title: liveClass.title,
       description: liveClass.description || '',
       courseId: String(liveClass.courseId || liveClass.course?.id || ''),
-      scheduledAt: liveClass.scheduledAt ? new Date(liveClass.scheduledAt).toISOString().slice(0, 16) : '',
+      // Convert from UTC+7 (from backend) to datetime-local format
+      // Backend returns UTC+7, we need to display it correctly
+      scheduledAt: liveClass.scheduledAt ? (() => {
+        const date = new Date(liveClass.scheduledAt);
+        // Adjust for UTC+7 timezone
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+      })() : '',
       durationMinutes: liveClass.durationMinutes || 60,
       maxParticipants: liveClass.maxParticipants || 100,
       meetingUrl: liveClass.meetingUrl || '',
@@ -350,7 +370,7 @@ export default function LiveClassesPage() {
     const meetingInfo = `
 Thông tin lớp học trực tuyến:
 📚 Tiêu đề: ${liveClass.title}
-📅 Thời gian: ${new Date(liveClass.scheduledAt).toLocaleString('vi-VN')}
+📅 Thời gian: ${new Date(liveClass.scheduledAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
 🔗 Link tham gia: ${liveClass.meetingUrl}
 🆔 Meeting ID: ${liveClass.meetingId}
 🔑 Mật khẩu: ${liveClass.meetingPassword || 'Không có'}
@@ -547,14 +567,21 @@ Thông tin lớp học trực tuyến:
                       )}
                       <div className="flex items-center">
                         <CalendarDaysIcon className="h-4 w-4 mr-1" />
-                        {new Date(liveClass.scheduledAt).toLocaleDateString('vi-VN')}
+                        {(() => {
+                          const date = new Date(liveClass.scheduledAt);
+                          return date.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+                        })()}
                       </div>
                       <div className="flex items-center">
                         <ClockIcon className="h-4 w-4 mr-1" />
-                        {new Date(liveClass.scheduledAt).toLocaleTimeString('vi-VN', { 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
-                        })} ({liveClass.durationMinutes} phút)
+                        {(() => {
+                          const date = new Date(liveClass.scheduledAt);
+                          return date.toLocaleTimeString('vi-VN', { 
+                            hour: '2-digit', 
+                            minute: '2-digit',
+                            timeZone: 'Asia/Ho_Chi_Minh'
+                          });
+                        })()} ({liveClass.durationMinutes} phút)
                       </div>
                       <div className="flex items-center">
                         <UsersIcon className="h-4 w-4 mr-1" />

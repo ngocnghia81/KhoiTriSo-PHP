@@ -15,6 +15,9 @@ class BookController extends Controller
 {
     public function index(Request $request)
     {
+        $user = $request->user();
+        $userId = $user ? $user->id : null;
+        
         $q = Book::query()
             ->whereRaw('is_active = true')
             ->whereRaw('is_published = true')
@@ -25,8 +28,44 @@ class BookController extends Controller
         if ($request->filled('approvalStatus')) $q->where('approval_status', $request->integer('approvalStatus'));
         $limit = (int) $request->query('pageSize', 20);
         $res = $q->paginate(max(1, min(100, $limit)));
+        
+        // Get purchased book IDs for authenticated user
+        // Check both: user_books (via activation codes) and paid orders
+        $purchasedBookIds = [];
+        if ($userId) {
+            // Method 1: Check via user_books (activation codes)
+            $booksViaActivation = DB::table('user_books')
+                ->join('book_activation_codes', 'user_books.activation_code_id', '=', 'book_activation_codes.id')
+                ->where('user_books.user_id', $userId)
+                ->whereRaw('user_books.is_active = true')
+                ->whereNotNull('book_activation_codes.book_id')
+                ->distinct()
+                ->pluck('book_activation_codes.book_id')
+                ->toArray();
+            
+            // Method 2: Check via paid orders (status = 2 = Paid)
+            $booksViaOrders = DB::table('orders')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.user_id', $userId)
+                ->where('orders.status', 2) // Paid
+                ->where('order_items.item_type', 2) // Book
+                ->distinct()
+                ->pluck('order_items.item_id')
+                ->toArray();
+            
+            // Merge both methods
+            $purchasedBookIds = array_unique(array_merge($booksViaActivation, $booksViaOrders));
+        }
+        
+        // Add is_purchased flag to each book
+        $booksData = collect($res->items())->map(function ($book) use ($purchasedBookIds) {
+            $bookArray = $book->toArray();
+            $bookArray['is_purchased'] = in_array($book->id, $purchasedBookIds);
+            return $bookArray;
+        });
+        
         return response()->json([
-            'data' => $res->items(), 
+            'data' => $booksData->toArray(), 
             'total' => $res->total(), 
             'current_page' => $res->currentPage(),
             'last_page' => $res->lastPage(),

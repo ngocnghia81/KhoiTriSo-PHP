@@ -12,6 +12,9 @@ class CourseController extends BaseController
 {
     public function index(Request $request)
     {
+        $user = $request->user();
+        $userId = $user ? $user->id : null;
+        
         $query = Course::with(['instructor:id,name,email', 'category:id,name'])
             ->whereRaw('is_active = true')
             ->whereRaw('is_published = true')
@@ -33,8 +36,40 @@ class CourseController extends BaseController
         $query->orderBy($sortBy, $sortOrder);
         $limit = max(1, min(100, (int) $request->query('limit', 20)));
         $courses = $query->paginate($limit);
+        
+        // Get enrolled/purchased course IDs for authenticated user
+        // Check both: course_enrollments and paid orders
+        $enrolledCourseIds = [];
+        if ($userId) {
+            // Method 1: Check via course_enrollments
+            $coursesViaEnrollment = CourseEnrollment::where('user_id', $userId)
+                ->whereRaw('is_active = true')
+                ->pluck('course_id')
+                ->toArray();
+            
+            // Method 2: Check via paid orders (status = 2 = Paid)
+            $coursesViaOrders = DB::table('orders')
+                ->join('order_items', 'orders.id', '=', 'order_items.order_id')
+                ->where('orders.user_id', $userId)
+                ->where('orders.status', 2) // Paid
+                ->where('order_items.item_type', 1) // Course
+                ->distinct()
+                ->pluck('order_items.item_id')
+                ->toArray();
+            
+            // Merge both methods
+            $enrolledCourseIds = array_unique(array_merge($coursesViaEnrollment, $coursesViaOrders));
+        }
+        
+        // Add is_purchased flag to each course
+        $coursesData = collect($courses->items())->map(function ($course) use ($enrolledCourseIds) {
+            $courseArray = $course->toArray();
+            $courseArray['is_purchased'] = in_array($course->id, $enrolledCourseIds);
+            return $courseArray;
+        });
+        
         return response()->json([
-            'data' => $courses->items(),
+            'data' => $coursesData->toArray(),
             'total' => $courses->total(),
             'current_page' => $courses->currentPage(),
             'last_page' => $courses->lastPage(),
@@ -63,11 +98,12 @@ class CourseController extends BaseController
             ])->findOrFail($id);
             
             // Calculate real-time statistics
-            $totalLessons = $course->lessons()->whereRaw('is_published = true')->count();
+            // Count all active lessons (not just published) for public display
+            $totalLessons = $course->lessons()->whereRaw('is_active = true')->count();
             
-            // Calculate total duration from lessons (video_duration is in minutes)
+            // Calculate total duration from all active lessons (video_duration is in minutes)
             $totalDurationMinutes = $course->lessons()
-                ->whereRaw('is_published = true')
+                ->whereRaw('is_active = true')
                 ->sum('video_duration') ?? 0;
             $estimatedDurationHours = $totalDurationMinutes > 0 ? round($totalDurationMinutes / 60, 1) : 0;
             

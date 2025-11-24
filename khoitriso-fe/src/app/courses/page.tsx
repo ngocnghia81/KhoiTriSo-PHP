@@ -16,7 +16,8 @@ import {
   FunnelIcon,
   HeartIcon,
   ShoppingCartIcon,
-  ArrowRightIcon
+  ArrowRightIcon,
+  CheckCircleIcon
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid, HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
 import { courseService } from '@/services/courseService';
@@ -219,6 +220,13 @@ export default function CoursesPage() {
     
     // Check authentication
     if (!requireAuth('Vui lòng đăng nhập để thêm vào giỏ hàng.')) {
+      return;
+    }
+    
+    // Check if course is already purchased
+    const course = courses.find(c => c.id === courseId);
+    if (course?.is_purchased) {
+      alert('Bạn đã mua khóa học này rồi!');
       return;
     }
 
@@ -587,7 +595,15 @@ export default function CoursesPage() {
                           )}
                         </div>
 
-                        {!course.is_free && course.price > 0 && (
+                        {course.is_purchased ? (
+                          <button
+                            disabled
+                            className="flex items-center px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg cursor-not-allowed opacity-75"
+                          >
+                            <CheckCircleIcon className="h-4 w-4 mr-1" />
+                            Đã mua
+                          </button>
+                        ) : !course.is_free && course.price > 0 ? (
                           <button
                             onClick={(e) => addToCart(course.id, e)}
                             className="flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
@@ -595,7 +611,7 @@ export default function CoursesPage() {
                             <ShoppingCartIcon className="h-4 w-4 mr-1" />
                             Thêm
                           </button>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   </div>

@@ -62,6 +62,7 @@ export interface Course {
   quality_score?: number;
   created_at: string;
   updated_at: string;
+  is_purchased?: boolean; // Whether the current user has purchased/enrolled
 }
 
 export interface Lesson {
@@ -130,6 +131,7 @@ export interface Book {
   total_reviews: number;
   created_at: string;
   updated_at: string;
+  is_purchased?: boolean; // Whether the current user has purchased this book
 }
 
 export interface BookChapter {

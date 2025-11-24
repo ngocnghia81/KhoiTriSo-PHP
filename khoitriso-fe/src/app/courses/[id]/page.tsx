@@ -8,7 +8,8 @@ import {
   UserGroupIcon,
   StarIcon,
   BookOpenIcon,
-  ShoppingCartIcon
+  ShoppingCartIcon,
+  CheckCircleIcon
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import { requireAuth, handleApiResponse } from '@/utils/authCheck';
@@ -140,6 +141,12 @@ export default function CourseDetailPage() {
     }
 
     if (!course) {
+      return;
+    }
+    
+    // Check if course is already purchased
+    if ((course as any).is_purchased || (course as any).is_owned) {
+      alert('Bạn đã mua khóa học này rồi!');
       return;
     }
 
@@ -366,6 +373,14 @@ export default function CourseDetailPage() {
                     className="w-full px-6 py-4 bg-green-600 text-white text-lg font-semibold rounded-xl hover:bg-green-700 transition-colors"
                   >
                     Học ngay miễn phí
+                  </button>
+                ) : (course as any).is_purchased || (course as any).is_owned ? (
+                  <button
+                    disabled
+                    className="w-full px-6 py-4 bg-green-600 text-white text-lg font-semibold rounded-xl cursor-not-allowed opacity-75 flex items-center justify-center"
+                  >
+                    <CheckCircleIcon className="h-6 w-6 mr-2" />
+                    Đã mua
                   </button>
                 ) : (
                   <button

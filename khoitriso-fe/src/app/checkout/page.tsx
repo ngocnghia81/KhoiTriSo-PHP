@@ -190,10 +190,19 @@ export default function CheckoutPage() {
       if (response.ok && response.data) {
         const { order, paymentUrl, isFree } = response.data;
         
-        // If order is free (price = 0), redirect directly to order detail
+        // If order is free (price = 0), auto-enroll and redirect to course
         if (isFree || calculateTotal() === 0) {
           notify('Đăng ký thành công! Bạn đã được cấp quyền truy cập.', 'success');
-          router.push(`/orders/${order.id}`);
+          
+          // Find the first course in the order to redirect to
+          const courseItem = cartItems.find(item => item.item_type === 1);
+          if (courseItem && courseItem.item_id) {
+            // Redirect to course learning page
+            router.push(`/courses/${courseItem.item_id}/learn`);
+          } else {
+            // If no course, redirect to my learning page
+            router.push('/my-learning');
+          }
         } else if (paymentMethod === 'vnpay' && paymentUrl) {
           // Redirect to VNPay payment page
           window.location.href = paymentUrl;

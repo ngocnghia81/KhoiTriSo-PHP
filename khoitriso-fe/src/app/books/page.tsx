@@ -10,7 +10,8 @@ import {
   MagnifyingGlassIcon,
   FunnelIcon,
   UserIcon,
-  ArrowRightIcon
+  ArrowRightIcon,
+  CheckCircleIcon
 } from '@heroicons/react/24/outline';
 import { 
   StarIcon as StarIconSolid,
@@ -62,7 +63,13 @@ export default function BooksPage() {
         // Backend returns { data: [], total: 10, ... }
         const booksData = Array.isArray(response.data) ? response.data : [];
         console.log('Books data:', booksData);
-        setBooks(booksData);
+        console.log('First book is_purchased:', booksData[0]?.is_purchased);
+        // Ensure is_purchased is properly set (convert to boolean if needed)
+        const mappedBooks = booksData.map((book: any) => ({
+          ...book,
+          is_purchased: Boolean(book.is_purchased)
+        }));
+        setBooks(mappedBooks);
         
         // Build categories from books
         const categoryMap = new Map<string, number>();
@@ -163,6 +170,13 @@ export default function BooksPage() {
     
     // Check authentication
     if (!requireAuth('Vui lòng đăng nhập để thêm vào giỏ hàng.')) {
+      return;
+    }
+    
+    // Check if book is already purchased
+    const book = books.find(b => String(b.id) === bookId);
+    if (book?.is_purchased) {
+      alert('Bạn đã mua sách này rồi!');
       return;
     }
     
@@ -539,13 +553,28 @@ export default function BooksPage() {
                           </div>
                         </div>
 
-                        <button
-                          onClick={(e) => addToCart(String(book.id), e)}
-                          className="flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          <ShoppingCartIcon className="h-4 w-4 mr-1" />
-                          {book.price === 0 ? 'Xem' : 'Mua'}
-                        </button>
+                        {book.is_purchased ? (
+                          <button
+                            disabled
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                            }}
+                            className="flex items-center px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg cursor-not-allowed opacity-75"
+                            style={{ pointerEvents: 'none' }}
+                          >
+                            <CheckCircleIcon className="h-4 w-4 mr-1" />
+                            Đã mua
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e) => addToCart(String(book.id), e)}
+                            className="flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                          >
+                            <ShoppingCartIcon className="h-4 w-4 mr-1" />
+                            {book.price === 0 ? 'Xem' : 'Mua'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
