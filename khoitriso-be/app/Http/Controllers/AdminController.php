@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\IOFactory;
@@ -3770,7 +3771,10 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
             $shuffleQuestions = isset($data['shuffleQuestions']) && $data['shuffleQuestions'] ? DB::raw('true') : DB::raw('false');
             $shuffleOptions = isset($data['shuffleOptions']) && $data['shuffleOptions'] ? DB::raw('true') : DB::raw('false');
             
-            $assignmentId = DB::table('assignments')->insertGetId([
+            // Check if is_active column exists
+            $hasIsActiveColumn = Schema::hasColumn('assignments', 'is_active');
+            
+            $insertData = [
                 'lesson_id' => $lessonId,
                 'title' => $data['title'],
                 'description' => $data['description'],
@@ -3784,10 +3788,16 @@ Giai thich: Phan tich thanh nhan tu: (x-2)(x-3) = 0\\par
                 'passing_score' => $data['passingScore'] ?? null,
                 'shuffle_questions' => $shuffleQuestions,
                 'shuffle_options' => $shuffleOptions,
-                'is_active' => DB::raw('true'), // Default to active
                 'created_at' => now(),
                 'updated_at' => now(),
-            ]);
+            ];
+            
+            // Only add is_active if column exists
+            if ($hasIsActiveColumn) {
+                $insertData['is_active'] = DB::raw('true');
+            }
+            
+            $assignmentId = DB::table('assignments')->insertGetId($insertData);
             
             $assignment = \App\Models\Assignment::find($assignmentId);
 

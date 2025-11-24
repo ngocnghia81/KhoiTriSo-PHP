@@ -47,10 +47,17 @@ class AssignmentController extends BaseController
             $pageSize = (int) $request->query('pageSize', 20);
             
             $total = $q->count();
-            $assignments = $q->orderByDesc('created_at')
+            $assignments = $q->withCount('questions')
+                ->orderByDesc('created_at')
                 ->skip(($page - 1) * $pageSize)
                 ->take($pageSize)
-                ->get();
+                ->get()
+                ->map(function ($assignment) {
+                    $data = $assignment->toArray();
+                    // Add questions_count to response
+                    $data['questions_count'] = $assignment->questions_count ?? 0;
+                    return $data;
+                });
             
             return $this->paginated($assignments->toArray(), $page, $pageSize, $total);
 
@@ -360,6 +367,7 @@ class AssignmentController extends BaseController
                 ->keyBy('id');
             
             $score = 0;
+            $azotaPoints = [0.1, 0.25, 0.5, 1.0];
             
             foreach ($data['answers'] as $ans) {
                 $qid = $ans['questionId'];
@@ -376,7 +384,27 @@ class AssignmentController extends BaseController
                         ? QuestionOption::where('id', $optionId)->where('question_id', $qid)->first() 
                         : null;
                     $isCorrect = $opt ? (bool) $opt->is_correct : false;
-                    $earned = $isCorrect ? (float) ($opt->points_value ?? $q->default_points) : 0;
+                    
+                    if ($isCorrect) {
+                        // Count correct options for this question
+                        $correctOptionsCount = QuestionOption::where('question_id', $qid)
+                            ->where('is_correct', \DB::raw('true'))
+                            ->count();
+                        
+                        // Calculate points based on correct options count
+                        if ($correctOptionsCount === 1) {
+                            // Single correct answer: full points
+                            $earned = (float) $q->default_points;
+                        } elseif ($correctOptionsCount > 1 && $correctOptionsCount <= 4) {
+                            // Multiple correct answers: use Azota rule
+                            $earned = (float) ($q->default_points * $azotaPoints[$correctOptionsCount - 1]);
+                        } else {
+                            // More than 4 or edge case: use points_value or default_points
+                            $earned = (float) ($opt->points_value ?? $q->default_points);
+                        }
+                    } else {
+                        $earned = 0;
+                    }
                 } else {
                     // short answer/essay stub: zero or default
                     $earned = (float) $q->default_points;
@@ -537,11 +565,26 @@ class AssignmentController extends BaseController
                 return $this->notFound('Assignment');
             }
 
-            $validator = Validator::make($request->all(), [
+            // Pre-process request data to filter out empty options
+            $requestData = $request->all();
+            if (isset($requestData['questions']) && is_array($requestData['questions'])) {
+                foreach ($requestData['questions'] as $qIndex => &$question) {
+                    if (isset($question['options']) && is_array($question['options'])) {
+                        // Filter out options with empty text
+                        $question['options'] = array_values(array_filter($question['options'], function($option) {
+                            return isset($option['text']) && trim($option['text']) !== '';
+                        }));
+                    }
+                }
+                unset($question);
+            }
+            
+            // First validation: basic structure
+            $validator = Validator::make($requestData, [
                 'questions' => ['required', 'array', 'min:1'],
                 'questions.*.content' => ['required', 'string'],
                 'questions.*.type' => ['required', 'string', 'in:multiple_choice,essay'],
-                'questions.*.options' => ['required_if:questions.*.type,multiple_choice', 'array', 'min:2'],
+                'questions.*.options' => ['required_if:questions.*.type,multiple_choice', 'array'],
                 'questions.*.options.*.text' => ['required_with:questions.*.options', 'string'],
                 'questions.*.options.*.isCorrect' => ['required_with:questions.*.options', 'boolean'],
                 'questions.*.explanation' => ['nullable', 'string'],
@@ -551,7 +594,7 @@ class AssignmentController extends BaseController
                 'questions.*.defaultPoints' => ['nullable', 'numeric', 'min:0'], // For BatchInsert
                 'isBatchInsert' => ['nullable', 'boolean'], // true for Word import, false for single add
             ]);
-
+            
             if ($validator->fails()) {
                 $errors = [];
                 foreach ($validator->errors()->toArray() as $field => $messages) {
@@ -559,9 +602,25 @@ class AssignmentController extends BaseController
                 }
                 return $this->validationError($errors);
             }
-
-            $data = $validator->validated();
-            $isBatchInsert = $data['isBatchInsert'] ?? false;
+            
+            // Second validation: check minimum options count after filtering
+            foreach ($requestData['questions'] as $qIndex => $question) {
+                if (isset($question['type']) && $question['type'] === 'multiple_choice') {
+                    $optionsCount = isset($question['options']) && is_array($question['options']) 
+                        ? count($question['options']) 
+                        : 0;
+                    if ($optionsCount < 2) {
+                        return $this->validationError([[
+                            'field' => "questions.{$qIndex}.options",
+                            'messages' => ['Câu hỏi trắc nghiệm phải có ít nhất 2 lựa chọn hợp lệ (không được để trống)']
+                        ]]);
+                    }
+                }
+            }
+            
+            // Use filtered data
+            $data = $requestData;
+            $isBatchInsert = isset($data['isBatchInsert']) && $data['isBatchInsert'];
 
             \DB::beginTransaction();
 
@@ -704,9 +763,15 @@ class AssignmentController extends BaseController
                             $pointsValue = 0.0;
                             if ($optionData['isCorrect']) {
                                 // True-False: Điểm = DefaultPoints × Points[Số options đúng - 1]
-                                if ($correctOptionsCount > 0 && $correctOptionsCount <= 4) {
+                                // But if only 1 correct option, give full points (not 10%)
+                                if ($correctOptionsCount === 1) {
+                                    // Single correct answer: full points
+                                    $pointsValue = $defaultPoints;
+                                } elseif ($correctOptionsCount > 1 && $correctOptionsCount <= 4) {
+                                    // Multiple correct answers: divide points
                                     $pointsValue = $defaultPoints * $azotaPoints[$correctOptionsCount - 1];
                                 } else {
+                                    // More than 4 or edge case: full points
                                     $pointsValue = $defaultPoints;
                                 }
                             }

@@ -180,7 +180,18 @@ class AdminCouponController extends BaseController
                 return $this->validationError(['discount_value' => ['Giá trị giảm giá phần trăm không được vượt quá 100%']]);
             }
 
-            $coupon = Coupon::create([
+            // Use raw SQL for PostgreSQL boolean compatibility
+            $isActive = (isset($data['is_active']) ? $data['is_active'] : true) ? DB::raw('true') : DB::raw('false');
+            
+            // Handle JSON fields
+            $applicableItemTypes = isset($data['applicable_item_types']) && $data['applicable_item_types'] 
+                ? json_encode($data['applicable_item_types']) 
+                : null;
+            $applicableItemIds = isset($data['applicable_item_ids']) && $data['applicable_item_ids']
+                ? json_encode($data['applicable_item_ids'])
+                : null;
+            
+            $couponId = DB::table('coupons')->insertGetId([
                 'code' => strtoupper($data['code']),
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
@@ -192,11 +203,15 @@ class AdminCouponController extends BaseController
                 'valid_to' => $data['valid_to'],
                 'usage_limit' => $data['usage_limit'] ?? null,
                 'used_count' => 0,
-                'is_active' => $data['is_active'] ?? true,
-                'applicable_item_types' => $data['applicable_item_types'] ?? null,
-                'applicable_item_ids' => $data['applicable_item_ids'] ?? null,
+                'is_active' => $isActive,
+                'applicable_item_types' => $applicableItemTypes,
+                'applicable_item_ids' => $applicableItemIds,
                 'created_by' => $user->id,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
+            
+            $coupon = Coupon::find($couponId);
 
             return $this->success([
                 'id' => $coupon->id,
@@ -263,9 +278,25 @@ class AdminCouponController extends BaseController
                 $data['code'] = strtoupper($data['code']);
             }
 
-            $coupon->update($data);
-            $coupon->updated_by = $user->id;
-            $coupon->save();
+            // Handle boolean fields for PostgreSQL
+            $updateData = $data;
+            if (isset($data['is_active'])) {
+                $updateData['is_active'] = $data['is_active'] ? DB::raw('true') : DB::raw('false');
+            }
+            
+            // Handle JSON fields
+            if (isset($data['applicable_item_types'])) {
+                $updateData['applicable_item_types'] = $data['applicable_item_types'] ? json_encode($data['applicable_item_types']) : null;
+            }
+            if (isset($data['applicable_item_ids'])) {
+                $updateData['applicable_item_ids'] = $data['applicable_item_ids'] ? json_encode($data['applicable_item_ids']) : null;
+            }
+            
+            $updateData['updated_by'] = $user->id;
+            $updateData['updated_at'] = now();
+            
+            DB::table('coupons')->where('id', $coupon->id)->update($updateData);
+            $coupon->refresh();
 
             return $this->success([
                 'id' => $coupon->id,

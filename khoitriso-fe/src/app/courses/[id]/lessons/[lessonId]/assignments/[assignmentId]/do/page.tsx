@@ -42,6 +42,7 @@ export default function DoAssignmentPage() {
   const [attemptHistory, setAttemptHistory] = useState<AssignmentAttempt[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
 
   useEffect(() => {
     if (!assignmentId) {
@@ -78,6 +79,15 @@ export default function DoAssignmentPage() {
       setLoading(false);
     }
   };
+
+  // Scroll effect for sticky progress bar
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 100);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // Timer effect
   useEffect(() => {
@@ -297,6 +307,22 @@ export default function DoAssignmentPage() {
     const percentage = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
     const passingScore = assignment.passingScore || assignment.passing_score || 0;
     const isPassed = passingScore > 0 ? score >= passingScore : percentage >= 50;
+    
+    // Calculate correct answers count
+    const correctCount = questions.filter(q => {
+      const userAnswer = answers[q.id];
+      if (!userAnswer) return false;
+      
+      const questionType = q.questionType || q.question_type || 1;
+      if (questionType === 1 || questionType === 2) {
+        // Multiple choice: check if selected option is correct
+        const selectedOption = q.options?.find(opt => opt.id === userAnswer.optionId);
+        return selectedOption?.isCorrect || selectedOption?.is_correct || false;
+      }
+      // Essay questions: always count as answered (not auto-corrected)
+      return true;
+    }).length;
+    const totalQuestions = questions.length;
 
     return (
       <div className="min-h-screen bg-gray-50 py-8">
@@ -346,6 +372,12 @@ export default function DoAssignmentPage() {
               </div>
 
               <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Số câu đúng:</span>
+                  <span className={`font-semibold ${isPassed ? 'text-green-600' : 'text-red-600'}`}>
+                    {correctCount}/{totalQuestions} câu
+                  </span>
+                </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600">Tỷ lệ đúng:</span>
                   <span className={`font-semibold ${isPassed ? 'text-green-600' : 'text-red-600'}`}>
@@ -506,6 +538,36 @@ export default function DoAssignmentPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Sticky Progress Bar */}
+      {isScrolled && !isSubmitted && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-white shadow-lg border-b border-gray-200 px-4 py-3">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex justify-between text-sm text-gray-600 mb-1">
+                  <span>Đã làm: <strong className="text-blue-600">{getAnsweredCount()}</strong>/{questions.length}</span>
+                  <span className="text-blue-600 font-semibold">{Math.round(getProgressPercentage())}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${getProgressPercentage()}%` }}
+                  ></div>
+                </div>
+              </div>
+              {timeLimit > 0 && (
+                <div className="flex items-center gap-2 text-sm">
+                  <ClockIcon className="h-4 w-4 text-gray-500" />
+                  <span className={`font-semibold ${showWarning ? 'text-red-600' : 'text-gray-700'}`}>
+                    {formatTime(timeLeft)}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <nav className="mb-4">
@@ -556,7 +618,7 @@ export default function DoAssignmentPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ${isScrolled ? 'pt-20' : ''}`}>
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           <div className="lg:col-span-3 space-y-6">
             <div className="bg-white rounded-2xl shadow-sm p-6">
@@ -597,7 +659,7 @@ export default function DoAssignmentPage() {
 
                     {isMultipleChoice && options.length > 0 ? (
                       <div className="space-y-3">
-                        {options.map((option) => {
+                        {options.map((option, optIndex) => {
                           const optionContent = option.optionContent || option.option_content || '';
                           const isSelected = userAnswer?.optionId === option.id;
                           
@@ -619,7 +681,7 @@ export default function DoAssignmentPage() {
                                 disabled={isSubmitted}
                               />
                               <span className="flex-1 text-gray-900">
-                                <strong>{String.fromCharCode(65 + (option.orderIndex || option.order_index || 0))}.</strong>{' '}
+                                <strong>{String.fromCharCode(65 + optIndex)}.</strong>{' '}
                                 {renderMathContent(optionContent)}
                               </span>
                             </label>

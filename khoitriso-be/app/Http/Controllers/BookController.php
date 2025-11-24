@@ -15,7 +15,11 @@ class BookController extends Controller
 {
     public function index(Request $request)
     {
-        $q = Book::query()->whereRaw('is_active = true')->with('category:id,name','author:id,name');
+        $q = Book::query()
+            ->whereRaw('is_active = true')
+            ->whereRaw('is_published = true')
+            ->where('approval_status', 1) // Only show approved books
+            ->with('category:id,name','author:id,name');
         if ($request->filled('category')) $q->where('category_id', $request->integer('category'));
         if ($s = $request->query('search')) $q->where('title', 'like', "%$s%");
         if ($request->filled('approvalStatus')) $q->where('approval_status', $request->integer('approvalStatus'));
@@ -34,8 +38,10 @@ class BookController extends Controller
 
     public function show(int $id, Request $request)
     {
-        // Only show active books for regular users
+        // Only show active, published, and approved books for regular users
         $book = Book::whereRaw('is_active = true')
+            ->whereRaw('is_published = true')
+            ->where('approval_status', 1)
             ->with(['author','category','chapters' => function ($q) { $q->orderBy('order_index'); }])
             ->findOrFail($id);
         

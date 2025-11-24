@@ -25,6 +25,14 @@ export default function ResizablePanel({
   const startX = useRef(0);
   const startWidth = useRef(0);
 
+  // Sync width when initialWidth changes (e.g., when collapsing/expanding)
+  useEffect(() => {
+    if (!isResizing) {
+      setWidth(initialWidth);
+      startWidth.current = initialWidth;
+    }
+  }, [initialWidth, isResizing]);
+
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsResizing(true);
     startX.current = e.clientX;

@@ -57,6 +57,7 @@ export default function CreateAssignmentPage() {
   const [showPreview, setShowPreview] = useState(true);
   const [showCalculator, setShowCalculator] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorQuestions, setErrorQuestions] = useState<Set<number>>(new Set());
   const [loadingLesson, setLoadingLesson] = useState(true);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number | null>(null);
   const [isInstructor, setIsInstructor] = useState(false);
@@ -183,6 +184,12 @@ export default function CreateAssignmentPage() {
     const updated = [...questions];
     (updated[index] as any)[field] = value;
     setQuestions(updated);
+    // Clear error for this question when user edits
+    if (errorQuestions.has(index)) {
+      const newErrors = new Set(errorQuestions);
+      newErrors.delete(index);
+      setErrorQuestions(newErrors);
+    }
   };
 
   const addOption = (questionIndex: number) => {
@@ -213,6 +220,12 @@ export default function CreateAssignmentPage() {
     if (updated[questionIndex].options) {
       (updated[questionIndex].options![optionIndex] as any)[field] = value;
       setQuestions(updated);
+      // Clear error for this question when user edits options
+      if (errorQuestions.has(questionIndex)) {
+        const newErrors = new Set(errorQuestions);
+        newErrors.delete(questionIndex);
+        setErrorQuestions(newErrors);
+      }
     }
   };
 
@@ -248,19 +261,72 @@ export default function CreateAssignmentPage() {
       return;
     }
 
+    // Clear previous errors
+    setErrorQuestions(new Set());
+
+    // Validate questions and collect errors
+    const errorIndices = new Set<number>();
+    const errorMessages: string[] = [];
+    let firstErrorIndex = -1;
+
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
-      if (!q.content) {
-        notify(`Câu hỏi ${i + 1} chưa có nội dung`, 'error');
-        return;
+      let hasError = false;
+      const questionErrors: string[] = [];
+
+      if (!q.content || !q.content.trim()) {
+        errorIndices.add(i);
+        hasError = true;
+        questionErrors.push('Chưa có nội dung');
+        if (firstErrorIndex === -1) firstErrorIndex = i;
       }
+
       if (q.type === 'multiple_choice' && q.options) {
-        const hasCorrect = q.options.some(opt => opt.isCorrect);
+        // Filter out empty options
+        const validOptions = q.options.filter(opt => opt.text && opt.text.trim() !== '');
+        
+        if (validOptions.length < 2) {
+          errorIndices.add(i);
+          hasError = true;
+          questionErrors.push('Phải có ít nhất 2 lựa chọn hợp lệ (không được để trống)');
+          if (firstErrorIndex === -1) firstErrorIndex = i;
+        }
+        
+        const hasCorrect = validOptions.some(opt => opt.isCorrect);
         if (!hasCorrect) {
-          notify(`Câu hỏi ${i + 1} (trắc nghiệm) cần ít nhất 1 đáp án đúng`, 'error');
-          return;
+          errorIndices.add(i);
+          hasError = true;
+          questionErrors.push('Cần ít nhất 1 đáp án đúng');
+          if (firstErrorIndex === -1) firstErrorIndex = i;
         }
       }
+
+      if (hasError) {
+        errorMessages.push(`Câu hỏi ${i + 1}: ${questionErrors.join(', ')}`);
+      }
+    }
+
+    // If there are errors, highlight them and scroll to first error
+    if (errorIndices.size > 0) {
+      setErrorQuestions(errorIndices);
+      
+      // Scroll to first error question
+      if (firstErrorIndex >= 0) {
+        setTimeout(() => {
+          const errorElement = document.getElementById(`question-${firstErrorIndex}`);
+          if (errorElement) {
+            errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Add a shake animation
+            errorElement.classList.add('animate-pulse');
+            setTimeout(() => {
+              errorElement.classList.remove('animate-pulse');
+            }, 2000);
+          }
+        }, 100);
+      }
+
+      notify(errorMessages.join('. ') || 'Vui lòng kiểm tra lại các câu hỏi', 'error');
+      return;
     }
 
     setLoading(true);
@@ -286,19 +352,34 @@ export default function CreateAssignmentPage() {
       setAssignmentId(assignment.id);
 
       // Step 2: Create questions (BatchInsert)
-      const questionsData = questions.map(q => ({
-        content: q.content,
-        type: q.type,
-        options: q.type === 'multiple_choice' && q.options ? q.options.map(opt => ({
-          text: opt.text,
-          isCorrect: opt.isCorrect,
-        })) : undefined,
-        explanation: q.solutionType === 'video' ? undefined : (q.explanation || undefined),
-        correctAnswer: q.type === 'essay' ? q.correctAnswer : undefined,
-        solutionVideo: q.solutionType === 'video' ? q.solutionVideo : undefined,
-        solutionType: q.solutionType || 'text',
-        defaultPoints: q.defaultPoints, // For BatchInsert
-      }));
+      const questionsData = questions.map(q => {
+        // Filter out empty options for multiple choice questions
+        let filteredOptions = undefined;
+        if (q.type === 'multiple_choice' && q.options) {
+          filteredOptions = q.options
+            .filter(opt => opt.text && opt.text.trim() !== '') // Filter empty options
+            .map(opt => ({
+              text: opt.text.trim(),
+              isCorrect: opt.isCorrect,
+            }));
+          
+          // Validate minimum options count
+          if (filteredOptions.length < 2) {
+            throw new Error(`Câu hỏi trắc nghiệm phải có ít nhất 2 lựa chọn hợp lệ (không được để trống)`);
+          }
+        }
+        
+        return {
+          content: q.content,
+          type: q.type,
+          options: filteredOptions,
+          explanation: q.solutionType === 'video' ? undefined : (q.explanation || undefined),
+          correctAnswer: q.type === 'essay' ? q.correctAnswer : undefined,
+          solutionVideo: q.solutionType === 'video' ? q.solutionVideo : undefined,
+          solutionType: q.solutionType || 'text',
+          defaultPoints: q.defaultPoints, // For BatchInsert
+        };
+      });
 
       await createAssignmentQuestions(assignment.id, {
         questions: questionsData,
@@ -599,10 +680,51 @@ export default function CreateAssignmentPage() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {questions.map((question, qIndex) => (
-                    <div key={question.id} className="border border-gray-200 rounded-lg p-4">
+                  {questions.map((question, qIndex) => {
+                    const hasError = errorQuestions.has(qIndex);
+                    return (
+                    <div 
+                      key={question.id} 
+                      id={`question-${qIndex}`}
+                      className={`border-2 rounded-lg p-4 transition-all duration-300 ${
+                        hasError 
+                          ? 'border-red-500 bg-red-50 shadow-lg shadow-red-200' 
+                          : 'border-gray-200 bg-white'
+                      }`}
+                    >
                       <div className="flex items-start justify-between mb-4">
-                        <h3 className="font-medium text-gray-900">Câu hỏi {qIndex + 1}</h3>
+                        <div className="flex-1">
+                          <h3 className={`font-medium ${hasError ? 'text-red-700' : 'text-gray-900'}`}>
+                            Câu hỏi {qIndex + 1}
+                            {hasError && (
+                              <span className="ml-2 text-sm text-red-600 font-normal">
+                                ⚠ Có lỗi cần sửa
+                              </span>
+                            )}
+                          </h3>
+                          {hasError && (
+                            <div className="mt-1 p-2 bg-red-100 border border-red-300 rounded text-sm text-red-700">
+                              {(() => {
+                                const errors: string[] = [];
+                                const q = question;
+                                if (!q.content || !q.content.trim()) {
+                                  errors.push('Chưa có nội dung');
+                                }
+                                if (q.type === 'multiple_choice' && q.options) {
+                                  const validOptions = q.options.filter(opt => opt.text && opt.text.trim() !== '');
+                                  if (validOptions.length < 2) {
+                                    errors.push('Phải có ít nhất 2 lựa chọn hợp lệ');
+                                  }
+                                  const hasCorrect = validOptions.some(opt => opt.isCorrect);
+                                  if (!hasCorrect) {
+                                    errors.push('Cần ít nhất 1 đáp án đúng');
+                                  }
+                                }
+                                return errors.join(', ');
+                              })()}
+                            </div>
+                          )}
+                        </div>
                         <div className="flex gap-2">
                           <button
                             type="button"
@@ -819,7 +941,8 @@ export default function CreateAssignmentPage() {
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -33,6 +33,8 @@ export interface Assignment {
   isActive?: boolean;
   is_active?: boolean;
   questions?: Question[];
+  questionsCount?: number;
+  questions_count?: number;
 }
 
 export interface Question {

@@ -183,12 +183,31 @@ export default function CourseLearningPage() {
         
         setCourse(courseData);
         
-        // Set first lesson as current
+        // Auto-select the next lesson to learn (first uncompleted lesson, or last lesson if all completed)
         if (courseData.lessons && courseData.lessons.length > 0) {
-          const firstLesson = courseData.lessons[0];
-          setCurrentLesson(firstLesson);
-          console.log('First lesson set:', firstLesson);
-          // Load discussions for first lesson
+          // Load completed lessons from localStorage first
+          const storedCompleted = localStorage.getItem(`completed-lessons-${courseId}`);
+          const completedSet = storedCompleted ? new Set(JSON.parse(storedCompleted)) : new Set();
+          
+          // Find first uncompleted lesson
+          let selectedLesson = courseData.lessons[0]; // Default to first lesson
+          
+          for (const lesson of courseData.lessons) {
+            const lessonId = typeof lesson.id === 'string' ? parseInt(lesson.id) : lesson.id;
+            if (!completedSet.has(lessonId)) {
+              selectedLesson = lesson;
+              break; // Found first uncompleted lesson
+            }
+          }
+          
+          // If all lessons are completed, use the last lesson
+          if (completedSet.size === courseData.lessons.length) {
+            selectedLesson = courseData.lessons[courseData.lessons.length - 1];
+          }
+          
+          setCurrentLesson(selectedLesson);
+          console.log('Auto-selected lesson:', selectedLesson);
+          // Load discussions for selected lesson
           // Note: loadLessonData is defined below, so we'll use useEffect to call it
         } else {
           console.log('No lessons found in response');
@@ -1288,7 +1307,7 @@ export default function CourseLearningPage() {
                             )}
                             <div className="flex items-center gap-2">
                               <DocumentTextIcon className="h-5 w-5 text-gray-400" />
-                              <span>{assignment.questions?.length || 0} câu</span>
+                              <span>{(assignment as any).questions_count || (assignment as any).questions_count || assignment.questions?.length || 0} câu</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <TrophyIcon className="h-5 w-5 text-gray-400" />
@@ -1313,7 +1332,7 @@ export default function CourseLearningPage() {
                               onClick={() => handleViewHistory(assignment)}
                               className="inline-flex items-center justify-center px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium"
                             >
-                              <HistoryIcon className="h-5 w-5 mr-2" />
+                              <ClockIcon className="h-5 w-5 mr-2" />
                               Xem lịch sử
                             </button>
                           </div>

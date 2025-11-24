@@ -13,7 +13,9 @@ class CourseController extends BaseController
     public function index(Request $request)
     {
         $query = Course::with(['instructor:id,name,email', 'category:id,name'])
-            ->whereRaw('is_active = true');
+            ->whereRaw('is_active = true')
+            ->whereRaw('is_published = true')
+            ->where('approval_status', 1); // Only show approved courses
         if ($request->filled('category')) {
             $query->where('category_id', $request->integer('category'));
         }
@@ -45,8 +47,10 @@ class CourseController extends BaseController
     public function show(int $id)
     {
         try {
-            // Only show active courses for regular users
+            // Only show active, published, and approved courses for regular users
             $course = Course::whereRaw('is_active = true')
+                ->whereRaw('is_published = true')
+                ->where('approval_status', 1)
                 ->with([
                     'instructor', 
                     'category', 

@@ -95,18 +95,7 @@ const navigation = [
     icon: CurrencyDollarIcon,
     children: [
       { name: 'Tổng quan', href: '/dashboard/commissions' },
-      { name: 'Thanh toán chờ', href: '/dashboard/commissions/pending' },
       { name: 'Lịch sử thanh toán', href: '/dashboard/commissions/history' },
-    ],
-  },
-  {
-    name: 'Hệ thống',
-    icon: CogIcon,
-    children: [
-      { name: 'Cài đặt', href: '/dashboard/settings' },
-      { name: 'Audit Logs', href: '/dashboard/audit-logs' },
-      { name: 'Notifications', href: '/dashboard/notifications' },
-      { name: 'Backup & Restore', href: '/dashboard/backup' },
     ],
   },
 ];
@@ -215,6 +204,16 @@ export default function DashboardSidebar() {
     setSidebarWidth(newWidth);
   };
 
+  // Sync width with collapsed state
+  useEffect(() => {
+    if (sidebarCollapsed) {
+      setSidebarWidth(80);
+    } else {
+      setSidebarWidth(256);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sidebarCollapsed]);
+
   return (
     <>
       {/* Mobile menu button */}
@@ -288,27 +287,45 @@ export default function DashboardSidebar() {
               <div key={item.name}>
                 {item.children ? (
                   <div>
-                    <button
-                      onClick={() => toggleExpanded(item.name)}
-                      className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 rounded-md hover:text-gray-900 hover:bg-gray-100 group transition-all duration-200"
-                    >
-                      <div className="flex items-center">
-                        <item.icon className={`h-4 w-4 text-gray-500 group-hover:text-blue-600 ${sidebarCollapsed ? 'mx-auto' : 'mr-3'}`} />
-                        {!sidebarCollapsed && item.name}
-                      </div>
-                      {!sidebarCollapsed && (
-                        <svg
-                          className={`ml-2 h-4 w-4 transform transition-transform ${
-                            expandedItems.includes(item.name) ? 'rotate-90' : ''
-                          }`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
+                    <div className="relative group">
+                      <button
+                        onClick={() => {
+                          if (sidebarCollapsed) {
+                            // If collapsed, expand sidebar first, then expand item
+                            toggleCollapse();
+                            setTimeout(() => toggleExpanded(item.name), 100);
+                          } else {
+                            toggleExpanded(item.name);
+                          }
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-700 rounded-md hover:text-gray-900 hover:bg-gray-100 transition-all duration-200 ${
+                          sidebarCollapsed ? 'justify-center' : ''
+                        }`}
+                      >
+                        <div className="flex items-center">
+                          <item.icon className={`h-4 w-4 text-gray-500 hover:text-blue-600 ${sidebarCollapsed ? 'mx-auto' : 'mr-3'}`} />
+                          {!sidebarCollapsed && item.name}
+                        </div>
+                        {!sidebarCollapsed && (
+                          <svg
+                            className={`ml-2 h-4 w-4 transform transition-transform ${
+                              expandedItems.includes(item.name) ? 'rotate-90' : ''
+                            }`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        )}
+                      </button>
+                      {sidebarCollapsed && (
+                        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                          {item.name}
+                          <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900"></div>
+                        </div>
                       )}
-                    </button>
+                    </div>
                     {!sidebarCollapsed && expandedItems.includes(item.name) && (
                       <div className="ml-5 mt-1 space-y-0.5">
                         {item.children.map((child) => (
@@ -329,18 +346,26 @@ export default function DashboardSidebar() {
                     )}
                   </div>
                 ) : (
-                  <Link
-                    href={item.href}
-                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                      isActive(item.href)
-                        ? 'text-blue-700 bg-blue-50 border-l-2 border-blue-600'
-                        : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
-                    }`}
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    <item.icon className={`h-4 w-4 text-gray-500 ${sidebarCollapsed ? 'mx-auto' : 'mr-3'}`} />
-                    {!sidebarCollapsed && item.name}
-                  </Link>
+                  <div className="relative group">
+                    <Link
+                      href={item.href}
+                      className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                        isActive(item.href)
+                          ? 'text-blue-700 bg-blue-50 border-l-2 border-blue-600'
+                          : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100'
+                      } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                      onClick={() => setSidebarOpen(false)}
+                    >
+                      <item.icon className={`h-4 w-4 text-gray-500 ${sidebarCollapsed ? 'mx-auto' : 'mr-3'}`} />
+                      {!sidebarCollapsed && item.name}
+                    </Link>
+                    {sidebarCollapsed && (
+                      <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                        {item.name}
+                        <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900"></div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
@@ -349,7 +374,7 @@ export default function DashboardSidebar() {
 
         {/* Sidebar footer */}
         <div className="border-t border-gray-200 p-3 space-y-2">
-          <div className="flex items-center">
+          <div className={`flex items-center relative group ${sidebarCollapsed ? 'justify-center' : ''}`}>
             <div className="flex-shrink-0">
               <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
                 <UserIcon className="h-4 w-4 text-white" />
@@ -365,6 +390,13 @@ export default function DashboardSidebar() {
                 </p>
               </div>
             )}
+            {sidebarCollapsed && (
+              <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                <p>{user?.username || user?.name || 'Admin User'}</p>
+                <p className="text-gray-300">{user?.email || 'admin@khoitriso.com'}</p>
+                <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900"></div>
+              </div>
+            )}
           </div>
           {!sidebarCollapsed && (
             <button
@@ -376,13 +408,18 @@ export default function DashboardSidebar() {
             </button>
           )}
           {sidebarCollapsed && (
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center justify-center p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              title="Đăng xuất"
-            >
-              <ArrowRightOnRectangleIcon className="h-5 w-5" />
-            </button>
+            <div className="relative group">
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                <ArrowRightOnRectangleIcon className="h-5 w-5" />
+              </button>
+              <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 invisible group-hover:opacity-100 group-hover:visible pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                Đăng xuất
+                <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900"></div>
+              </div>
+            </div>
           )}
         </div>
       </ResizablePanel>

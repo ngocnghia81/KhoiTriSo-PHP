@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 
 interface SidebarContextType {
   sidebarOpen: boolean;
@@ -28,23 +28,53 @@ interface SidebarProviderProps {
 }
 
 export const SidebarProvider: React.FC<SidebarProviderProps> = ({ children }) => {
+  // Load initial state from localStorage
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(256); // 64 * 4 = 256px (w-64)
-
-  const toggleSidebar = () => {
-    setSidebarOpen(!sidebarOpen);
-  };
-
-  const toggleCollapse = () => {
-    setSidebarCollapsed(!sidebarCollapsed);
-    // Auto adjust width when collapsing
-    if (!sidebarCollapsed) {
-      setSidebarWidth(80); // Collapsed width
-    } else {
-      setSidebarWidth(256); // Expanded width
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sidebarCollapsed');
+      return saved === 'true';
     }
-  };
+    return false;
+  });
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sidebarWidth');
+      return saved ? parseInt(saved, 10) : 256;
+    }
+    return 256;
+  });
+
+  // Save to localStorage when collapsed state changes
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('sidebarCollapsed', String(sidebarCollapsed));
+    }
+  }, [sidebarCollapsed]);
+
+  // Save to localStorage when width changes
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('sidebarWidth', String(sidebarWidth));
+    }
+  }, [sidebarWidth]);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarOpen(prev => !prev);
+  }, []);
+
+  const toggleCollapse = useCallback(() => {
+    setSidebarCollapsed(prev => {
+      const newCollapsed = !prev;
+      // Auto adjust width when collapsing
+      if (newCollapsed) {
+        setSidebarWidth(80); // Collapsed width
+      } else {
+        setSidebarWidth(256); // Expanded width
+      }
+      return newCollapsed;
+    });
+  }, []);
 
   const value = {
     sidebarOpen,
